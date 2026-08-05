@@ -3,8 +3,9 @@ import path from 'node:path';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
 const STOP = new Set(['the','and','for','with','that','this','from','into','cua','cho','voi','nhung','mot','cac','trong','duoc']);
+const META_PATTERN = /<!--\s*cmi-meta:(\{.*?\})\s*-->/;
 
-function normalize(text) {
+export function normalize(text) {
   return String(text)
     .toLowerCase()
     .replace(/đ/g, 'd')
@@ -23,8 +24,13 @@ function sections(content, source) {
   let title = source;
   let body = [];
   const flush = () => {
-    const text = body.join('\n').trim();
-    if (text) output.push({ source, title, text });
+    let text = body.join('\n').trim();
+    if (!text) { body = []; return; }
+    const metaMatch = text.match(META_PATTERN);
+    let metadata = null;
+    try { metadata = metaMatch ? JSON.parse(metaMatch[1]) : null; } catch {}
+    text = text.replace(META_PATTERN, '').trim();
+    if (text) output.push({ source, title, text, metadata, kind: 'memory' });
     body = [];
   };
   for (const line of lines) {
@@ -37,14 +43,31 @@ function sections(content, source) {
   return output;
 }
 
+async function graphChunks(root) {
+  try {
+    const graph = JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'project-graph.json'), 'utf8'));
+    return graph.nodes.map((node) => {
+      const symbols = node.symbols.map((symbol) => `${symbol.name} (${symbol.kind}${symbol.exported ? ', exported' : ''})`).join(', ');
+      const localImports = node.imports.filter((item) => item.resolved).map((item) => item.resolved).join(', ');
+      const externalImports = node.imports.filter((item) => item.external).map((item) => item.specifier).join(', ');
+      return {
+        source: 'project-graph.json',
+        title: `File ${node.path}`,
+        text: `Language: ${node.language}\nSymbols: ${symbols || 'none'}\nLocal imports: ${localImports || 'none'}\nExternal imports: ${externalImports || 'none'}`,
+        metadata: { path: node.path, symbols: node.symbols },
+        kind: 'graph',
+      };
+    });
+  } catch { return []; }
+}
+
 export async function loadMemory(root) {
-  const dir = path.join(root, '.codex-memory');
+  const directory = path.join(root, '.codex-memory');
   const chunks = [];
   for (const file of MEMORY_FILES) {
-    try {
-      chunks.push(...sections(await fs.readFile(path.join(dir, file), 'utf8'), file));
-    } catch {}
+    try { chunks.push(...sections(await fs.readFile(path.join(directory, file), 'utf8'), file)); } catch {}
   }
+  chunks.push(...await graphChunks(root));
   return chunks;
 }
 
@@ -55,11 +78,12 @@ export async function searchMemory(root, query, limit = 6) {
   return chunks.map((chunk) => {
     const haystack = normalize(`${chunk.title}\n${chunk.text}`);
     const normalizedTitle = normalize(chunk.title);
-    let score = 0;
+    let score = chunk.source === 'decisions.md' ? 0.5 : chunk.source === 'mistakes.md' ? 0.35 : 0;
     for (const term of terms) {
       const matches = haystack.split(term).length - 1;
       if (matches) score += 1 + Math.log2(1 + matches);
       if (normalizedTitle.includes(term)) score += 2;
+      if (chunk.kind === 'graph' && chunk.metadata?.symbols?.some((symbol) => normalize(symbol.name) === term)) score += 5;
     }
     if (haystack.includes(terms.join(' '))) score += 4;
     return { ...chunk, score: Number(score.toFixed(3)) };
@@ -67,6 +91,9 @@ export async function searchMemory(root, query, limit = 6) {
 }
 
 export function formatResults(results) {
-  if (!results.length) return 'No relevant project memory found.';
-  return results.map((item, index) => `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}\n\n${item.text}`).join('\n\n');
+  if (!results.length) return 'No relevant project knowledge found.';
+  return results.map((item, index) => {
+    const sources = item.metadata?.sources?.length ? ` · sources ${item.metadata.sources.join(', ')}` : '';
+    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${sources}\n\n${item.text}`;
+  }).join('\n\n');
 }
