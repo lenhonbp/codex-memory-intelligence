@@ -20,7 +20,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-v0.5 is a real-world public beta. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and an OIDC-ready npm publishing workflow.
+v0.5 is a real-world public beta. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and release-metadata validation for a future trusted npm publication.
 
 Static parsing remains best effort rather than compiler-grade analysis. See [Architecture](docs/ARCHITECTURE.md), [Benchmarks](docs/BENCHMARKS.md), and [Roadmap](ROADMAP.md).
 
@@ -91,7 +91,7 @@ cmi explain-ignore generated --directory
 cmi explain-ignore important.snapshot.json --json
 ```
 
-Built-in dependency/generated paths and symbolic links cannot be re-included. See [Ignore semantics](docs/IGNORE.md).
+Built-in dependency/generated paths and symbolic links cannot be re-included. Hidden paths such as `.env` are excluded by default, while root `.github/` and `.cmiignore` remain visible for repository intelligence. See [Ignore semantics](docs/IGNORE.md).
 
 ## Commands
 
@@ -143,6 +143,7 @@ See [MCP integration](docs/MCP.md).
 - Project scanning never follows symbolic links.
 - Source-linked memory accepts regular files only and verifies real paths remain inside the project.
 - Built-in dependency and generated paths cannot be negated through `.cmiignore`.
+- Hidden paths are excluded by default except root `.github/` and `.cmiignore`.
 - MCP durable-memory tools are disabled by default.
 - Bulk memory refresh requires a separate opt-in.
 - Obvious credentials and private keys are rejected, but CMI is not a complete secret scanner.
@@ -164,7 +165,7 @@ npm run benchmark:smoke
 npm run package:smoke
 ```
 
-CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchmark smoke job checks incremental reuse. CodeQL scans JavaScript and GitHub Actions workflows.
+CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchmark smoke job checks incremental reuse and release metadata. CodeQL scans JavaScript and GitHub Actions workflows.
 
 Community documents: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Maintainers](MAINTAINERS.md), and [Releasing](docs/RELEASING.md).
 
