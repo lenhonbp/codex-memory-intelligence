@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/project-graph.schema.json",
+  "title": "Codex Memory Intelligence project graph",
+  "type": "object",
+  "required": ["schemaVersion", "parserVersion", "generatedAt", "summary", "nodes", "reverseDependents"],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "parserVersion": { "type": "integer", "minimum": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "summary": { "type": "object" },
+    "externalDependencies": { "type": "array", "items": { "type": "string" } },
+    "hubs": { "type": "array" },
+    "reverseDependents": { "type": "object" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "language", "fingerprint", "rawImports", "imports", "symbols"],
+        "properties": {
+          "path": { "type": "string" },
+          "language": { "type": "string" },
+          "fingerprint": { "type": "string" },
+          "workspace": { "type": ["string", "null"] },
+          "rawImports": { "type": "array", "items": { "type": "string" } },
+          "imports": { "type": "array" },
+          "symbols": { "type": "array" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

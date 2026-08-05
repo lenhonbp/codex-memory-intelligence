@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/project-index.schema.json",
+  "title": "Codex Memory Intelligence project index",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "root", "files", "bytes", "graph", "workspaces", "hash"],
+  "properties": {
+    "schemaVersion": { "const": 5 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "root": { "type": "string" },
+    "files": { "type": "integer", "minimum": 0 },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "stack": { "type": "array", "items": { "type": "string" } },
+    "workspaces": { "type": "object" },
+    "ignore": { "type": "object" },
+    "graph": { "type": "object" },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "additionalProperties": true
+}

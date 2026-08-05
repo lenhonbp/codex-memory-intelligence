@@ -18,6 +18,13 @@ export function tokenize(text) {
     .filter((token) => !STOP.has(token));
 }
 
+function termFrequency(text) {
+  const tokens = normalize(text).match(/[a-z0-9_./-]{2,}/g) || [];
+  const frequencies = new Map();
+  for (const token of tokens) if (!STOP.has(token)) frequencies.set(token, (frequencies.get(token) || 0) + 1);
+  return frequencies;
+}
+
 function sections(content, source) {
   const lines = content.split('\n');
   const output = [];
@@ -50,11 +57,12 @@ async function graphChunks(root) {
       const symbols = node.symbols.map((symbol) => `${symbol.name} (${symbol.kind}${symbol.exported ? ', exported' : ''})`).join(', ');
       const localImports = node.imports.filter((item) => item.resolved).map((item) => item.resolved).join(', ');
       const externalImports = node.imports.filter((item) => item.external).map((item) => item.specifier).join(', ');
+      const dependents = (graph.reverseDependents[node.path] || []).join(', ');
       return {
         source: 'project-graph.json',
         title: `File ${node.path}`,
-        text: `Language: ${node.language}\nSymbols: ${symbols || 'none'}\nLocal imports: ${localImports || 'none'}\nExternal imports: ${externalImports || 'none'}`,
-        metadata: { path: node.path, symbols: node.symbols },
+        text: `Language: ${node.language}\nWorkspace: ${node.workspace || 'unassigned'}\nSymbols: ${symbols || 'none'}\nLocal imports: ${localImports || 'none'}\nDependents: ${dependents || 'none'}\nExternal imports: ${externalImports || 'none'}`,
+        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [] },
         kind: 'graph',
       };
     });
@@ -71,29 +79,76 @@ export async function loadMemory(root) {
   return chunks;
 }
 
-export async function searchMemory(root, query, limit = 6) {
+function workspaceMatches(chunk, workspaceQuery) {
+  if (!workspaceQuery) return true;
+  const needle = normalize(workspaceQuery);
+  const workspace = normalize(chunk.metadata?.workspace || '');
+  const pathValue = normalize(chunk.metadata?.path || '');
+  if (chunk.kind === 'graph') return workspace.includes(needle) || pathValue === needle || pathValue.startsWith(`${needle}/`);
+  const sources = chunk.metadata?.sources || [];
+  if (!sources.length) return true;
+  return sources.some((source) => normalize(source).startsWith(`${needle}/`) || normalize(source) === needle);
+}
+
+export async function searchMemory(root, query, limit = 6, options = {}) {
   const terms = tokenize(query);
   if (!terms.length) return [];
-  const chunks = await loadMemory(root);
-  return chunks.map((chunk) => {
+  const chunks = (await loadMemory(root)).filter((chunk) => workspaceMatches(chunk, options.workspace));
+  if (!chunks.length) return [];
+  const documentFrequencies = new Map();
+  const frequencies = chunks.map((chunk) => {
+    const frequency = termFrequency(`${chunk.title}\n${chunk.text}`);
+    for (const term of new Set(frequency.keys())) documentFrequencies.set(term, (documentFrequencies.get(term) || 0) + 1);
+    return frequency;
+  });
+  const phrase = normalize(terms.join(' '));
+  const workspaceNeedle = normalize(options.workspace || '');
+
+  return chunks.map((chunk, index) => {
     const haystack = normalize(`${chunk.title}\n${chunk.text}`);
     const normalizedTitle = normalize(chunk.title);
-    let score = chunk.source === 'decisions.md' ? 0.5 : chunk.source === 'mistakes.md' ? 0.35 : 0;
+    const frequency = frequencies[index];
+    let score = chunk.source === 'decisions.md' ? 0.8 : chunk.source === 'mistakes.md' ? 0.6 : 0;
     for (const term of terms) {
-      const matches = haystack.split(term).length - 1;
-      if (matches) score += 1 + Math.log2(1 + matches);
-      if (normalizedTitle.includes(term)) score += 2;
-      if (chunk.kind === 'graph' && chunk.metadata?.symbols?.some((symbol) => normalize(symbol.name) === term)) score += 5;
+      const tf = frequency.get(term) || 0;
+      if (tf) {
+        const idf = Math.log(1 + chunks.length / (1 + (documentFrequencies.get(term) || 0)));
+        score += (1 + Math.log(tf)) * (1 + idf);
+      }
+      if (normalizedTitle.includes(term)) score += 2.5;
+      if (chunk.kind === 'graph' && chunk.metadata?.symbols?.some((symbol) => normalize(symbol.name) === term)) score += 6;
+      if (chunk.kind === 'graph' && normalize(chunk.metadata?.path || '').endsWith(term)) score += 2;
     }
-    if (haystack.includes(terms.join(' '))) score += 4;
+    if (phrase && haystack.includes(phrase)) score += 4;
+    if (workspaceNeedle && normalize(chunk.metadata?.workspace || '').includes(workspaceNeedle)) score += 3;
+    if (chunk.metadata?.dependents?.length) score += Math.min(2, Math.log2(1 + chunk.metadata.dependents.length));
     return { ...chunk, score: Number(score.toFixed(3)) };
-  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.max(1, Math.min(20, limit)));
+  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)).slice(0, Math.max(1, Math.min(30, limit)));
+}
+
+export async function buildContextPack(root, query, limit = 8, options = {}) {
+  const results = await searchMemory(root, query, limit, options);
+  const decisions = results.filter((item) => item.source === 'decisions.md');
+  const risks = results.filter((item) => item.source === 'mistakes.md');
+  const files = results.filter((item) => item.kind === 'graph');
+  return {
+    query,
+    workspace: options.workspace || null,
+    summary: {
+      results: results.length,
+      decisions: decisions.length,
+      risks: risks.length,
+      files: files.length,
+    },
+    results,
+  };
 }
 
 export function formatResults(results) {
   if (!results.length) return 'No relevant project knowledge found.';
   return results.map((item, index) => {
     const sources = item.metadata?.sources?.length ? ` · sources ${item.metadata.sources.join(', ')}` : '';
-    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${sources}\n\n${item.text}`;
+    const workspace = item.metadata?.workspace ? ` · workspace ${item.metadata.workspace}` : '';
+    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${workspace}${sources}\n\n${item.text}`;
   }).join('\n\n');
 }

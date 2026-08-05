@@ -1,6 +1,6 @@
 {
   "name": "codex-memory-intelligence",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local-first project memory, dependency intelligence, and impact analysis for AI coding agents.",
   "type": "module",
   "bin": {
@@ -12,6 +12,9 @@
     "check": "node scripts/check.js",
     "quality": "node scripts/quality.js",
     "verify": "npm run check && npm run quality && npm test",
+    "benchmark": "node scripts/benchmark.js",
+    "benchmark:smoke": "node scripts/benchmark.js --files 120 --json",
+    "release:check": "node scripts/verify-release.js",
     "package:smoke": "node scripts/package-smoke.js",
     "prepack": "npm run verify"
   },
@@ -28,11 +31,13 @@
     "lexical-search",
     "project-intelligence",
     "local-first",
-    "developer-tools"
+    "developer-tools",
+    "monorepo"
   ],
   "files": [
     "src",
     "schemas",
+    "docs",
     "README.md",
     "LICENSE",
     "SECURITY.md",
