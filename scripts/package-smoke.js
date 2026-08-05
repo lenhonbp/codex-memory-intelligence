@@ -12,9 +12,10 @@ const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-'));
 try {
   runNpm(['install','--global','--prefix',prefix,archive,'--ignore-scripts']);
   const executable = process.platform === 'win32' ? path.join(prefix, 'cmi.cmd') : path.join(prefix, 'bin', 'cmi');
-  const version = execFileSync(executable, ['--version'], { encoding: 'utf8' }).trim();
+  const runInstalled = (args, options = {}) => execFileSync(executable, args, { shell: process.platform === 'win32', ...options });
+  const version = runInstalled(['--version'], { encoding: 'utf8' }).trim();
   if (version !== '0.4.0') throw new Error(`Unexpected installed version: ${version}`);
-  execFileSync(executable, ['--help'], { stdio: 'ignore' });
+  runInstalled(['--help'], { stdio: 'ignore' });
   console.log(`Package smoke test passed for ${path.basename(archive)}.`);
 } finally {
   fs.rmSync(prefix, { recursive: true, force: true });
