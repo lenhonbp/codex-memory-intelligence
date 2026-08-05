@@ -29,3 +29,18 @@ jobs:
           package-manager-cache: false
       - run: npm run verify
       - run: npm run package:smoke
+
+  intelligence-smoke:
+    name: Incremental intelligence and release metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm run benchmark:smoke
+      - name: Verify release metadata
+        shell: bash
+        run: npm run release:check -- "v$(node -p "require('./package.json').version")"

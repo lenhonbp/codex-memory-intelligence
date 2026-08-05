@@ -1,16 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/config.schema.json",
-  "title": "CMI configuration",
+  "title": "Codex Memory Intelligence configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "maxFileBytes", "maxSourceBytes", "maxGraphFiles", "staleAfterDays", "includeHidden"],
+  "required": ["version"],
   "properties": {
-    "version": { "type": "integer", "minimum": 3 },
-    "maxFileBytes": { "type": "integer", "minimum": 1024 },
-    "maxSourceBytes": { "type": "integer", "minimum": 1024 },
+    "version": { "type": "integer", "minimum": 4 },
+    "maxFileBytes": { "type": "integer", "minimum": 1 },
+    "maxSourceBytes": { "type": "integer", "minimum": 1 },
     "maxGraphFiles": { "type": "integer", "minimum": 1 },
     "staleAfterDays": { "type": "integer", "minimum": 1 },
-    "includeHidden": { "type": "boolean" }
+    "includeHidden": { "type": "boolean" },
+    "incrementalScan": { "type": "boolean" },
+    "workspaceDetection": { "type": "boolean" },
+    "ignorePatterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 500
+    }
   }
 }

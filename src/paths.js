@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-function slash(value) {
-  return value.split(path.sep).join('/');
+export function slash(value) {
+  return String(value).split(path.sep).join('/');
 }
 
 export function isPathInside(root, candidate) {

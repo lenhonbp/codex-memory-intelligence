@@ -7,11 +7,12 @@
 
 A local-first memory, dependency-intelligence, and impact-analysis layer for Codex and other AI coding agents.
 
-CMI helps an agent answer three questions before changing a project:
+CMI helps an agent answer four questions before changing a project:
 
 1. **What has the team already learned or decided?**
-2. **Which files and symbols are connected to this change?**
+2. **Which files, symbols, and workspaces are connected to this change?**
 3. **Is the stored knowledge still current?**
+4. **Which repository content should be ignored or treated as generated noise?**
 
 Everything stays in a human-reviewable `.codex-memory/` directory. There is no cloud service, API key, database, or telemetry.
 
@@ -19,22 +20,24 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-v0.4 is a hardened public beta. Static parsing remains best effort rather than compiler-grade analysis. See [Roadmap](ROADMAP.md) and [Architecture](docs/ARCHITECTURE.md).
+v0.5 is a real-world public beta. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and release-metadata validation for a future trusted npm publication.
+
+Static parsing remains best effort rather than compiler-grade analysis. See [Architecture](docs/ARCHITECTURE.md), [Benchmarks](docs/BENCHMARKS.md), and [Roadmap](ROADMAP.md).
 
 ## Install
 
-The npm package should be used after the first public release is published:
-
-```bash
-npm install -g codex-memory-intelligence
-```
-
-From source:
+Until the npm release checklist is completed, install from source:
 
 ```bash
 git clone https://github.com/lenhonbp/codex-memory-intelligence.git
 cd codex-memory-intelligence
 npm link
+```
+
+After the package is published:
+
+```bash
+npm install -g codex-memory-intelligence
 ```
 
 Requires Node.js 22 or newer.
@@ -47,21 +50,59 @@ cmi init
 cmi scan
 cmi remember fact "Production runs on Cloudflare Pages"
 cmi remember decision "Schema changes must use D1 migrations" --source wrangler.toml
-cmi search "production database migration"
+cmi context "change the leaderboard migration"
 cmi impact migrate
 cmi stale
 cmi snapshot before-refactor
 cmi status
 ```
 
+A second unchanged `cmi scan` reuses previously parsed source nodes. Use `cmi scan --full` after parser/configuration experiments or when you deliberately want a complete rebuild.
+
+## Monorepos and workspaces
+
+CMI detects npm/pnpm workspaces, Cargo workspace members, and Go workspaces/modules.
+
+```bash
+cmi workspaces
+cmi context "authentication flow" --workspace packages/web
+cmi search "shared API" --workspace @company/core
+```
+
+Graph nodes carry workspace IDs, impact analysis reports affected workspaces, and cross-workspace edges are counted separately.
+
+## Ignore semantics
+
+Create a root `.cmiignore` file using gitignore-style patterns:
+
+```gitignore
+# Generated code
+generated/
+*.snapshot.json
+
+# Re-include one file
+!important.snapshot.json
+```
+
+Explain any decision:
+
+```bash
+cmi explain-ignore generated --directory
+cmi explain-ignore important.snapshot.json --json
+```
+
+Built-in dependency/generated paths and symbolic links cannot be re-included. Hidden paths such as `.env` are excluded by default, while root `.github/` and `.cmiignore` remain visible for repository intelligence. See [Ignore semantics](docs/IGNORE.md).
+
 ## Commands
 
 ```text
 cmi init [path]
-cmi scan [path] [--json]
+cmi scan [path] [--full] [--json]
 cmi graph [path] [--json]
-cmi search <query> [--limit N] [--json]
-cmi context <query> [--limit N]
+cmi workspaces [path] [--json]
+cmi explain-ignore <path> [--directory] [--json]
+cmi search <query> [--limit N] [--workspace name-or-path] [--json]
+cmi context <query> [--limit N] [--workspace name-or-path] [--json]
 cmi impact <file-or-symbol> [--depth N] [--json]
 cmi remember <fact|decision|mistake> <text> [--source path ...]
 cmi stale [path] [--fail-on stale|review|any] [--json]
@@ -75,31 +116,36 @@ cmi --version
 
 ## MCP integration
 
-Generate the safe default configuration, with durable memory mutations disabled:
+Generate the safe default configuration, with durable-memory mutations disabled:
 
 ```bash
 cmi mcp-config
 ```
 
-Enable durable memory creation and refresh explicitly:
+Enable durable-memory creation and reviewed refresh explicitly:
 
 ```bash
 cmi mcp-config --write
 ```
 
-Bulk memory refresh is more sensitive and requires a second opt-in:
+Bulk refresh requires a second opt-in:
 
 ```bash
 cmi mcp-config --write --bulk-refresh
 ```
 
-The server provides search, scan, status, graph, impact, and stale-memory tools. Scanning may refresh generated cache files. When durable memory mutations are enabled, the server additionally exposes memory creation and reviewed-memory refresh tools. The transport is JSON-RPC over stdio, one JSON object per line.
+The server exposes tools, resources, and prompt templates. It supports stable MCP protocol versions from `2024-11-05` through `2025-11-25`, negotiates the client version when supported, and uses newline-delimited JSON-RPC over stdio. Scanning may refresh generated cache files; durable Markdown memory remains protected by explicit write opt-in.
+
+See [MCP integration](docs/MCP.md).
 
 ## Security model
 
-- Project scanning skips symbolic links.
-- Source-linked memory accepts regular files only and verifies their real path remains inside the project.
-- MCP durable memory creation and refresh tools are disabled by default; scans may update generated cache files.
+- Project scanning never follows symbolic links.
+- Source-linked memory accepts regular files only and verifies real paths remain inside the project.
+- Built-in dependency and generated paths cannot be negated through `.cmiignore`.
+- Hidden paths are excluded by default except root `.github/` and `.cmiignore`.
+- MCP durable-memory tools are disabled by default.
+- Bulk memory refresh requires a separate opt-in.
 - Obvious credentials and private keys are rejected, but CMI is not a complete secret scanner.
 - Repository content and memory text remain untrusted input for connected agents.
 
@@ -107,16 +153,19 @@ Review `.codex-memory/` before publishing it. Generated `project-index.json`, `p
 
 ## Parser scope
 
-CMI uses bounded dependency-free static parsing for common JavaScript/TypeScript, Python, Go, Rust, and related files. Aliases, generated code, runtime imports, macros, reflection, and dependency injection may not resolve completely. Unresolved local imports are reported separately from external dependencies.
+CMI uses bounded, dependency-free static parsing for common JavaScript/TypeScript, Python, Go, Rust, and related files. v0.5 adds TypeScript `paths` aliases, Python absolute-package heuristics, Go module imports, and Rust `mod`/`crate::`/`self::`/`super::` resolution.
+
+Aliases inherited through complex `extends` chains, generated code, runtime imports, macros, reflection, build-system rewrites, and dependency injection may not resolve completely. Go package imports are represented by a deterministic source-file node rather than a compiler package graph.
 
 ## Development
 
 ```bash
 npm run verify
+npm run benchmark:smoke
 npm run package:smoke
 ```
 
-CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. CodeQL scans JavaScript and GitHub Actions workflows.
+CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchmark smoke job checks incremental reuse and release metadata. CodeQL scans JavaScript and GitHub Actions workflows.
 
 Community documents: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Maintainers](MAINTAINERS.md), and [Releasing](docs/RELEASING.md).
 

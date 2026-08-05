@@ -1,11 +1,44 @@
 # Releasing
 
-1. Ensure CI and CodeQL are green on `main`.
-2. Confirm `package.json`, `CHANGELOG.md`, MCP server version, and CLI version match.
-3. Run `npm run verify` and `npm run package:smoke` locally.
-4. Create a signed `vX.Y.Z` tag from the reviewed commit.
-5. Create GitHub release notes from the changelog.
-6. Publish through npm trusted publishing with provenance after the npm package and GitHub environment are configured.
-7. Verify a clean-machine installation with `npm install -g codex-memory-intelligence` and `cmi doctor`.
+## Prerequisites
 
-Never publish from an unreviewed working tree or a personal long-lived npm token.
+- The package name is owned on npm.
+- npm Trusted Publishing is configured for `lenhonbp/codex-memory-intelligence`.
+- `main` CI and CodeQL are green.
+- The changelog, package version, and `src/version.js` agree.
+- A reviewed publish workflow has been added only after the npm trusted publisher is configured.
+
+The repository intentionally does not publish merely because a version number exists. Account-level npm ownership and the trusted-publisher relationship must be established first.
+
+## Process
+
+1. Update `package.json`, `src/version.js`, changelog, schemas, and docs in a reviewed pull request.
+2. Run:
+
+   ```bash
+   npm run verify
+   npm run benchmark:smoke
+   npm run package:smoke
+   npm run release:check -- v0.5.0
+   ```
+
+3. Merge the release pull request after CI and CodeQL pass.
+4. Configure npm Trusted Publishing for the exact repository and reviewed workflow filename.
+5. Add and review a minimal tag-triggered publish workflow with `contents: read` and `id-token: write`; do not store a long-lived npm token.
+6. Create a signed semantic tag such as `v0.5.0` on the reviewed `main` commit.
+7. Let the trusted workflow revalidate the tag/version pair, tests, benchmark smoke, and packed installation before running `npm publish --access public --provenance`.
+8. Create and publish the matching GitHub Release.
+9. Install the published package on a clean machine and run `cmi --version`, `cmi doctor`, and a small project scan.
+
+## Required workflow properties
+
+The future publishing workflow must:
+
+- trigger only on semantic version tags;
+- use GitHub OIDC and npm Trusted Publishing;
+- request only `contents: read` and `id-token: write`;
+- run `npm run release:check`, `npm run verify`, and `npm run package:smoke` before publication;
+- publish from the reviewed tag, not a mutable branch;
+- avoid long-lived npm tokens and unreviewed third-party release actions.
+
+Provenance is generated automatically by npm for eligible public packages published through Trusted Publishing.

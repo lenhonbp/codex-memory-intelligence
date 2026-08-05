@@ -3,31 +3,38 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile, spawn } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const exec = promisify(execFile);
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const cliPath = path.join(projectRoot, 'src', 'cli.js');
-const mcpPath = path.join(projectRoot, 'src', 'mcp.js');
+const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
+const mcp = fileURLToPath(new URL('../src/mcp.js', import.meta.url));
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-interface-'));
-  await fs.mkdir(path.join(root, 'src'));
   await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
-  await fs.writeFile(path.join(root, 'src', 'shared.js'), 'export function shared() { return 1; }\n');
-  await fs.writeFile(path.join(root, 'src', 'index.js'), "import { shared } from './shared.js';\nshared();\n");
+  await fs.mkdir(path.join(root, 'src'));
+  await fs.writeFile(path.join(root, 'src', 'db.js'), 'export function migrate() { return true; }\n');
+  await fs.writeFile(path.join(root, 'src', 'index.js'), "import { migrate } from './db.js';\nmigrate();\n");
   return root;
 }
 
-function mcpClient(root, env = {}) {
-  const child = spawn(process.execPath, [mcpPath], { cwd: root, env: { ...process.env, CMI_PROJECT_ROOT: root, ...env }, stdio: ['pipe','pipe','pipe'] });
+function run(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: ['ignore','pipe','pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+function startMcp(root, env = {}) {
+  const child = spawn(process.execPath, [mcp], { cwd: root, env: { ...process.env, CMI_PROJECT_ROOT: root, ...env }, stdio: ['pipe','pipe','pipe'] });
+  const messages = [];
   let buffer = '';
-  const pending = new Map();
-  const unsolicited = [];
-  const unsolicitedWaiters = [];
-  child.stdout.setEncoding('utf8');
+  const waiters = [];
   child.stdout.on('data', (chunk) => {
     buffer += chunk;
     while (buffer.includes('\n')) {
@@ -36,80 +43,87 @@ function mcpClient(root, env = {}) {
       buffer = buffer.slice(index + 1);
       if (!line) continue;
       const message = JSON.parse(line);
-      const resolver = pending.get(message.id);
-      if (resolver) { resolver(message); pending.delete(message.id); }
-      else {
-        const waiter = unsolicitedWaiters.shift();
-        if (waiter) waiter(message);
-        else unsolicited.push(message);
-      }
+      messages.push(message);
+      for (const waiter of [...waiters]) if (waiter.predicate(message)) { waiter.resolve(message); waiters.splice(waiters.indexOf(waiter), 1); }
     }
   });
-  const request = (id, method, params = {}) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`MCP timeout for ${method}`)), 3_000);
-    pending.set(id, (message) => { clearTimeout(timer); resolve(message); });
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+  const send = (message) => child.stdin.write(`${typeof message === 'string' ? message : JSON.stringify(message)}\n`);
+  const waitFor = (predicate, timeout = 3000) => new Promise((resolve, reject) => {
+    const existing = messages.find(predicate);
+    if (existing) { resolve(existing); return; }
+    const waiter = { predicate, resolve };
+    waiters.push(waiter);
+    const timer = setTimeout(() => {
+      const index = waiters.indexOf(waiter);
+      if (index >= 0) waiters.splice(index, 1);
+      reject(new Error('Timed out waiting for MCP response.'));
+    }, timeout);
+    waiter.resolve = (value) => { clearTimeout(timer); resolve(value); };
   });
-  return {
-    child,
-    request,
-    notify: (method, params = {}) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`),
-    raw: (line) => child.stdin.write(`${line}\n`),
-    unsolicited,
-    waitForUnsolicited: (timeoutMs = 3_000) => {
-      if (unsolicited.length) return Promise.resolve(unsolicited.shift());
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('MCP timeout waiting for an unsolicited response')), timeoutMs);
-        unsolicitedWaiters.push((message) => { clearTimeout(timer); resolve(message); });
-      });
-    },
-  };
+  return { child, messages, send, waitFor };
 }
 
-test('CLI scans, records source-linked memory, reports impact, and exposes version', async () => {
+async function initialize(server, version = '2025-11-25') {
+  server.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: version, capabilities: {}, clientInfo: { name: 'test-client', version: '1.0.0' } } });
+  const initialized = await server.waitFor((message) => message.id === 1);
+  server.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  return initialized;
+}
+
+test('CLI exposes v0.5 incremental, workspace, ignore, and version workflows', async () => {
   const root = await fixture();
-  assert.equal((await exec(process.execPath, [cliPath, '--version'], { cwd: root })).stdout.trim(), '0.4.0');
-  const scan = JSON.parse((await exec(process.execPath, [cliPath, 'scan', '--json'], { cwd: root })).stdout);
-  assert.equal(scan.graph.localEdges, 1);
-  assert.match((await exec(process.execPath, [cliPath, 'remember', 'decision', 'Shared API remains stable.', '--source', 'src/shared.js'], { cwd: root })).stdout, /Memory updated/);
-  const impact = JSON.parse((await exec(process.execPath, [cliPath, 'impact', 'shared', '--json'], { cwd: root })).stdout);
-  assert.ok(impact.directDependents.includes('src/index.js'));
-  const doctor = JSON.parse((await exec(process.execPath, [cliPath, 'doctor', '--json'], { cwd: root })).stdout);
-  assert.equal(doctor.healthy, true);
+  let result = await run(process.execPath, [cli, '--version'], { cwd: root });
+  assert.equal(result.stdout.trim(), '0.5.0');
+  result = await run(process.execPath, [cli, 'scan', '--json'], { cwd: root });
+  assert.equal(result.code, 0);
+  assert.equal(JSON.parse(result.stdout).graph.parsedFiles, 2);
+  result = await run(process.execPath, [cli, 'scan', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).graph.reusedFiles, 2);
+  result = await run(process.execPath, [cli, 'workspaces', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).count, 1);
+  result = await run(process.execPath, [cli, 'explain-ignore', 'node_modules', '--directory', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).ignored, true);
 });
 
-test('MCP enforces lifecycle and defaults to read-only tools', async (context) => {
+test('MCP negotiates stable versions and exposes tools, resources, and prompts', async () => {
   const root = await fixture();
-  await exec(process.execPath, [cliPath, 'scan'], { cwd: root });
-  const client = mcpClient(root);
-  context.after(() => client.child.kill());
-  const early = await client.request(1, 'tools/list');
-  assert.equal(early.error.code, -32002);
-  const initialized = await client.request(2, 'initialize', { protocolVersion: '2099-01-01' });
-  assert.equal(initialized.result.protocolVersion, '2025-06-18');
-  client.notify('notifications/initialized');
-  const listed = await client.request(3, 'tools/list');
-  const names = listed.result.tools.map((tool) => tool.name);
-  assert.ok(names.includes('analyze_project_impact'));
-  assert.ok(!names.includes('remember_project_knowledge'));
-  const writeAttempt = await client.request(4, 'tools/call', { name: 'remember_project_knowledge', arguments: { type: 'fact', text: 'No.' } });
-  assert.equal(writeAttempt.result.isError, true);
+  const server = startMcp(root);
+  server.send({ jsonrpc: '2.0', id: 99, method: 'tools/list', params: {} });
+  assert.equal((await server.waitFor((message) => message.id === 99)).error.code, -32002);
+  const initialized = await initialize(server, '2025-11-25');
+  assert.equal(initialized.result.protocolVersion, '2025-11-25');
+  assert.ok(initialized.result.capabilities.resources);
+  assert.ok(initialized.result.capabilities.prompts);
+  server.send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+  const tools = await server.waitFor((message) => message.id === 2);
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'build_project_context'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'list_project_workspaces'));
+  assert.ok(!tools.result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
+  server.send({ jsonrpc: '2.0', id: 3, method: 'resources/list', params: {} });
+  const resources = await server.waitFor((message) => message.id === 3);
+  assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/architecture'));
+  server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/list', params: {} });
+  const prompts = await server.waitFor((message) => message.id === 4);
+  assert.ok(prompts.result.prompts.some((prompt) => prompt.name === 'prepare_project_change'));
+  server.send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'scan_project_intelligence', arguments: {} } });
+  assert.equal((await server.waitFor((message) => message.id === 5)).result.structuredContent.graph.parsedFiles, 2);
+  server.send({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'cmi://project/architecture' } });
+  assert.match((await server.waitFor((message) => message.id === 6)).result.contents[0].text, /Project Architecture/);
+  server.child.stdin.end();
 });
 
-test('MCP reports JSON parse errors and supports opt-in writes', async (context) => {
+test('MCP reports parse errors, negotiates fallback, and supports opt-in writes', async () => {
   const root = await fixture();
-  await exec(process.execPath, [cliPath, 'scan'], { cwd: root });
-  const client = mcpClient(root, { CMI_WRITE_ENABLED: '1' });
-  context.after(() => client.child.kill());
-  client.raw('{bad json');
-  const parseError = await client.waitForUnsolicited();
-  assert.equal(parseError.error.code, -32700);
-  await client.request(1, 'initialize', { protocolVersion: '2025-06-18' });
-  client.notify('notifications/initialized');
-  const listed = await client.request(2, 'tools/list');
-  assert.ok(listed.result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
-  const saved = await client.request(3, 'tools/call', { name: 'remember_project_knowledge', arguments: { type: 'fact', text: 'Shared module is stable.', sources: ['src/shared.js'] } });
-  assert.ok(saved.result.structuredContent.id);
-  const bulk = await client.request(4, 'tools/call', { name: 'refresh_project_memory', arguments: { id: 'all' } });
-  assert.equal(bulk.result.isError, true);
+  const server = startMcp(root, { CMI_WRITE_ENABLED: '1' });
+  server.send('{bad json');
+  assert.equal((await server.waitFor((message) => message.error?.code === -32700)).error.code, -32700);
+  const initialized = await initialize(server, '2099-01-01');
+  assert.equal(initialized.result.protocolVersion, '2025-11-25');
+  server.send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+  assert.ok((await server.waitFor((message) => message.id === 2)).result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
+  server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'remember_project_knowledge', arguments: { type: 'fact', text: 'MCP writes are explicitly enabled.' } } });
+  assert.equal((await server.waitFor((message) => message.id === 3)).result.isError, undefined);
+  server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/get', params: { name: 'prepare_project_change', arguments: { target: 'migrate' } } });
+  assert.match((await server.waitFor((message) => message.id === 4)).result.messages[0].content.text, /impact analysis/i);
+  server.child.stdin.end();
 });

@@ -1,72 +1,87 @@
 # Architecture
 
-CMI is intentionally small, local-first, dependency-free at runtime, and explicit about its security boundaries.
+CMI is intentionally local-first, dependency-free at runtime, bounded, and explainable.
 
 ## Data flow
 
 ```text
 project files
     │
-    ├── safe path resolver ──> scanner ──> project-index.json ──> architecture.md
+    ├── ignore matcher (.cmiignore + config + locked built-ins)
+    │       └── safe regular-file inventory
     │
-    └── safe path resolver ──> graph parser ──> project-graph.json ──> impact analysis / graph search
+    ├── workspace detector
+    │       └── npm/pnpm, Cargo, and Go workspace inventory
+    │
+    └── incremental graph parser
+            ├── reuse unchanged parser-versioned nodes
+            ├── reparse changed nodes
+            ├── re-resolve every import against current repository shape
+            └── project-graph.json
 
 memory.md / decisions.md / mistakes.md
     │
-    ├── ranked lexical retrieval
+    ├── ranked retrieval and context packs
     ├── source fingerprints
     └── stale-memory checks
 
 CLI and MCP expose the same core operations.
-MCP disables durable memory mutations by default; scans may refresh generated caches.
 ```
 
 ## Modules
 
-- `src/core.js` — initialization, configuration migration, project scanning, memory writes, snapshots, status, and diagnostics.
-- `src/paths.js` — project-boundary validation, real-path checks, and symbolic-link rejection.
-- `src/graph.js` — source parsing, import resolution, symbol indexing, reverse dependencies, and impact analysis.
-- `src/search.js` — accent-insensitive ranked lexical retrieval across Markdown memory and graph-derived chunks.
-- `src/stale.js` — metadata parsing, source fingerprints, health classification, and audited review refresh.
+- `src/paths.js` — real-path project-boundary enforcement.
+- `src/ignore.js` — built-in exclusions, `.cmiignore`, configuration patterns, negation, and explanations.
+- `src/workspaces.js` — workspace-manifest detection and file-to-workspace assignment.
+- `src/core.js` — initialization, configuration migration, safe traversal, scanning, memory writes, snapshots, status, and diagnostics.
+- `src/graph.js` — language parsing, alias/module resolution, incremental node reuse, reverse dependencies, and impact analysis.
+- `src/search.js` — accent-insensitive ranked retrieval and workspace-scoped context packs.
+- `src/stale.js` — metadata parsing, source fingerprints, health classification, and reviewed refresh.
 - `src/cli.js` — human-facing command-line interface.
-- `src/mcp.js` — lifecycle-aware JSON-RPC stdio server for compatible coding agents.
-- `src/version.js` — package and supported MCP protocol constants.
+- `src/mcp.js` — MCP JSON-RPC stdio server exposing tools, resources, and prompts.
 
 ## Sources of truth
 
-Durable human knowledge lives in Markdown. `project-index.json` and `project-graph.json` are generated caches and may be deleted and rebuilt with `cmi scan`. Snapshots and generated JSON are ignored by the generated `.codex-memory/.gitignore` unless a project deliberately chooses otherwise.
+Durable human knowledge lives in Markdown. `project-index.json` and `project-graph.json` are generated caches and may be deleted and rebuilt with `cmi scan --full`.
 
-Memory metadata is embedded in HTML comments immediately below each timestamp heading. It records a stable ID, type, creation date, optional source paths and hashes, project-structure hash, and review audit fields. The comments remain invisible in normal Markdown rendering.
+Memory metadata is embedded in HTML comments immediately below each timestamp heading. It records a stable ID, type, creation date, optional source paths and hashes, project-structure hash, and most recent review information.
 
-## Project-boundary model
+## Incremental model
 
-Directory traversal skips symbolic links. A source attached to memory must be a regular file whose lexical path and resolved real path both remain inside the selected project root. This prevents a repository symlink from making CMI fingerprint an arbitrary file outside the project.
+Each source node stores a parser version and a filesystem fingerprint composed of file size, modification time, and change time. A subsequent scan reuses symbols and raw import specifiers when the fingerprint and parser version match. Import resolution is still recomputed for every node so new files, deleted files, workspace changes, and TypeScript alias changes can alter edges without forcing every source file to be reread.
 
-These checks reduce accidental and repository-controlled boundary escapes. They do not replace operating-system sandboxing or protect against a compromised local account.
+`cmi scan --full` disables reuse. Incremental fingerprints are an optimization, not cryptographic content identity; adversarial preservation of all fingerprint fields is outside the intended threat model.
 
-## Staleness model
+## Ignore model
 
-A source-linked entry is stale when a source is missing, unsafe, unreadable, or its SHA-256 hash changes. An unscoped entry moves to review when the project-structure hash changes or its review age exceeds the configured threshold. Older entries without metadata are marked untracked rather than trusted silently.
+Locked built-ins exclude dependency folders, common generated outputs, `.git`, `.codex-memory`, and symbolic links. `.cmiignore` and `ignorePatterns` are evaluated in order and support negation. Custom rules cannot re-include locked safety boundaries.
 
-Refreshing memory records who reviewed it and why. MCP bulk refresh is disabled unless a second explicit opt-in is supplied.
+## Workspace model
+
+Detected workspaces have a stable ID in the form `ecosystem:path`. A file belongs to the deepest matching workspace path. Root manifests may produce a root workspace (`ecosystem:.`). Cross-workspace import edges are counted and impact results include all affected workspace IDs.
 
 ## Graph model
 
-Each indexed source file is a node containing language, size, imports, and symbols. Resolved relative imports create local directed edges. Reverse edges support impact analysis. Package imports remain external dependencies, while relative imports that cannot be resolved are counted as unresolved local imports.
+Each indexed source file is a node containing language, fingerprint, workspace, imports, and symbols. Resolved local imports create directed edges; reverse edges support impact analysis.
 
-Parsing is best-effort and bounded by configuration limits. The project should remain useful even when some languages or framework conventions cannot be resolved.
+Resolution is deliberately bounded:
 
-## MCP lifecycle and permissions
+- JavaScript/TypeScript relative imports and `compilerOptions.paths` aliases.
+- Python relative and common absolute package layouts.
+- Go module imports mapped to a deterministic non-test file in the target package.
+- Rust `mod`, `crate::`, `self::`, and `super::` module paths.
 
-The server accepts newline-delimited JSON-RPC over stdio. Clients initialize the server, send `notifications/initialized`, and then list or call tools. Invalid JSON and requests receive JSON-RPC errors.
+The graph does not replace a compiler, language server, or build system.
 
-Search, scan, status, graph, impact, and stale checks are available by default. Scans may update generated project caches. Durable memory creation and refresh require `CMI_WRITE_ENABLED=1`. Bulk refresh additionally requires `CMI_ALLOW_BULK_REFRESH=1`.
+## MCP compatibility
 
-## Compatibility and validation
+The stdio server uses newline-delimited UTF-8 JSON-RPC messages and supports stable MCP protocol versions `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`. It exposes tools, resources, and prompts after the initialize/initialized lifecycle. Durable-memory mutation tools are fixed at process startup through environment configuration.
 
-- Node.js 22 and 24.
-- Ubuntu, macOS, and Windows CI.
-- Existing `.codex-memory/` directories are migrated in place.
+The 2026-07-28 MCP release candidate is intentionally not advertised as stable support until the specification is finalized and client behavior is validated.
+
+## Compatibility
+
+- Node.js 22+
+- Existing `.codex-memory/` directories migrate in place.
 - Runtime dependencies remain at zero.
-- Package installation is smoke-tested from the generated npm archive.
-- CodeQL scans JavaScript and workflow changes.
+- Generated schema versions: config 4, project index 5, project graph 3.
