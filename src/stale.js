@@ -9,6 +9,13 @@ async function readJson(filePath) {
   try { return JSON.parse(await fs.readFile(filePath, 'utf8')); } catch { return null; }
 }
 
+function safeProjectPath(root, source) {
+  const absolute = path.resolve(root, String(source));
+  const relative = path.relative(root, absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return absolute;
+}
+
 async function hashFile(filePath) {
   try {
     const content = await fs.readFile(filePath);
@@ -20,7 +27,8 @@ export async function sourceFingerprints(root, sources = []) {
   const output = {};
   for (const source of sources) {
     const normalized = String(source).split(path.sep).join('/').replace(/^\.\//, '');
-    output[normalized] = await hashFile(path.join(root, normalized));
+    const safePath = safeProjectPath(root, normalized);
+    output[normalized] = safePath ? await hashFile(safePath) : null;
   }
   return output;
 }
@@ -75,7 +83,13 @@ export async function checkStaleMemory(root) {
     const sources = Array.isArray(meta.sources) ? meta.sources : [];
     if (sources.length) {
       for (const source of sources) {
-        const currentHash = await hashFile(path.join(root, source));
+        const safePath = safeProjectPath(root, source);
+        if (!safePath) {
+          status = 'stale';
+          reasons.push(`Referenced source escapes the project: ${source}`);
+          continue;
+        }
+        const currentHash = await hashFile(safePath);
         const previousHash = meta.sourceHashes?.[source] ?? null;
         if (!currentHash) {
           status = 'stale';
