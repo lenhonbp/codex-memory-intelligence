@@ -26,6 +26,7 @@ function mcpClient(root, env = {}) {
   let buffer = '';
   const pending = new Map();
   const unsolicited = [];
+  const unsolicitedWaiters = [];
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
     buffer += chunk;
@@ -37,7 +38,11 @@ function mcpClient(root, env = {}) {
       const message = JSON.parse(line);
       const resolver = pending.get(message.id);
       if (resolver) { resolver(message); pending.delete(message.id); }
-      else unsolicited.push(message);
+      else {
+        const waiter = unsolicitedWaiters.shift();
+        if (waiter) waiter(message);
+        else unsolicited.push(message);
+      }
     }
   });
   const request = (id, method, params = {}) => new Promise((resolve, reject) => {
@@ -51,6 +56,13 @@ function mcpClient(root, env = {}) {
     notify: (method, params = {}) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`),
     raw: (line) => child.stdin.write(`${line}\n`),
     unsolicited,
+    waitForUnsolicited: (timeoutMs = 3_000) => {
+      if (unsolicited.length) return Promise.resolve(unsolicited.shift());
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('MCP timeout waiting for an unsolicited response')), timeoutMs);
+        unsolicitedWaiters.push((message) => { clearTimeout(timer); resolve(message); });
+      });
+    },
   };
 }
 
@@ -90,8 +102,8 @@ test('MCP reports JSON parse errors and supports opt-in writes', async (context)
   const client = mcpClient(root, { CMI_WRITE_ENABLED: '1' });
   context.after(() => client.child.kill());
   client.raw('{bad json');
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.equal(client.unsolicited[0].error.code, -32700);
+  const parseError = await client.waitForUnsolicited();
+  assert.equal(parseError.error.code, -32700);
   await client.request(1, 'initialize', { protocolVersion: '2025-06-18' });
   client.notify('notifications/initialized');
   const listed = await client.request(2, 'tools/list');
