@@ -1,15 +1,20 @@
 {
   "name": "codex-memory-intelligence",
-  "version": "0.1.0",
-  "description": "Persistent project memory and architecture intelligence for Codex and other coding agents.",
+  "version": "0.2.0",
+  "description": "Persistent project memory and intelligence for Codex and AI coding agents.",
   "type": "module",
-  "bin": { "cmi": "./src/cli.js" },
+  "bin": {
+    "cmi": "./src/cli.js",
+    "cmi-mcp": "./src/mcp.js"
+  },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/cli.js && node --check src/core.js",
+    "check": "node --check src/*.js",
+    "verify": "npm run check && npm test",
     "demo": "node src/cli.js scan ."
   },
   "engines": { "node": ">=20" },
-  "keywords": ["codex", "agent", "memory", "project-intelligence", "developer-tools"],
+  "keywords": ["codex", "mcp", "agent", "memory", "semantic-search", "project-intelligence", "developer-tools"],
+  "files": ["src", "README.md", "LICENSE"],
   "license": "MIT"
 }
