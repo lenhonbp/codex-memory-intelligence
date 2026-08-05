@@ -6,6 +6,7 @@ const BUILTIN_NAMES = new Set([
   '.git', '.codex-memory', 'node_modules', 'dist', 'build', '.next', '.cache',
   'coverage', '.wrangler', '.turbo', '.vercel', '.DS_Store',
 ]);
+const ROOT_HIDDEN_ALLOW = new Set(['.github', '.cmiignore']);
 
 function escapeRegex(value) {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
@@ -68,13 +69,13 @@ export function parseIgnoreRules(content, source = '.cmiignore') {
 
 function builtinReason(relative, includeHidden) {
   const segments = normalizeIgnorePath(relative).split('/').filter(Boolean);
-  const name = segments.at(-1) || '';
   const builtin = segments.find((segment) => BUILTIN_NAMES.has(segment));
   if (builtin) return { ignored: true, locked: true, source: 'built-in', pattern: builtin, reason: `Built-in generated or dependency path: ${builtin}` };
-  if (!includeHidden && segments.length > 1 && segments.some((segment) => segment.startsWith('.'))) {
-    return { ignored: true, locked: true, source: 'built-in', pattern: 'nested hidden path', reason: 'Nested hidden paths are excluded unless includeHidden is enabled.' };
+  const hiddenIndex = segments.findIndex((segment) => segment.startsWith('.'));
+  const allowedRootHidden = hiddenIndex === 0 && ROOT_HIDDEN_ALLOW.has(segments[0]);
+  if (!includeHidden && hiddenIndex >= 0 && !allowedRootHidden) {
+    return { ignored: true, locked: true, source: 'built-in', pattern: 'hidden path', reason: 'Hidden paths are excluded unless includeHidden is enabled; .github and .cmiignore remain available by default.' };
   }
-  if (name === '.cmiignore') return null;
   return null;
 }
 
