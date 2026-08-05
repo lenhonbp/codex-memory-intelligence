@@ -40,9 +40,10 @@ export function parseIgnoreRules(content, source = '.cmiignore') {
   for (let lineNumber = 0; lineNumber < lines.length; lineNumber += 1) {
     let raw = lines[lineNumber].trim();
     if (!raw || raw.startsWith('#')) continue;
-    if (raw.startsWith('\\#') || raw.startsWith('\\!')) raw = raw.slice(1);
+    const escapedLeadingMarker = raw.startsWith('\\#') || raw.startsWith('\\!');
+    if (escapedLeadingMarker) raw = raw.slice(1);
     let negated = false;
-    if (raw.startsWith('!')) {
+    if (!escapedLeadingMarker && raw.startsWith('!')) {
       negated = true;
       raw = raw.slice(1);
     }
