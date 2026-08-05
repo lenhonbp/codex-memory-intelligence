@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/memory-metadata.schema.json",
+  "title": "CMI memory metadata",
+  "type": "object",
+  "required": ["id", "type", "createdAt", "sources", "sourceHashes", "projectHash"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "type": { "enum": ["fact", "decision", "mistake"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "sources": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "sourceHashes": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+    "projectHash": { "type": ["string", "null"] },
+    "reviewedAt": { "type": "string", "format": "date-time" },
+    "reviewedBy": { "type": "string" },
+    "reviewReason": { "type": "string" }
+  }
+}

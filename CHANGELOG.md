@@ -1,23 +1,24 @@
 # Changelog
 
-## 0.3.0
+All notable changes are documented here.
 
-- Add static import graph and symbol indexing.
-- Add file and symbol impact analysis.
-- Add source-linked memory fingerprints and stale-memory detection.
-- Add review aging and migration for legacy memory entries.
-- Extend search with graph-derived file and symbol knowledge.
-- Add graph, impact, stale, and refresh commands.
-- Expand MCP from four to eight tools.
-- Add CLI and MCP integration tests.
+## [0.4.0] - 2026-08-06
 
-## 0.2.0
+### Added
 
-- Add ranked local retrieval and context packs.
-- Add project stack, language, entry-point, and repository-shape intelligence.
-- Add zero-dependency MCP server.
-- Add secret-like memory guardrails and improved status reporting.
+- Cross-platform CI for Ubuntu, macOS, and Windows on Node.js 22 and 24.
+- CodeQL security scanning.
+- Symlink-safe source tracking and graph scanning.
+- `cmi doctor`, `cmi --version`, package installation smoke tests, and JSON Schemas.
+- MCP lifecycle validation, parse errors, tool annotations, and conservative mutation defaults.
+- Governance, support, maintainer, roadmap, release, and conduct documentation.
 
-## 0.1.0
+### Changed
 
-- Initial project memory, scanning, snapshots, and CLI.
+- Node.js 22 is now the minimum supported runtime.
+- MCP durable memory creation and refresh require explicit opt-in; bulk refresh requires an additional opt-in.
+- Generated graph, index, and snapshot files are ignored by default inside `.codex-memory/`.
+
+## [0.3.0] - 2026-08-05
+
+- Added dependency graphing, impact analysis, source-linked memory, stale-memory detection, and expanded MCP tools.

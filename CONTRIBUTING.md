@@ -4,7 +4,7 @@ Thanks for helping improve Codex Memory + Project Intelligence.
 
 ## Development
 
-1. Use Node.js 20 or newer.
+1. Use Node.js 22 or newer.
 2. Fork and create a focused branch.
 3. Keep runtime dependencies at zero unless a dependency provides clear, measurable value.
 4. Add or update tests for behavior changes.
@@ -12,7 +12,7 @@ Thanks for helping improve Codex Memory + Project Intelligence.
 
 ```bash
 npm run verify
-npm pack --dry-run
+npm run package:smoke
 ```
 
 ## Design rules
@@ -25,11 +25,13 @@ npm pack --dry-run
 - Avoid breaking existing `.codex-memory/` directories.
 - Keep graph parsing bounded, explainable, and failure-tolerant.
 - Never claim compiler-grade correctness from regex or heuristic parsing.
+- Do not follow symbolic links during scanning or source fingerprinting.
+- Keep MCP writes opt-in and auditable.
 
 ## Parser contributions
 
-Add fixtures for every new language construct. Tests should cover resolved imports, unresolved local imports, external dependencies, exported and non-exported symbols, and malformed files. A parser failure should skip or degrade one file rather than fail the entire project scan.
+Add fixtures for every new language construct. Tests should cover resolved imports, unresolved local imports, external dependencies, exported and non-exported symbols, malformed files, and platform-specific paths. A parser failure should skip or degrade one file rather than fail the entire project scan.
 
 ## Pull requests
 
-Explain the problem, chosen approach, security/privacy impact, compatibility impact, and validation performed. Keep pull requests small enough to review.
+Explain the problem, chosen approach, security/privacy impact, compatibility impact, and validation performed. Keep pull requests small enough to review and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
