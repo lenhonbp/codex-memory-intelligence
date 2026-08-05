@@ -43,7 +43,7 @@ export async function initProject(root) {
   const configPath = path.join(directory, 'config.json');
   let currentConfig = {};
   try { currentConfig = JSON.parse(await fs.readFile(configPath, 'utf8')); } catch {}
-  const migratedConfig = { ...DEFAULT_CONFIG, ...currentConfig, version: DEFAULT_CONFIG.version };
+  const migratedConfig = { ...DEFAULT_CONFIG, ...currentConfig, version: Math.max(DEFAULT_CONFIG.version, Number(currentConfig.version) || 0) };
   if (!(await exists(configPath)) || JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) {
     await fs.writeFile(configPath, JSON.stringify(migratedConfig, null, 2) + '\n', 'utf8');
   }
@@ -228,7 +228,7 @@ export async function status(root) {
   const memoryHealth = await checkStaleMemory(root);
   return {
     initialized: true,
-    healthy: Boolean(index && graph && memoryHealth.counts.stale === 0),
+    healthy: Boolean(index && graph && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
     index,
     graph: graph?.summary || null,
     entries,
