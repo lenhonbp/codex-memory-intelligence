@@ -1,7 +1,7 @@
 {
   "name": "codex-memory-intelligence",
-  "version": "0.3.0",
-  "description": "Persistent project memory, dependency intelligence, and impact analysis for Codex and AI coding agents.",
+  "version": "0.4.0",
+  "description": "Local-first project memory, dependency intelligence, and impact analysis for AI coding agents.",
   "type": "module",
   "bin": {
     "cmi": "./src/cli.js",
@@ -9,12 +9,50 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/*.js",
-    "verify": "npm run check && npm test",
-    "demo": "node src/cli.js scan ."
+    "check": "node scripts/check.js",
+    "quality": "node scripts/quality.js",
+    "verify": "npm run check && npm run quality && npm test",
+    "package:smoke": "node scripts/package-smoke.js",
+    "prepack": "npm run verify"
   },
-  "engines": { "node": ">=20" },
-  "keywords": ["codex", "mcp", "agent", "memory", "dependency-graph", "impact-analysis", "semantic-search", "project-intelligence", "developer-tools"],
-  "files": ["src", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "mcp",
+    "codex",
+    "ai-agents",
+    "project-memory",
+    "dependency-graph",
+    "impact-analysis",
+    "lexical-search",
+    "project-intelligence",
+    "local-first",
+    "developer-tools"
+  ],
+  "files": [
+    "src",
+    "schemas",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lenhonbp/codex-memory-intelligence.git"
+  },
+  "homepage": "https://github.com/lenhonbp/codex-memory-intelligence#readme",
+  "bugs": {
+    "url": "https://github.com/lenhonbp/codex-memory-intelligence/issues"
+  },
+  "author": {
+    "name": "Nhơn Lê",
+    "url": "https://github.com/lenhonbp"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "license": "MIT"
 }
