@@ -116,6 +116,29 @@ test('secret guard rejects credentials but allows security policy notes', async 
   assert.equal(projectStatus.entries.decisions, 1);
 });
 
+test('status requires stale, review, and legacy queues to be clear', async () => {
+  const root = await fixture();
+  await scanProject(root);
+  await fs.appendFile(path.join(root, '.codex-memory', 'memory.md'), '\n## 2026-01-01T00:00:00.000Z\n\nLegacy fact.\n');
+  let projectStatus = await status(root);
+  assert.equal(projectStatus.healthy, false);
+  await refreshMemory(root, 'all');
+  projectStatus = await status(root);
+  assert.equal(projectStatus.healthy, true);
+});
+
+test('edited metadata cannot fingerprint files outside the project', async () => {
+  const root = await fixture();
+  await scanProject(root);
+  await remember(root, 'fact', 'Tracked fact.');
+  const memoryPath = path.join(root, '.codex-memory', 'memory.md');
+  const content = await fs.readFile(memoryPath, 'utf8');
+  await fs.writeFile(memoryPath, content.replace('"sources":[]', '"sources":["../../etc/passwd"]'));
+  const health = await checkStaleMemory(root);
+  assert.equal(health.counts.stale, 1);
+  assert.match(health.entries[0].reasons.join(' '), /escapes the project/i);
+});
+
 test('creates snapshots even outside a git repository', async () => {
   const root = await fixture();
   const name = await snapshot(root, 'before-change');
