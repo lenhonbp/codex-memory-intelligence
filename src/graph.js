@@ -124,7 +124,7 @@ function resolveJavaScriptImport(fromFile, specifier, sourcePaths, aliasConfigs)
       if (star >= 0 && (!specifier.startsWith(prefix) || !specifier.endsWith(suffix))) continue;
       const capture = star >= 0 ? specifier.slice(prefix.length, specifier.length - suffix.length) : '';
       for (const target of targets) {
-        const substituted = target.replace('*', capture);
+        const substituted = target.replaceAll('*', capture);
         const base = slash(path.posix.normalize(path.posix.join(config.directory, config.baseUrl, substituted)));
         const resolved = resolveFromCandidates(fileCandidates(base), sourcePaths);
         if (resolved) return resolved;
