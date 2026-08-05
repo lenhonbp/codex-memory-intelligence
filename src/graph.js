@@ -139,9 +139,8 @@ function resolveImport(fromFile, specifier, sourcePaths) {
 export async function buildProjectGraph(root, fileRecords, config = {}) {
   const maxGraphFiles = Number(config.maxGraphFiles) || 5_000;
   const maxSourceBytes = Number(config.maxSourceBytes) || 512_000;
-  const sources = fileRecords
-    .filter((file) => SOURCE_EXTENSIONS.has(path.extname(file.path).toLowerCase()) && file.size <= maxSourceBytes)
-    .slice(0, maxGraphFiles);
+  const candidates = fileRecords.filter((file) => SOURCE_EXTENSIONS.has(path.extname(file.path).toLowerCase()) && file.size <= maxSourceBytes);
+  const sources = candidates.slice(0, maxGraphFiles);
   const sourcePaths = new Set(sources.map((file) => file.path));
   const nodes = [];
 
@@ -191,7 +190,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}) {
       externalDependencies: externalDependencies.length,
       unresolvedImports,
       symbols: symbolCount,
-      truncated: sources.length >= maxGraphFiles,
+      truncated: candidates.length > maxGraphFiles,
     },
     externalDependencies,
     hubs,
