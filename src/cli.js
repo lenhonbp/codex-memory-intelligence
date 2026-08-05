@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
-import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { initProject, scanProject, remember, snapshot, status } from './core.js';
 import { searchMemory, formatResults } from './search.js';
 
@@ -64,7 +64,7 @@ try {
     const result = await status(root);
     console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Memory ${result.healthy ? 'healthy' : 'needs scan'} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
   } else if (cmd === 'mcp-config') {
-    const executable = path.resolve(new URL('./mcp.js', import.meta.url).pathname);
+    const executable = fileURLToPath(new URL('./mcp.js', import.meta.url));
     const config = { mcpServers: { 'codex-memory-intelligence': { command: process.execPath, args: [executable], env: { CMI_PROJECT_ROOT: process.cwd() } } } };
     console.log(JSON.stringify(config, null, 2));
   } else {
