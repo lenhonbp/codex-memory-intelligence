@@ -18,7 +18,7 @@ memory.md / decisions.md / mistakes.md
     └── stale-memory checks
 
 CLI and MCP expose the same core operations.
-MCP starts read-only; write operations require explicit environment opt-in.
+MCP disables durable memory mutations by default; scans may refresh generated caches.
 ```
 
 ## Modules
@@ -60,7 +60,7 @@ Parsing is best-effort and bounded by configuration limits. The project should r
 
 The server accepts newline-delimited JSON-RPC over stdio. Clients initialize the server, send `notifications/initialized`, and then list or call tools. Invalid JSON and requests receive JSON-RPC errors.
 
-Search, status, graph, impact, and stale checks are available by default. Memory writes require `CMI_WRITE_ENABLED=1`. Bulk refresh additionally requires `CMI_ALLOW_BULK_REFRESH=1`.
+Search, scan, status, graph, impact, and stale checks are available by default. Scans may update generated project caches. Durable memory creation and refresh require `CMI_WRITE_ENABLED=1`. Bulk refresh additionally requires `CMI_ALLOW_BULK_REFRESH=1`.
 
 ## Compatibility and validation
 
