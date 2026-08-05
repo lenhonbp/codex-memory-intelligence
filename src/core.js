@@ -1,34 +1,21 @@
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { buildProjectGraph } from './graph.js';
 import { checkStaleMemory, sourceFingerprints } from './stale.js';
+import { resolveProjectFile } from './paths.js';
+import { VERSION } from './version.js';
 
 const exec = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
 const IGNORE = new Set(['.git','node_modules','dist','build','.next','.cache','coverage','.wrangler','.turbo','.vercel','.DS_Store']);
-const DEFAULT_CONFIG = {
-  version: 2,
-  maxFileBytes: 1_000_000,
-  maxSourceBytes: 512_000,
-  maxGraphFiles: 5_000,
-  staleAfterDays: 90,
-  includeHidden: false,
-};
-const EXT_LANGUAGE = new Map([
-  ['.js','JavaScript'],['.mjs','JavaScript'],['.cjs','JavaScript'],['.jsx','JavaScript'],
-  ['.ts','TypeScript'],['.tsx','TypeScript'],['.py','Python'],['.go','Go'],['.rs','Rust'],
-  ['.java','Java'],['.kt','Kotlin'],['.php','PHP'],['.rb','Ruby'],['.swift','Swift'],
-  ['.vue','Vue'],['.svelte','Svelte'],['.css','CSS'],['.scss','SCSS'],['.html','HTML'],
-  ['.sql','SQL'],['.md','Markdown'],['.json','JSON'],['.yaml','YAML'],['.yml','YAML'],
-]);
+const DEFAULT_CONFIG = { version: 3, maxFileBytes: 1_000_000, maxSourceBytes: 512_000, maxGraphFiles: 5_000, staleAfterDays: 90, includeHidden: false };
+const EXT_LANGUAGE = new Map([['.js','JavaScript'],['.mjs','JavaScript'],['.cjs','JavaScript'],['.jsx','JavaScript'],['.ts','TypeScript'],['.tsx','TypeScript'],['.py','Python'],['.go','Go'],['.rs','Rust'],['.java','Java'],['.kt','Kotlin'],['.php','PHP'],['.rb','Ruby'],['.swift','Swift'],['.vue','Vue'],['.svelte','Svelte'],['.css','CSS'],['.scss','SCSS'],['.html','HTML'],['.sql','SQL'],['.md','Markdown'],['.json','JSON'],['.yaml','YAML'],['.yml','YAML']]);
 
-export async function exists(filePath) {
-  try { await fs.access(filePath); return true; } catch { return false; }
-}
-
+export async function exists(filePath) { try { await fs.access(filePath); return true; } catch { return false; } }
 export async function ensureDir(directoryPath) { await fs.mkdir(directoryPath, { recursive: true }); }
 export async function writeIfMissing(filePath, content) { if (!(await exists(filePath))) await fs.writeFile(filePath, content, 'utf8'); }
 
@@ -39,14 +26,13 @@ export async function initProject(root) {
   await writeIfMissing(path.join(directory, 'decisions.md'), '# Architecture Decisions\n\nRecord the context, decision, and consequences.\n');
   await writeIfMissing(path.join(directory, 'mistakes.md'), '# Mistakes and Lessons\n\nRecord failures, root causes, fixes, and prevention rules.\n');
   await writeIfMissing(path.join(directory, 'architecture.md'), '# Project Architecture\n\nRun `cmi scan` to refresh this file.\n');
-  await writeIfMissing(path.join(directory, 'agent-instructions.md'), `# Agent Instructions\n\n1. Search project memory before broad repository exploration.\n2. Check memory health before relying on old decisions.\n3. Read decisions before architectural changes.\n4. Run impact analysis before changing shared files or symbols.\n5. Read mistakes before risky operations or deployment.\n6. Store only durable knowledge, never secrets or temporary logs.\n7. Refresh project intelligence after structural changes.\n`);
+  await writeIfMissing(path.join(directory, 'agent-instructions.md'), '# Agent Instructions\n\n1. Search project memory before broad repository exploration.\n2. Check memory health before relying on old decisions.\n3. Read decisions before architectural changes.\n4. Run impact analysis before changing shared files or symbols.\n5. Read mistakes before risky operations or deployment.\n6. Store only durable knowledge, never secrets or temporary logs.\n7. Refresh project intelligence after structural changes.\n8. Treat MCP write tools as opt-in operations that require review.\n');
+  await writeIfMissing(path.join(directory, '.gitignore'), 'project-graph.json\nproject-index.json\nsnapshots/\n');
   const configPath = path.join(directory, 'config.json');
   let currentConfig = {};
   try { currentConfig = JSON.parse(await fs.readFile(configPath, 'utf8')); } catch {}
   const migratedConfig = { ...DEFAULT_CONFIG, ...currentConfig, version: Math.max(DEFAULT_CONFIG.version, Number(currentConfig.version) || 0) };
-  if (!(await exists(configPath)) || JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) {
-    await fs.writeFile(configPath, JSON.stringify(migratedConfig, null, 2) + '\n', 'utf8');
-  }
+  if (!(await exists(configPath)) || JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) await fs.writeFile(configPath, JSON.stringify(migratedConfig, null, 2) + '\n', 'utf8');
   return directory;
 }
 
@@ -60,14 +46,14 @@ export async function readConfig(root) {
 async function walk(root, config, current = root, output = []) {
   const entries = await fs.readdir(current, { withFileTypes: true });
   for (const entry of entries) {
-    if (IGNORE.has(entry.name) || entry.name === MEMORY_DIR || (!config.includeHidden && entry.name.startsWith('.') && current !== root)) continue;
+    if (IGNORE.has(entry.name) || entry.name === MEMORY_DIR || (!config.includeHidden && entry.name.startsWith('.') && current !== root) || entry.isSymbolicLink()) continue;
     const fullPath = path.join(current, entry.name);
     const relativePath = path.relative(root, fullPath).split(path.sep).join('/');
-    if (entry.isDirectory()) await walk(root, config, fullPath, output);
-    else {
-      const stat = await fs.stat(fullPath).catch(() => null);
-      if (stat && stat.size <= config.maxFileBytes) output.push({ path: relativePath, size: stat.size, modifiedAt: stat.mtime.toISOString() });
-    }
+    let stat;
+    try { stat = await fs.lstat(fullPath); } catch { continue; }
+    if (stat.isSymbolicLink()) continue;
+    if (stat.isDirectory()) await walk(root, config, fullPath, output);
+    else if (stat.isFile() && stat.size <= config.maxFileBytes) output.push({ path: relativePath, size: stat.size, modifiedAt: stat.mtime.toISOString() });
   }
   return output;
 }
@@ -103,20 +89,8 @@ function summarizeLanguages(files) {
   }
   return [...counts.entries()].map(([language, value]) => ({ language, ...value })).sort((a, b) => b.bytes - a.bytes).slice(0, 15);
 }
-
-function topDirectories(files) {
-  const counts = new Map();
-  for (const file of files) {
-    const first = file.path.split('/')[0];
-    counts.set(first, (counts.get(first) || 0) + 1);
-  }
-  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 20);
-}
-
-function importantFiles(paths) {
-  const pattern = /(^|\/)(package\.json|wrangler\.(toml|jsonc?)|tsconfig.*\.json|vite\.config\.[^.]+|next\.config\.[^.]+|Dockerfile|docker-compose.*\.ya?ml|README\.md|AGENTS\.md|CLAUDE\.md|\.github\/workflows\/[^/]+)$/i;
-  return paths.filter((file) => pattern.test(file)).slice(0, 50);
-}
+function topDirectories(files) { const counts = new Map(); for (const file of files) { const first = file.path.split('/')[0]; counts.set(first, (counts.get(first) || 0) + 1); } return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 20); }
+function importantFiles(paths) { const pattern = /(^|\/)(package\.json|wrangler\.(toml|jsonc?)|tsconfig.*\.json|vite\.config\.[^.]+|next\.config\.[^.]+|Dockerfile|docker-compose.*\.ya?ml|README\.md|AGENTS\.md|CLAUDE\.md|\.github\/workflows\/[^/]+)$/i; return paths.filter((file) => pattern.test(file)).slice(0, 50); }
 
 export async function scanProject(root) {
   await initProject(root);
@@ -129,25 +103,11 @@ export async function scanProject(root) {
   const entryCandidates = paths.filter((file) => /(^|\/)(index|main|app|server|worker|cli)\.(js|mjs|cjs|ts|tsx|py|go|rs)$/.test(file)).slice(0, 30);
   const configFiles = importantFiles(paths);
   const generatedAt = new Date().toISOString();
-  const hash = crypto.createHash('sha256').update(paths.map((filePath) => `${filePath}:${fileRecords.find((file) => file.path === filePath)?.size}`).join('\n')).digest('hex');
+  const sizeMap = new Map(fileRecords.map((file) => [file.path, file.size]));
+  const hash = crypto.createHash('sha256').update(paths.map((filePath) => `${filePath}:${sizeMap.get(filePath)}`).join('\n')).digest('hex');
   const graph = await buildProjectGraph(root, fileRecords, config);
-  const manifest = {
-    schemaVersion: 3,
-    generatedAt,
-    root: path.basename(root),
-    files: paths.length,
-    bytes: fileRecords.reduce((sum, file) => sum + file.size, 0),
-    stack,
-    languages,
-    topDirectories: directories.map(([directory, files]) => ({ directory, files })),
-    entryCandidates,
-    config: configFiles,
-    graph: graph.summary,
-    hubs: graph.hubs.slice(0, 10),
-    hash,
-  };
-
-  const graphSummary = `- Source files analyzed: ${graph.summary.sourceFiles}\n- Local import edges: ${graph.summary.localEdges}\n- Symbols indexed: ${graph.summary.symbols}\n- External dependencies observed: ${graph.summary.externalDependencies}`;
+  const manifest = { schemaVersion: 4, generatedAt, root: path.basename(root), files: paths.length, bytes: fileRecords.reduce((sum, file) => sum + file.size, 0), stack, languages, topDirectories: directories.map(([directory, files]) => ({ directory, files })), entryCandidates, config: configFiles, graph: graph.summary, hubs: graph.hubs.slice(0, 10), hash };
+  const graphSummary = `- Source files analyzed: ${graph.summary.sourceFiles}\n- Local import edges: ${graph.summary.localEdges}\n- Symbols indexed: ${graph.summary.symbols}\n- External dependencies observed: ${graph.summary.externalDependencies}\n- Unsafe or symlink files skipped: ${graph.summary.skippedUnsafeFiles || 0}`;
   const hubs = graph.hubs.filter((item) => item.dependents > 0).slice(0, 10);
   const markdown = `# Project Architecture\n\nGenerated: ${generatedAt}\nIndex: \`${hash.slice(0, 12)}\`\n\n## Detected stack\n${stack.length ? stack.map((item) => `- ${item}`).join('\n') : '- Unknown'}\n\n## Languages and formats\n${languages.map((item) => `- ${item.language}: ${item.files} files, ${item.bytes} bytes`).join('\n') || '- None'}\n\n## Repository shape\n${directories.map(([directory, count]) => `- \`${directory}\`: ${count} files`).join('\n')}\n\n## Likely entry points\n${entryCandidates.map((item) => `- \`${item}\``).join('\n') || '- None detected'}\n\n## Important configuration and guidance\n${configFiles.map((item) => `- \`${item}\``).join('\n') || '- None detected'}\n\n## Graph intelligence\n${graphSummary}\n\n### Shared or high-impact files\n${hubs.length ? hubs.map((item) => `- \`${item.path}\`: ${item.dependents} dependents, ${item.imports} local imports, ${item.symbols} symbols`).join('\n') : '- No shared modules detected'}\n\n## Agent operating context\n- Indexed files: ${manifest.files}\n- Indexed bytes: ${manifest.bytes}\n- Search durable knowledge with \`cmi search "query"\`.\n- Check affected files with \`cmi impact "file-or-symbol"\`.\n- Check outdated knowledge with \`cmi stale\`.\n- Update this index after dependencies, folders, entry points, or shared APIs change.\n`;
   await fs.writeFile(path.join(root, MEMORY_DIR, 'architecture.md'), markdown, 'utf8');
@@ -156,20 +116,8 @@ export async function scanProject(root) {
   return manifest;
 }
 
-function looksSensitive(text) {
-  return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)
-    || /\b(?:api[_ -]?key|password|secret|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S{6,}/i.test(text)
-    || /\b(?:sk|ghp|github_pat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/.test(text);
-}
-
-function normalizeSources(root, sources) {
-  return [...new Set((sources || []).map((source) => {
-    const absolute = path.resolve(root, String(source));
-    const relative = path.relative(root, absolute);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`Source must be inside the project: ${source}`);
-    return relative.split(path.sep).join('/');
-  }))];
-}
+function looksSensitive(text) { return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text) || /\b(?:api[_ -]?key|password|secret|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S{6,}/i.test(text) || /\b(?:sk|ghp|github_pat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/.test(text); }
+async function normalizeSources(root, sources) { const output = []; for (const source of sources || []) { const resolved = await resolveProjectFile(root, source); if (!resolved.ok) throw new Error(resolved.reason); if (!output.includes(resolved.relative)) output.push(resolved.relative); } return output; }
 
 export async function remember(root, type, text, options = {}) {
   await initProject(root);
@@ -178,39 +126,18 @@ export async function remember(root, type, text, options = {}) {
   const clean = String(text || '').trim();
   if (!clean) throw new Error('Memory text cannot be empty');
   if (looksSensitive(clean)) throw new Error('Memory appears to contain a secret. Store a reference, not the credential.');
-  const sources = normalizeSources(root, options.sources || []);
-  for (const source of sources) if (!(await exists(path.join(root, source)))) throw new Error(`Referenced source does not exist: ${source}`);
+  const sources = await normalizeSources(root, options.sources || []);
   let index = null;
   try { index = JSON.parse(await fs.readFile(path.join(root, MEMORY_DIR, 'project-index.json'), 'utf8')); } catch {}
   const createdAt = new Date().toISOString();
-  const metadata = {
-    id: crypto.randomUUID(),
-    type,
-    createdAt,
-    sources,
-    sourceHashes: await sourceFingerprints(root, sources),
-    projectHash: index?.hash || null,
-  };
+  const metadata = { id: crypto.randomUUID(), type, createdAt, sources, sourceHashes: await sourceFingerprints(root, sources), projectHash: index?.hash || null };
   await fs.appendFile(path.join(root, MEMORY_DIR, fileName), `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`, 'utf8');
   return metadata;
 }
 
-async function git(root, args) {
-  try { return (await exec('git', args, { cwd: root, maxBuffer: 4_000_000 })).stdout.trim(); } catch { return ''; }
-}
-
-export async function snapshot(root, label = 'snapshot') {
-  await initProject(root);
-  const data = { createdAt: new Date().toISOString(), label, branch: await git(root, ['branch','--show-current']), status: await git(root, ['status','--short']), diffStat: await git(root, ['diff','--stat']), stagedDiffStat: await git(root, ['diff','--cached','--stat']), head: await git(root, ['rev-parse','--short','HEAD']) };
-  const safeLabel = label.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'snapshot';
-  const fileName = `${Date.now()}-${safeLabel}.json`;
-  await fs.writeFile(path.join(root, MEMORY_DIR, 'snapshots', fileName), JSON.stringify(data, null, 2) + '\n', 'utf8');
-  return fileName;
-}
-
-async function countEntries(filePath) {
-  try { return (await fs.readFile(filePath, 'utf8')).split('\n').filter((line) => /^## \d{4}-/.test(line)).length; } catch { return 0; }
-}
+async function git(root, args) { try { return (await exec('git', args, { cwd: root, maxBuffer: 4_000_000 })).stdout.trim(); } catch { return ''; } }
+export async function snapshot(root, label = 'snapshot') { await initProject(root); const data = { createdAt: new Date().toISOString(), label, branch: await git(root, ['branch','--show-current']), status: await git(root, ['status','--short']), diffStat: await git(root, ['diff','--stat']), stagedDiffStat: await git(root, ['diff','--cached','--stat']), head: await git(root, ['rev-parse','--short','HEAD']) }; const safeLabel = label.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'snapshot'; const fileName = `${Date.now()}-${safeLabel}.json`; await fs.writeFile(path.join(root, MEMORY_DIR, 'snapshots', fileName), JSON.stringify(data, null, 2) + '\n', 'utf8'); return fileName; }
+async function countEntries(filePath) { try { return (await fs.readFile(filePath, 'utf8')).split('\n').filter((line) => /^## \d{4}-/.test(line)).length; } catch { return 0; } }
 
 export async function status(root) {
   const directory = path.join(root, MEMORY_DIR);
@@ -220,19 +147,28 @@ export async function status(root) {
   try { index = JSON.parse(await fs.readFile(path.join(directory, 'project-index.json'), 'utf8')); } catch {}
   try { graph = JSON.parse(await fs.readFile(path.join(directory, 'project-graph.json'), 'utf8')); } catch {}
   const snapshots = await fs.readdir(path.join(directory, 'snapshots')).catch(() => []);
-  const entries = {
-    facts: await countEntries(path.join(directory, 'memory.md')),
-    decisions: await countEntries(path.join(directory, 'decisions.md')),
-    mistakes: await countEntries(path.join(directory, 'mistakes.md')),
-  };
+  const entries = { facts: await countEntries(path.join(directory, 'memory.md')), decisions: await countEntries(path.join(directory, 'decisions.md')), mistakes: await countEntries(path.join(directory, 'mistakes.md')) };
   const memoryHealth = await checkStaleMemory(root);
-  return {
-    initialized: true,
-    healthy: Boolean(index && graph && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
-    index,
-    graph: graph?.summary || null,
-    entries,
-    memoryHealth: memoryHealth.counts,
-    snapshots: snapshots.length,
-  };
+  return { initialized: true, healthy: Boolean(index && graph && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0), index, graph: graph?.summary || null, entries, memoryHealth: memoryHealth.counts, snapshots: snapshots.length };
+}
+
+export async function doctor(root) {
+  const checks = [];
+  const add = (name, status, detail) => checks.push({ name, status, detail });
+  const major = Number(process.versions.node.split('.')[0]);
+  add('node', major >= 22 ? 'pass' : 'fail', `Node.js ${process.versions.node}; version 22 or newer is required.`);
+  let stat = null;
+  try { stat = await fs.stat(root); } catch {}
+  add('project-root', stat?.isDirectory() ? 'pass' : 'fail', stat?.isDirectory() ? path.resolve(root) : 'Project root does not exist or is not a directory.');
+  try { await fs.access(root, fsConstants.R_OK | fsConstants.W_OK); add('project-access', 'pass', 'Project root is readable and writable.'); } catch { add('project-access', 'fail', 'Project root must be readable and writable.'); }
+  const initialized = await exists(path.join(root, MEMORY_DIR));
+  add('memory', initialized ? 'pass' : 'warn', initialized ? 'Project memory is initialized.' : 'Run cmi init to create project memory.');
+  const gitVersion = await git(root, ['--version']);
+  add('git', gitVersion ? 'pass' : 'warn', gitVersion || 'Git is unavailable; snapshots will contain limited metadata.');
+  if (initialized) {
+    const projectStatus = await status(root);
+    add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
+    add('memory-health', projectStatus.healthy ? 'pass' : 'warn', projectStatus.healthy ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
+  }
+  return { version: VERSION, healthy: checks.every((check) => check.status !== 'fail'), checks };
 }
