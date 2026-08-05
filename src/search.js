@@ -4,8 +4,16 @@ import path from 'node:path';
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
 const STOP = new Set(['the','and','for','with','that','this','from','into','cua','cho','voi','nhung','mot','cac','trong','duoc']);
 
+function normalize(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 export function tokenize(text) {
-  return [...new Set(String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9_./-]{2,}/g) || [])]
+  return [...new Set(normalize(text).match(/[a-z0-9_./-]{2,}/g) || [])]
     .filter((token) => !STOP.has(token));
 }
 
@@ -45,12 +53,13 @@ export async function searchMemory(root, query, limit = 6) {
   if (!terms.length) return [];
   const chunks = await loadMemory(root);
   return chunks.map((chunk) => {
-    const haystack = `${chunk.title}\n${chunk.text}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const haystack = normalize(`${chunk.title}\n${chunk.text}`);
+    const normalizedTitle = normalize(chunk.title);
     let score = 0;
     for (const term of terms) {
       const matches = haystack.split(term).length - 1;
       if (matches) score += 1 + Math.log2(1 + matches);
-      if (chunk.title.toLowerCase().includes(term)) score += 2;
+      if (normalizedTitle.includes(term)) score += 2;
     }
     if (haystack.includes(terms.join(' '))) score += 4;
     return { ...chunk, score: Number(score.toFixed(3)) };
