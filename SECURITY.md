@@ -16,6 +16,6 @@ CMI runs with the permissions of the local user and reads files inside the selec
 
 Project traversal skips symbolic links, and source-linked memory resolves real paths before reading files. These controls reduce accidental project-boundary escapes but do not replace operating-system sandboxing.
 
-MCP write tools are disabled by default. The credential guard is intentionally conservative and incomplete. Users remain responsible for secret scanning, repository access control, sandboxing, approvals, and review of generated memory before committing it.
+MCP durable memory creation and refresh tools are disabled by default. Project scans may still refresh generated cache files. The credential guard is intentionally conservative and incomplete. Users remain responsible for secret scanning, repository access control, sandboxing, approvals, and review of generated memory before committing it.
 
 Generated `.codex-memory/` files may reveal architecture, operational practices, filenames, or historical mistakes. Review them before publishing a repository.
