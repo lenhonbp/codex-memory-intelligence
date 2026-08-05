@@ -10,13 +10,13 @@ All notable changes are documented here.
 - CodeQL security scanning.
 - Symlink-safe source tracking and graph scanning.
 - `cmi doctor`, `cmi --version`, package installation smoke tests, and JSON Schemas.
-- MCP lifecycle validation, parse errors, tool annotations, and read-only defaults.
+- MCP lifecycle validation, parse errors, tool annotations, and conservative mutation defaults.
 - Governance, support, maintainer, roadmap, release, and conduct documentation.
 
 ### Changed
 
 - Node.js 22 is now the minimum supported runtime.
-- MCP memory writes require explicit opt-in; bulk refresh requires an additional opt-in.
+- MCP durable memory creation and refresh require explicit opt-in; bulk refresh requires an additional opt-in.
 - Generated graph, index, and snapshot files are ignored by default inside `.codex-memory/`.
 
 ## [0.3.0] - 2026-08-05
