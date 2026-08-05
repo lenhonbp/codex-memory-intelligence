@@ -75,13 +75,13 @@ cmi --version
 
 ## MCP integration
 
-Generate a read-only configuration by default:
+Generate the safe default configuration, with durable memory mutations disabled:
 
 ```bash
 cmi mcp-config
 ```
 
-Enable memory-writing tools explicitly:
+Enable durable memory creation and refresh explicitly:
 
 ```bash
 cmi mcp-config --write
@@ -93,13 +93,13 @@ Bulk memory refresh is more sensitive and requires a second opt-in:
 cmi mcp-config --write --bulk-refresh
 ```
 
-The server provides search, scan, status, graph, impact, and stale-memory tools. When writes are enabled it additionally exposes memory creation and reviewed-memory refresh tools. The transport is JSON-RPC over stdio, one JSON object per line.
+The server provides search, scan, status, graph, impact, and stale-memory tools. Scanning may refresh generated cache files. When durable memory mutations are enabled, the server additionally exposes memory creation and reviewed-memory refresh tools. The transport is JSON-RPC over stdio, one JSON object per line.
 
 ## Security model
 
 - Project scanning skips symbolic links.
 - Source-linked memory accepts regular files only and verifies their real path remains inside the project.
-- MCP write tools are disabled by default.
+- MCP durable memory creation and refresh tools are disabled by default; scans may update generated cache files.
 - Obvious credentials and private keys are rejected, but CMI is not a complete secret scanner.
 - Repository content and memory text remain untrusted input for connected agents.
 
