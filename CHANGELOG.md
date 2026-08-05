@@ -15,13 +15,14 @@ All notable changes are documented here.
 - MCP resources, prompts, workspace/ignore tools, context-pack tool, stable protocol negotiation, and fallback behavior.
 - Reproducible synthetic benchmark and CI benchmark smoke job.
 - Project-index and project-graph JSON Schemas.
-- OIDC/trusted-publishing-ready npm release workflow with semantic tag validation.
+- Semantic release metadata validation for a future npm Trusted Publishing workflow.
 
 ### Changed
 
 - Project index schema is now version 5; project graph schema is version 3; configuration schema is version 4.
 - The current stable MCP protocol target is `2025-11-25`, with compatibility back to `2024-11-05`.
 - File fingerprints now include size, modification time, and change time for safer incremental invalidation.
+- Hidden paths are excluded by default, except root `.github/` and `.cmiignore`.
 
 ## [0.4.0] - 2026-08-06
 
