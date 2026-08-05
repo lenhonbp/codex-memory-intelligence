@@ -32,6 +32,13 @@ packages/*/fixtures/
 
 CMI always excludes symbolic links and common dependency/generated paths such as `.git`, `.codex-memory`, `node_modules`, `dist`, `build`, `.next`, `.cache`, `coverage`, `.wrangler`, `.turbo`, and `.vercel`.
 
+When `includeHidden` is false, hidden files and directories are also excluded by default. Two root-level paths remain available because they are part of normal project intelligence:
+
+- `.github/` for workflows and repository guidance.
+- `.cmiignore` for CMI's own scan policy.
+
+This means files such as `.env`, hidden tool state, and nested hidden directories are not indexed accidentally. Set `includeHidden` to true only after reviewing the repository's hidden content.
+
 This is intentionally not byte-for-byte Git behavior. The supported subset is documented, deterministic, dependency-free, and designed for repository scanning rather than source-control staging.
 
 ## Diagnostics
