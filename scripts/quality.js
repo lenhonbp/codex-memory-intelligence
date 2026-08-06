@@ -17,6 +17,34 @@ function walk(directory) {
     }
   }
 }
+
+function validatePackageBins() {
+  let manifest;
+  try { manifest = JSON.parse(fs.readFileSync('package.json', 'utf8')); }
+  catch (error) { errors.push(`package.json: cannot validate bin entries (${error.message})`); return; }
+  const bins = manifest.bin && typeof manifest.bin === 'object' ? manifest.bin : {};
+  for (const [command, target] of Object.entries(bins)) {
+    if (typeof target !== 'string' || !target) {
+      errors.push(`package.json: bin[${command}] must be a non-empty relative path`);
+      continue;
+    }
+    const normalized = target.replaceAll('\\', '/');
+    if (normalized.startsWith('./')) errors.push(`package.json: bin[${command}] must not start with ./; npm rewrites it during publish`);
+    if (path.isAbsolute(target) || normalized === '..' || normalized.startsWith('../')) {
+      errors.push(`package.json: bin[${command}] must stay inside the package`);
+      continue;
+    }
+    const executablePath = path.resolve(target);
+    if (!fs.existsSync(executablePath) || !fs.statSync(executablePath).isFile()) {
+      errors.push(`package.json: bin[${command}] target does not exist: ${target}`);
+      continue;
+    }
+    const source = fs.readFileSync(executablePath, 'utf8');
+    if (!source.startsWith('#!/usr/bin/env node')) errors.push(`package.json: bin[${command}] target must start with #!/usr/bin/env node`);
+  }
+}
+
 walk('.');
+validatePackageBins();
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
 console.log('Repository quality checks passed.');

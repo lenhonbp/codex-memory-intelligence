@@ -4,8 +4,8 @@
   "description": "Local-first project memory, dependency intelligence, and impact analysis for AI coding agents.",
   "type": "module",
   "bin": {
-    "cmi": "./src/cli.js",
-    "cmi-mcp": "./src/mcp.js"
+    "cmi": "src/cli.js",
+    "cmi-mcp": "src/mcp.js"
   },
   "scripts": {
     "test": "node --test",
