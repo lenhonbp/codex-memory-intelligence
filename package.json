@@ -56,8 +56,7 @@
     "url": "https://github.com/lenhonbp"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "license": "MIT"
 }
