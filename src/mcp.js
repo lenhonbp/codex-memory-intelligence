@@ -7,6 +7,16 @@ import { remember, scanProject, status, explainIgnore } from './core.js';
 import { impactAnalysis, formatImpact, loadProjectGraph } from './graph.js';
 import { checkStaleMemory, formatStaleReport, refreshMemory } from './stale.js';
 import { formatWorkspaces } from './workspaces.js';
+import {
+  getRepositoryBaseline,
+  mapProjectBoundaries,
+  suggestProjectMemory,
+  prepareChangeBrief,
+  formatRepositoryBaseline,
+  formatBoundaryMap,
+  formatMemorySuggestions,
+  formatChangeBrief,
+} from './advisor.js';
 import { VERSION, MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSIONS } from './version.js';
 
 const root = path.resolve(process.env.CMI_PROJECT_ROOT || process.cwd());
@@ -29,6 +39,22 @@ async function callTool(name, args = {}) {
   if (name === 'build_project_context') {
     const pack = await buildContextPack(root, args.query || '', args.limit || 8, { workspace: args.workspace });
     return textResult(formatResults(pack.results), pack);
+  }
+  if (name === 'get_repository_baseline') {
+    const result = await getRepositoryBaseline(root);
+    return textResult(formatRepositoryBaseline(result), result);
+  }
+  if (name === 'map_project_boundaries') {
+    const result = await mapProjectBoundaries(root);
+    return textResult(formatBoundaryMap(result), result);
+  }
+  if (name === 'suggest_project_memory') {
+    const result = await suggestProjectMemory(root, args.query || '', { limit: args.limit || 20, workspace: args.workspace });
+    return textResult(formatMemorySuggestions(result), result);
+  }
+  if (name === 'prepare_change_brief') {
+    const result = await prepareChangeBrief(root, args.query || '', { limit: args.limit || 12, depth: args.depth || 3, workspace: args.workspace });
+    return textResult(formatChangeBrief(result), result);
   }
   if (name === 'remember_project_knowledge') {
     writable();
@@ -80,6 +106,10 @@ async function callTool(name, args = {}) {
 const readTools = [
   { name: 'search_project_memory', title: 'Search project memory', description: 'Find relevant durable project facts, decisions, mistakes, architecture, files, workspaces, and indexed symbols.', inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 }, workspace: { type: 'string', description: 'Optional workspace name, ID, or path.' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'build_project_context', title: 'Build project context', description: 'Build a ranked context pack for an agent task, optionally scoped to one workspace.', inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_repository_baseline', title: 'Get repository baseline', description: 'Return bounded local Git branch, commit, clean-worktree, upstream, and ahead/behind context without exposing absolute paths.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'map_project_boundaries', title: 'Map project boundaries', description: 'Infer advisory architecture boundaries and cross-boundary connections from workspaces, paths, and the import graph. Every boundary includes confidence and provenance.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'suggest_project_memory', title: 'Suggest project memory gaps', description: 'Identify missing task-relevant facts, decisions, and lessons as review-only proposals. This tool never writes durable memory.', inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'prepare_change_brief', title: 'Prepare change brief', description: 'Build a professional pre-change brief combining Git baseline, ranked context, inferred boundaries, impact, memory gaps, risks, verification, confidence, and provenance.', inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 }, depth: { type: 'integer', minimum: 1, maximum: 8 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'scan_project_intelligence', title: 'Scan project intelligence', description: 'Refresh repository structure, workspaces, import graph, and symbol intelligence. Uses incremental reuse unless full is true.', inputSchema: { type: 'object', properties: { full: { type: 'boolean' } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_project_memory_status', title: 'Get project status', description: 'Inspect memory, graph, index, workspaces, staleness, and snapshot status.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'list_project_workspaces', title: 'List project workspaces', description: 'List detected npm, pnpm, Cargo, and Go workspaces.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
@@ -101,6 +131,8 @@ const resources = [
   { uri: 'cmi://project/architecture', name: 'Project architecture', title: 'Project Architecture', description: 'Generated stack, workspace, and graph summary.', mimeType: 'text/markdown' },
   { uri: 'cmi://project/workspaces', name: 'Project workspaces', title: 'Project Workspaces', description: 'Detected workspace inventory.', mimeType: 'application/json' },
   { uri: 'cmi://project/graph-summary', name: 'Graph summary', title: 'Project Graph Summary', description: 'Compact graph metrics and high-impact files.', mimeType: 'application/json' },
+  { uri: 'cmi://project/baseline', name: 'Repository baseline', title: 'Repository Baseline', description: 'Bounded Git baseline without absolute local paths.', mimeType: 'application/json' },
+  { uri: 'cmi://project/boundaries', name: 'Inferred project boundaries', title: 'Inferred Project Boundaries', description: 'Advisory boundary map with confidence and provenance.', mimeType: 'application/json' },
 ];
 
 async function readResource(uri) {
@@ -123,11 +155,17 @@ async function readResource(uri) {
     if (!graph) throw new Error('Project graph is missing. Run scan_project_intelligence first.');
     return { uri, mimeType: 'application/json', text: JSON.stringify({ summary: graph.summary, hubs: graph.hubs, externalDependencies: graph.externalDependencies }, null, 2) };
   }
+  if (uri === 'cmi://project/baseline') {
+    return { uri, mimeType: 'application/json', text: JSON.stringify(await getRepositoryBaseline(root), null, 2) };
+  }
+  if (uri === 'cmi://project/boundaries') {
+    return { uri, mimeType: 'application/json', text: JSON.stringify(await mapProjectBoundaries(root), null, 2) };
+  }
   throw new Error(`Unknown resource: ${uri}`);
 }
 
 const prompts = [
-  { name: 'prepare_project_change', title: 'Prepare a project change', description: 'Build a disciplined pre-change workflow using memory, impact, and workspace context.', arguments: [{ name: 'target', description: 'File, symbol, feature, or change goal.', required: true }, { name: 'workspace', description: 'Optional workspace name or path.', required: false }] },
+  { name: 'prepare_project_change', title: 'Prepare a project change', description: 'Build a disciplined pre-change workflow using the structured CMI change brief before editing.', arguments: [{ name: 'target', description: 'File, symbol, feature, or change goal.', required: true }, { name: 'workspace', description: 'Optional workspace name or path.', required: false }] },
   { name: 'review_stale_memory', title: 'Review stale project memory', description: 'Guide a human-reviewed stale-memory audit.', arguments: [] },
 ];
 
@@ -136,7 +174,7 @@ function promptResult(name, args = {}) {
     const target = String(args.target || '').trim();
     if (!target) throw new Error('Prompt argument target is required.');
     const workspace = args.workspace ? ` Scope retrieval to workspace "${args.workspace}".` : '';
-    return { description: `Prepare a safe change for ${target}.`, messages: [{ role: 'user', content: { type: 'text', text: `Prepare to change ${target}.${workspace} First check project status and stale memory. Search durable decisions and mistakes. Run impact analysis for the target. Identify affected workspaces, tests, migrations, and deployment risks. Propose a minimal plan before editing. Do not store new memory until the change is reviewed.` } }] };
+    return { description: `Prepare a safe change for ${target}.`, messages: [{ role: 'user', content: { type: 'text', text: `Use the CMI prepare_change_brief tool for ${target}.${workspace} Review its Git baseline, durable memory, inferred boundaries, impact, risks, verification plan, confidence, and provenance. Resolve material unknowns before editing. Treat all inferred boundaries and memory suggestions as advisory rather than facts. Propose a minimal plan before changing files, then rescan and verify after implementation. Do not store new memory until the change is reviewed.` } }] };
   }
   if (name === 'review_stale_memory') {
     return { description: 'Review stale project knowledge before refreshing it.', messages: [{ role: 'user', content: { type: 'text', text: 'Run the stale-memory check. For each stale or review item, inspect its linked sources and current architecture. Explain whether it remains valid, needs rewriting, or should be removed. Refresh only entries that were explicitly reviewed, recording reviewer identity and reason.' } }] };
@@ -152,7 +190,7 @@ async function handle(message) {
     lifecycle = 'initializing';
     const requested = String(params?.protocolVersion || '');
     negotiatedProtocol = MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSION;
-    send({ jsonrpc: '2.0', id, result: { protocolVersion: negotiatedProtocol, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: 'codex-memory-intelligence', title: 'Codex Memory Intelligence', version: VERSION }, instructions: `Local-first project intelligence with incremental scanning and workspace-aware retrieval. Durable-memory mutations are ${writeEnabled ? 'enabled' : 'disabled by default'}.` } });
+    send({ jsonrpc: '2.0', id, result: { protocolVersion: negotiatedProtocol, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: 'codex-memory-intelligence', title: 'Codex Memory Intelligence', version: VERSION }, instructions: `Local-first project intelligence with incremental scanning, workspace-aware retrieval, and evidence-labeled pre-change briefs. Inferred boundaries and memory suggestions are advisory. Durable-memory mutations are ${writeEnabled ? 'enabled' : 'disabled by default'}.` } });
     return;
   }
   if (method === 'notifications/initialized') { if (lifecycle === 'initializing') lifecycle = 'ready'; return; }

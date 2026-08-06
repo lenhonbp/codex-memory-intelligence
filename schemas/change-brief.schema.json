@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/change-brief.schema.json",
+  "title": "CMI pre-change brief",
+  "description": "Evidence-labeled, advisory project intelligence assembled before a coding change.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "query",
+    "workspace",
+    "ready",
+    "baseline"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "baseline": {
+      "type": "object",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "projectPath": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "head": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fullHead": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clean": {
+          "type": "boolean"
+        },
+        "changes": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": [
+              "status",
+              "path"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "changesTruncated": {
+          "type": "boolean"
+        },
+        "upstream": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ahead": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "behind": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "commit": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object"
+    },
+    "boundaries": {
+      "type": "object"
+    },
+    "impact": {
+      "type": "object",
+      "required": [
+        "found"
+      ],
+      "properties": {
+        "found": {
+          "type": "boolean"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "suggestions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/memorySuggestion"
+          }
+        },
+        "policy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "risks": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/risk"
+      }
+    },
+    "verification": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/verification"
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ready": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "context",
+          "boundaries",
+          "impact",
+          "memory",
+          "risks",
+          "verification",
+          "assumptions",
+          "provenance"
+        ]
+      },
+      "else": {
+        "required": [
+          "reason"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "memorySuggestion": {
+      "type": "object",
+      "required": [
+        "type",
+        "title",
+        "proposal",
+        "rationale",
+        "evidence",
+        "confidence",
+        "status"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "decision",
+            "mistake"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "proposal": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "status": {
+          "const": "proposal"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "severity",
+        "reason",
+        "evidence",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "guidance",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "guidance": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

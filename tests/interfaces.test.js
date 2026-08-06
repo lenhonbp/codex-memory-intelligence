@@ -70,7 +70,7 @@ async function initialize(server, version = '2025-11-25') {
   return initialized;
 }
 
-test('CLI exposes v0.5 incremental, workspace, ignore, and version workflows', async () => {
+test('CLI exposes v0.5 incremental, workspace, advisory, ignore, and version workflows', async () => {
   const root = await fixture();
   let result = await run(process.execPath, [cli, '--version'], { cwd: root });
   assert.equal(result.stdout.trim(), '0.5.0');
@@ -81,6 +81,12 @@ test('CLI exposes v0.5 incremental, workspace, ignore, and version workflows', a
   assert.equal(JSON.parse(result.stdout).graph.reusedFiles, 2);
   result = await run(process.execPath, [cli, 'workspaces', '--json'], { cwd: root });
   assert.equal(JSON.parse(result.stdout).count, 1);
+  result = await run(process.execPath, [cli, 'boundaries', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).available, true);
+  result = await run(process.execPath, [cli, 'prepare', 'change migrate flow', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).ready, true);
+  result = await run(process.execPath, [cli, 'memory-gaps', 'change migrate flow', '--json'], { cwd: root });
+  assert.ok(JSON.parse(result.stdout).suggestions.every((item) => item.status === 'proposal'));
   result = await run(process.execPath, [cli, 'explain-ignore', 'node_modules', '--directory', '--json'], { cwd: root });
   assert.equal(JSON.parse(result.stdout).ignored, true);
 });
@@ -98,10 +104,16 @@ test('MCP negotiates stable versions and exposes tools, resources, and prompts',
   const tools = await server.waitFor((message) => message.id === 2);
   assert.ok(tools.result.tools.some((tool) => tool.name === 'build_project_context'));
   assert.ok(tools.result.tools.some((tool) => tool.name === 'list_project_workspaces'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'get_repository_baseline'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'map_project_boundaries'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'suggest_project_memory'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'prepare_change_brief'));
   assert.ok(!tools.result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
   server.send({ jsonrpc: '2.0', id: 3, method: 'resources/list', params: {} });
   const resources = await server.waitFor((message) => message.id === 3);
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/architecture'));
+  assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/baseline'));
+  assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/boundaries'));
   server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/list', params: {} });
   const prompts = await server.waitFor((message) => message.id === 4);
   assert.ok(prompts.result.prompts.some((prompt) => prompt.name === 'prepare_project_change'));
@@ -109,6 +121,10 @@ test('MCP negotiates stable versions and exposes tools, resources, and prompts',
   assert.equal((await server.waitFor((message) => message.id === 5)).result.structuredContent.graph.parsedFiles, 2);
   server.send({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'cmi://project/architecture' } });
   assert.match((await server.waitFor((message) => message.id === 6)).result.contents[0].text, /Project Architecture/);
+  server.send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'prepare_change_brief', arguments: { query: 'change migrate flow' } } });
+  const brief = await server.waitFor((message) => message.id === 7);
+  assert.equal(brief.result.structuredContent.ready, true);
+  assert.ok(Array.isArray(brief.result.structuredContent.risks));
   server.child.stdin.end();
 });
 
@@ -124,6 +140,6 @@ test('MCP reports parse errors, negotiates fallback, and supports opt-in writes'
   server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'remember_project_knowledge', arguments: { type: 'fact', text: 'MCP writes are explicitly enabled.' } } });
   assert.equal((await server.waitFor((message) => message.id === 3)).result.isError, undefined);
   server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/get', params: { name: 'prepare_project_change', arguments: { target: 'migrate' } } });
-  assert.match((await server.waitFor((message) => message.id === 4)).result.messages[0].content.text, /impact analysis/i);
+  assert.match((await server.waitFor((message) => message.id === 4)).result.messages[0].content.text, /prepare_change_brief/i);
   server.child.stdin.end();
 });
