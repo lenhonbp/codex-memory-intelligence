@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/codeql.yml/badge.svg)](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/codeql.yml)
+[![npm version](https://img.shields.io/npm/v/codex-memory-intelligence.svg)](https://www.npmjs.com/package/codex-memory-intelligence)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
@@ -20,24 +21,24 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-v0.5 is a real-world public beta. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and release-metadata validation for a future trusted npm publication.
+v0.5 is a real-world public beta, published on npm as `codex-memory-intelligence`. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and release-metadata validation.
 
 Static parsing remains best effort rather than compiler-grade analysis. See [Architecture](docs/ARCHITECTURE.md), [Benchmarks](docs/BENCHMARKS.md), and [Roadmap](ROADMAP.md).
 
 ## Install
 
-Until the npm release checklist is completed, install from source:
-
-```bash
-git clone https://github.com/lenhonbp/codex-memory-intelligence.git
-cd codex-memory-intelligence
-npm link
-```
-
-After the package is published:
+Install the public npm package globally:
 
 ```bash
 npm install -g codex-memory-intelligence
+cmi --version
+```
+
+Or install it in one project and run it through `npx`:
+
+```bash
+npm install --save-dev codex-memory-intelligence
+npx cmi --version
 ```
 
 Requires Node.js 22 or newer.
