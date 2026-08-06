@@ -57,6 +57,17 @@ test('repository baseline is bounded and does not expose absolute paths', async 
   assert.ok(baseline.changes.some((item) => item.path === 'src/api/checkout.js'));
 });
 
+test('non-Git projects still receive a complete advisory brief', async () => {
+  const root = await fixture();
+  const baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.available, false);
+  const brief = await prepareChangeBrief(root, 'change checkout identity and billing flow');
+  assert.equal(brief.ready, true);
+  assert.equal(brief.baseline.available, false);
+  assert.ok(brief.context.recommendedFiles.includes('src/api/checkout.js'));
+  assert.ok(brief.assumptions.length > 0);
+});
+
 test('boundary inference remains generic and labels confidence and provenance', async () => {
   const root = await fixture();
   const map = await mapProjectBoundaries(root);
