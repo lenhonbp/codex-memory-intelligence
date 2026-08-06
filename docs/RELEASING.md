@@ -10,6 +10,10 @@
 
 The repository intentionally does not publish merely because a version number exists. Account-level npm ownership and the trusted-publisher relationship must be established first.
 
+## First-package bootstrap
+
+The first public package version must be published manually after npm account verification and 2FA are complete. Do not force provenance from a local machine. Provenance requires a supported CI/CD environment and will be generated automatically once Trusted Publishing is configured.
+
 ## Process
 
 1. Update `package.json`, `src/version.js`, changelog, schemas, and docs in a reviewed pull request.
@@ -26,7 +30,7 @@ The repository intentionally does not publish merely because a version number ex
 4. Configure npm Trusted Publishing for the exact repository and reviewed workflow filename.
 5. Add and review a minimal tag-triggered publish workflow with `contents: read` and `id-token: write`; do not store a long-lived npm token.
 6. Create a signed semantic tag such as `v0.5.0` on the reviewed `main` commit.
-7. Let the trusted workflow revalidate the tag/version pair, tests, benchmark smoke, and packed installation before running `npm publish --access public --provenance`.
+7. Let the trusted workflow revalidate the tag/version pair, tests, benchmark smoke, and packed installation before running `npm publish --access public`.
 8. Create and publish the matching GitHub Release.
 9. Install the published package on a clean machine and run `cmi --version`, `cmi doctor`, and a small project scan.
 
