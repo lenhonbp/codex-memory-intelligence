@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+import {
+  startSession,
+  observeSession,
+  assessSession,
+  closeSession,
+  getSession,
+  listSessions,
+  getSessionHandoff,
+  listFindings,
+  getFinding,
+  setFindingState,
+  formatSessionReport,
+  formatSessionAssessment,
+  formatHandoff,
+  formatFindingList,
+} from './session-intelligence.js';
+
+const [command, ...args] = process.argv.slice(2);
+if (!['session', 'finding'].includes(command)) {
+  await import('./cli.js');
+  process.exit();
+}
+
+const json = args.includes('--json');
+function hasFlag(name) { return args.includes(name); }
+function optionValues(name) {
+  const output = [];
+  for (let index = 0; index < args.length; index += 1) if (args[index] === name && args[index + 1]) output.push(args[index + 1]);
+  return output;
+}
+function optionNumber(name, fallback) { const value = Number(optionValues(name)[0]); return Number.isFinite(value) ? value : fallback; }
+function positional(valueOptions = []) {
+  const withValue = new Set(valueOptions);
+  const output = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (['--json'].includes(value)) continue;
+    if (withValue.has(value)) { index += 1; continue; }
+    if (value.startsWith('--')) continue;
+    output.push(value);
+  }
+  return output;
+}
+function sessionOptions() {
+  return {
+    files: optionValues('--file'),
+    notes: optionValues('--note'),
+    accomplished: optionValues('--accomplished'),
+    blockers: optionValues('--blocker'),
+    decisions: optionValues('--decision'),
+    questions: optionValues('--question'),
+    outcome: optionValues('--outcome')[0],
+  };
+}
+function print(value, formatted) { console.log(json ? JSON.stringify(value, null, 2) : formatted); }
+function groupHelp(name) {
+  if (name === 'session') return 'Usage: cmi session <start|observe|status|close|show|list|handoff> ...\n\nTrack project work, persist findings, and produce an evidence-based handoff/next action.';
+  return 'Usage: cmi finding <list|show|state> ...\n\nInspect and explicitly review persistent project findings.';
+}
+
+try {
+  if (hasFlag('--help') || hasFlag('-h') || args[0] === 'help') {
+    console.log(groupHelp(command));
+  } else if (command === 'session') {
+    const values = positional(['--file','--note','--accomplished','--blocker','--decision','--question','--outcome','--status','--limit']);
+    const action = values.shift();
+    if (action === 'start') {
+      const goal = values.join(' ').trim();
+      if (!goal) throw new Error('Usage: cmi session start <goal> [--note text] [--json]');
+      const record = await startSession(process.cwd(), goal, sessionOptions());
+      print(record, `Started CMI session ${record.id.slice(0, 8)}\nGoal: ${record.goal}\n\nCMI will preserve findings and propose evidence-based next actions when this session is closed.`);
+    } else if (action === 'observe') {
+      const selector = values[0] || 'latest';
+      const record = await observeSession(process.cwd(), selector, sessionOptions());
+      print(record, `Observed session ${record.id.slice(0, 8)} · ${record.observations.length} observation(s) recorded.`);
+    } else if (action === 'status') {
+      const result = await assessSession(process.cwd(), values[0] || 'latest');
+      print(result, formatSessionAssessment(result));
+    } else if (action === 'close') {
+      const record = await closeSession(process.cwd(), values[0] || 'latest', sessionOptions());
+      print(record, formatSessionReport(record));
+    } else if (action === 'show') {
+      const record = await getSession(process.cwd(), values[0] || 'latest');
+      print(record, formatSessionReport(record));
+    } else if (action === 'list') {
+      const result = await listSessions(process.cwd(), { status: optionValues('--status')[0], limit: optionNumber('--limit', 20) });
+      const text = result.records.length ? result.records.map((item) => `- ${item.id.slice(0, 8)} [${item.status}${item.outcome ? `/${item.outcome}` : ''}] ${item.goal}${item.nextAction ? `\n  Next: ${item.nextAction.priority} ${item.nextAction.action}` : ''}`).join('\n') : 'No CMI sessions found.';
+      print(result, text);
+    } else if (action === 'handoff') {
+      const handoff = await getSessionHandoff(process.cwd(), values[0] || 'latest');
+      print(handoff, formatHandoff(handoff));
+    } else {
+      throw new Error('Usage: cmi session <start|observe|status|close|show|list|handoff> ...');
+    }
+  } else {
+    const values = positional(['--status','--limit','--reason','--changed-by','--superseded-by']);
+    const action = values.shift();
+    if (action === 'list') {
+      const result = await listFindings(process.cwd(), { state: optionValues('--status')[0], limit: optionNumber('--limit', 50) });
+      print(result, formatFindingList(result));
+    } else if (action === 'show') {
+      const item = await getFinding(process.cwd(), values[0]);
+      print(item, `# Project finding\n\n${item.title}\nState: ${item.state}\nSeverity: ${item.severity}\nConfidence: ${item.confidence}\nEvidence type: ${item.evidenceType}\n\n${item.detail}`);
+    } else if (action === 'state') {
+      const [selector, state] = values;
+      if (!selector || !state) throw new Error('Usage: cmi finding state <id> <open|resolved|accepted|dismissed|superseded> --reason text');
+      const item = await setFindingState(process.cwd(), selector, state, { reason: optionValues('--reason')[0], changedBy: optionValues('--changed-by')[0], supersededBy: optionValues('--superseded-by')[0] });
+      print(item, `Finding ${item.id.slice(0, 8)} is now ${item.state}.`);
+    } else {
+      throw new Error('Usage: cmi finding <list|show|state> ...');
+    }
+  }
+} catch (error) {
+  console.error(`CMI error: ${error.message}`);
+  if (hasFlag('--json')) console.error(JSON.stringify({ error: error.message }));
+  process.exitCode = 1;
+}

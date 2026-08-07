@@ -17,8 +17,10 @@ const RECORD_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_PATHS = 160;
 const MAX_TEXT_ITEMS = 20;
 const MAX_TEXT_LENGTH = 500;
+const LOCK_STALE_MS = 30_000;
 const VALID_OUTCOMES = new Set(['succeeded', 'failed', 'partial', 'abandoned', 'unknown']);
 const VALID_VERIFICATION = new Set(['passed', 'failed', 'skipped', 'unknown']);
+const VALID_VERIFICATION_PROVENANCE = new Set(['reported', 'observed-command']);
 
 function slash(value) { return String(value || '').replace(/\\/g, '/'); }
 function unique(values) { return [...new Set((values || []).filter(Boolean))]; }
@@ -63,6 +65,7 @@ function normalizeExplicitFiles(files) {
 }
 function changesDirectory(root) { return path.join(root, MEMORY_DIR, CHANGE_DIR); }
 function recordPath(root, id) { return path.join(changesDirectory(root), `${id}.json`); }
+function lockPath(root, id) { return path.join(changesDirectory(root), `${id}.lock`); }
 function summaryOf(record) {
   return {
     id: record.id,
@@ -73,10 +76,52 @@ function summaryOf(record) {
     updatedAt: record.updatedAt,
     completedAt: record.completion?.completedAt || null,
     outcome: record.completion?.outcome || null,
+    revision: record.revision || 1,
     observedChangedFiles: record.completion?.finalObservation?.observedChangedFiles?.length
       ?? record.observations?.at(-1)?.observedChangedFiles?.length
       ?? 0,
   };
+}
+
+function validIsoDate(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function validateVerificationRecord(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+  if (typeof item.name !== 'string' || !item.name.trim()) return false;
+  if (!VALID_VERIFICATION.has(item.status)) return false;
+  const provenance = item.provenance || 'reported';
+  if (!VALID_VERIFICATION_PROVENANCE.has(provenance)) return false;
+  if (provenance === 'observed-command') {
+    if (typeof item.command !== 'string' || !item.command.trim()) return false;
+    if (!Number.isInteger(item.exitCode)) return false;
+    if (!validIsoDate(item.observedAt)) return false;
+  }
+  return true;
+}
+
+export function validateChangeRecord(record) {
+  const errors = [];
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return { valid: false, errors: ['Record must be an object.'] };
+  if (record.schemaVersion !== 1) errors.push('schemaVersion must be 1.');
+  if (typeof record.id !== 'string' || !/^[0-9a-f-]{8,}$/i.test(record.id)) errors.push('id must be a UUID-like string.');
+  if (!['active', 'completed'].includes(record.status)) errors.push('status must be active or completed.');
+  if (typeof record.goal !== 'string' || !record.goal.trim()) errors.push('goal is required.');
+  if (!validIsoDate(record.createdAt) || !validIsoDate(record.updatedAt)) errors.push('createdAt and updatedAt must be ISO date-time strings.');
+  if (!record.before || typeof record.before !== 'object' || Array.isArray(record.before)) errors.push('before evidence is required.');
+  if (!Array.isArray(record.observations)) errors.push('observations must be an array.');
+  if (record.status === 'active' && record.completion !== null) errors.push('active records must not contain completion.');
+  if (record.status === 'completed') {
+    if (!record.completion || typeof record.completion !== 'object' || Array.isArray(record.completion)) errors.push('completed records require completion evidence.');
+    else {
+      if (!VALID_OUTCOMES.has(record.completion.outcome)) errors.push('completion.outcome is invalid.');
+      if (!validIsoDate(record.completion.completedAt)) errors.push('completion.completedAt must be an ISO date-time string.');
+      if (!Array.isArray(record.completion.verifications) || !record.completion.verifications.every(validateVerificationRecord)) errors.push('completion.verifications contains invalid evidence.');
+      if (!Array.isArray(record.completion.learningCandidates)) errors.push('completion.learningCandidates must be an array.');
+    }
+  }
+  return { valid: errors.length === 0, errors };
 }
 
 async function ensureChangeDirectory(root) {
@@ -84,18 +129,50 @@ async function ensureChangeDirectory(root) {
   await fs.mkdir(changesDirectory(root), { recursive: true });
 }
 
-async function writeRecord(root, record) {
+async function acquireRecordLock(root, id) {
   await ensureChangeDirectory(root);
-  const target = recordPath(root, record.id);
-  const temporary = `${target}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-  const content = `${JSON.stringify(record, null, 2)}\n`;
-  await fs.writeFile(temporary, content, 'utf8');
+  const target = lockPath(root, id);
   try {
-    await fs.rename(temporary, target);
+    const handle = await fs.open(target, 'wx');
+    await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+    return handle;
   } catch (error) {
-    if (!['EEXIST', 'EPERM'].includes(error?.code)) throw error;
-    await fs.rm(target, { force: true });
-    await fs.rename(temporary, target);
+    if (error?.code !== 'EEXIST') throw error;
+    let stat = null;
+    try { stat = await fs.stat(target); } catch {}
+    if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+      await fs.rm(target, { force: true });
+      const handle = await fs.open(target, 'wx');
+      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString(), reclaimed: true }));
+      return handle;
+    }
+    throw new Error(`Change record is locked by another writer: ${id}`);
+  }
+}
+
+async function releaseRecordLock(root, id, handle) {
+  await handle?.close().catch(() => {});
+  await fs.rm(lockPath(root, id), { force: true }).catch(() => {});
+}
+
+async function writeRecord(root, record) {
+  const validation = validateChangeRecord(record);
+  if (!validation.valid) throw new Error(`Invalid change record: ${validation.errors.join(' ')}`);
+  const lock = await acquireRecordLock(root, record.id);
+  try {
+    const target = recordPath(root, record.id);
+    const temporary = `${target}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    const content = `${JSON.stringify(record, null, 2)}\n`;
+    await fs.writeFile(temporary, content, 'utf8');
+    try {
+      await fs.rename(temporary, target);
+    } catch (error) {
+      if (!['EEXIST', 'EPERM'].includes(error?.code)) throw error;
+      await fs.rm(target, { force: true });
+      await fs.rename(temporary, target);
+    }
+  } finally {
+    await releaseRecordLock(root, record.id, lock);
   }
 }
 
@@ -129,8 +206,8 @@ async function safeReadRecord(filePath) {
     const text = await readBoundedHandle(handle);
     if (text === null) return null;
     const parsed = JSON.parse(text);
-    if (!parsed || parsed.schemaVersion !== 1 || typeof parsed.id !== 'string') return null;
-    return parsed;
+    const validation = validateChangeRecord(parsed);
+    return validation.valid ? parsed : null;
   } catch {
     return null;
   } finally {
@@ -244,6 +321,9 @@ function compareScopes(predictedFiles, observedFiles) {
   const overlap = [...observed].filter((file) => predicted.has(file)).sort();
   const missedByPrediction = [...observed].filter((file) => !predicted.has(file)).sort();
   const predictedButUnchanged = [...predicted].filter((file) => !observed.has(file)).sort();
+  const recall = observed.size ? round(overlap.length / observed.size) : null;
+  const precision = predicted.size ? round(overlap.length / predicted.size) : null;
+  const f1 = Number.isFinite(recall) && Number.isFinite(precision) && recall + precision > 0 ? round((2 * recall * precision) / (recall + precision)) : null;
   return {
     predictedFileCount: predicted.size,
     observedChangedFileCount: observed.size,
@@ -251,8 +331,11 @@ function compareScopes(predictedFiles, observedFiles) {
     overlap: bounded(overlap, MAX_PATHS),
     missedByPrediction: bounded(missedByPrediction, MAX_PATHS),
     predictedButUnchanged: bounded(predictedButUnchanged, MAX_PATHS),
-    changedPathCoverage: observed.size ? round(overlap.length / observed.size) : null,
-    predictedScopeTouched: predicted.size ? round(overlap.length / predicted.size) : null,
+    changedPathCoverage: recall,
+    predictedScopeTouched: precision,
+    pathRecall: recall,
+    pathPrecision: precision,
+    pathF1: f1,
     interpretation: 'These ratios compare predicted scope with observed changed paths only. They do not prove full impact accuracy, causality, or runtime coverage.',
   };
 }
@@ -280,14 +363,24 @@ function normalizeVerification(item) {
     const separator = clean.lastIndexOf('=');
     const name = separator > 0 ? clean.slice(0, separator).trim() : clean;
     const requested = separator > 0 ? clean.slice(separator + 1).trim().toLowerCase() : 'unknown';
-    return { name: cleanText(name, 'Verification name'), status: VALID_VERIFICATION.has(requested) ? requested : 'unknown' };
+    return { name: cleanText(name, 'Verification name'), status: VALID_VERIFICATION.has(requested) ? requested : 'unknown', provenance: 'reported' };
   }
   if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Verification must be a string or object.');
   const name = cleanText(item.name, 'Verification name');
   const status = String(item.status || 'unknown').trim().toLowerCase();
   if (!VALID_VERIFICATION.has(status)) throw new Error(`Verification status must be one of: ${[...VALID_VERIFICATION].join(', ')}.`);
   const evidence = cleanOptionalText(item.evidence, 'Verification evidence');
-  return { name, status, ...(evidence ? { evidence } : {}) };
+  const command = cleanOptionalText(item.command, 'Verification command');
+  const outputDigest = cleanOptionalText(item.outputDigest, 'Verification output digest');
+  const hasObservedCommand = command && Number.isInteger(item.exitCode) && validIsoDate(item.observedAt);
+  const provenance = hasObservedCommand ? 'observed-command' : 'reported';
+  return {
+    name,
+    status,
+    provenance,
+    ...(evidence ? { evidence } : {}),
+    ...(hasObservedCommand ? { command, exitCode: item.exitCode, observedAt: item.observedAt, ...(outputDigest ? { outputDigest } : {}) } : {}),
+  };
 }
 
 function normalizeTextItems(values, label) {
@@ -319,6 +412,12 @@ function relevanceScore(record, queryTokens) {
   return overlap;
 }
 
+function calibratedConfidence(count, sampleSize, support) {
+  if (sampleSize >= 5 && count >= 3 && support >= 0.6) return 'high';
+  if (sampleSize >= 3 && count >= 2 && support >= 0.35) return 'medium';
+  return 'low';
+}
+
 function pairCounts(records, extractor, perRecordLimit = 30) {
   const counts = new Map();
   let truncatedRecords = 0;
@@ -333,10 +432,12 @@ function pairCounts(records, extractor, perRecordLimit = 30) {
       }
     }
   }
+  const sampleSize = records.length;
   const edges = [...counts.entries()].map(([key, count]) => {
     const [from, to] = key.split('\u0000');
-    return { from, to, count, confidence: count >= 3 ? 'high' : count === 2 ? 'medium' : 'low' };
-  }).sort((a, b) => b.count - a.count || a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+    const support = sampleSize ? round(count / sampleSize) : 0;
+    return { from, to, count, sampleSize, support, confidence: calibratedConfidence(count, sampleSize, support), evidenceType: 'historical-correlation' };
+  }).sort((a, b) => b.support - a.support || b.count - a.count || a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
   return { edges: edges.slice(0, 40), truncatedRecords };
 }
 
@@ -345,22 +446,38 @@ function verificationPatterns(records) {
   for (const record of records) {
     for (const item of record.completion?.verifications || []) {
       const key = item.name.toLowerCase();
-      const current = map.get(key) || { name: item.name, total: 0, passed: 0, failed: 0, skipped: 0, unknown: 0 };
+      const current = map.get(key) || { name: item.name, total: 0, passed: 0, failed: 0, skipped: 0, unknown: 0, reported: 0, observedCommand: 0 };
       current.total += 1;
       current[item.status] += 1;
+      if (item.provenance === 'observed-command') current.observedCommand += 1;
+      else current.reported += 1;
       map.set(key, current);
     }
   }
-  return [...map.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)).slice(0, 20);
+  return [...map.values()].map((item) => ({
+    ...item,
+    passRate: item.total ? round(item.passed / item.total) : null,
+    observedEvidenceRate: item.total ? round(item.observedCommand / item.total) : null,
+    confidence: item.total >= 5 && item.observedCommand >= 3 ? 'high' : item.total >= 3 ? 'medium' : 'low',
+  })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)).slice(0, 20);
 }
 
 function coverageCalibration(records) {
   const samples = records.map((record) => record.completion?.finalObservation?.comparison).filter((item) => item && item.observedChangedFileCount > 0);
-  if (!samples.length) return { samples: 0, averageChangedPathCoverage: null, averagePredictedScopeTouched: null };
-  const coverage = samples.map((item) => item.changedPathCoverage).filter(Number.isFinite);
-  const touched = samples.map((item) => item.predictedScopeTouched).filter(Number.isFinite);
+  if (!samples.length) return { samples: 0, averageChangedPathCoverage: null, averagePredictedScopeTouched: null, averagePathRecall: null, averagePathPrecision: null, averagePathF1: null, confidence: 'insufficient-evidence' };
+  const coverage = samples.map((item) => item.pathRecall ?? item.changedPathCoverage).filter(Number.isFinite);
+  const touched = samples.map((item) => item.pathPrecision ?? item.predictedScopeTouched).filter(Number.isFinite);
+  const f1Values = samples.map((item) => item.pathF1).filter(Number.isFinite);
   const average = (values) => values.length ? round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
-  return { samples: samples.length, averageChangedPathCoverage: average(coverage), averagePredictedScopeTouched: average(touched) };
+  return {
+    samples: samples.length,
+    averageChangedPathCoverage: average(coverage),
+    averagePredictedScopeTouched: average(touched),
+    averagePathRecall: average(coverage),
+    averagePathPrecision: average(touched),
+    averagePathF1: average(f1Values),
+    confidence: samples.length >= 10 ? 'high' : samples.length >= 4 ? 'medium' : 'low',
+  };
 }
 
 export async function listChangeRecords(root, options = {}) {
@@ -384,13 +501,13 @@ export async function buildChangeInsights(root, query = '', options = {}) {
   const ranked = completed.map((record) => ({ record, score: relevanceScore(record, queryTokens) }))
     .filter((item) => !queryTokens.size || item.score > 0)
     .sort((a, b) => b.score - a.score || String(b.record.completion?.completedAt || '').localeCompare(String(a.record.completion?.completedAt || '')));
-  const limit = Math.max(1, Math.min(20, Number(options.limit) || 6));
+  const limit = Math.max(1, Math.min(50, Number(options.limit) || 12));
   const relevant = ranked.slice(0, limit).map((item) => item.record);
   const basis = relevant.length ? relevant : (queryTokens.size ? [] : completed.slice(0, limit));
   const files = pairCounts(basis, actualFilesFromRecord, 30);
   const boundaries = pairCounts(basis, (record) => (record.completion?.finalObservation?.observedBoundaries || []).map((item) => item.id), 20);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     query: normalizedQuery,
     corpus: { completedRecords: completed.length, consideredRecords: basis.length, invalidRecords, truncated },
@@ -402,6 +519,7 @@ export async function buildChangeInsights(root, query = '', options = {}) {
       verifications: bounded(record.completion?.verifications || [], 12),
     })),
     behavioralEvidence: {
+      evidenceType: 'historical-correlation',
       fileCoChanges: files.edges,
       boundaryCoChanges: boundaries.edges,
       verificationPatterns: verificationPatterns(basis),
@@ -410,8 +528,9 @@ export async function buildChangeInsights(root, query = '', options = {}) {
     calibration: coverageCalibration(basis),
     limitations: [
       'Co-change frequency is historical correlation, not a causal dependency.',
+      'Confidence is calibrated from local sample count and support; it is not semantic certainty.',
       'Observed changed paths are not the same as every runtime or downstream impact.',
-      'Verification results are recorded evidence claims supplied by a human or agent; CMI does not execute those commands itself.',
+      'Reported verification is a human/agent claim. observed-command provenance only means command metadata was supplied; CMI still does not execute the command itself.',
       'A missing historical match means only that CMI has no matching completed record in this local project history.',
     ],
   };
@@ -422,7 +541,7 @@ export async function startChangeRecord(root, goal, options = {}) {
   await ensureChangeDirectory(root);
   const brief = await prepareChangeBrief(root, normalizedGoal, { limit: options.limit || 12, depth: options.depth || 3, workspace: options.workspace });
   if (!brief.ready) throw new Error(brief.reason || 'Pre-change brief is not ready.');
-  const history = await buildChangeInsights(root, normalizedGoal, { limit: 5 });
+  const history = await buildChangeInsights(root, normalizedGoal, { limit: 12 });
   const now = new Date().toISOString();
   const predictedFiles = predictedFilesFromBrief(brief);
   const baseline = sanitizeChangeBaseline(brief.baseline);
@@ -432,6 +551,7 @@ export async function startChangeRecord(root, goal, options = {}) {
   const record = {
     schemaVersion: 1,
     id: crypto.randomUUID(),
+    revision: 1,
     status: 'active',
     goal: normalizedGoal,
     workspace: options.workspace || null,
@@ -499,6 +619,7 @@ export async function observeChangeRecord(root, selector, options = {}) {
     comparison,
   };
   record.observations = [...(record.observations || []), observation].slice(-100);
+  record.revision = (record.revision || 1) + 1;
   record.updatedAt = observation.observedAt;
   await writeRecord(root, record);
   return observation;
@@ -543,6 +664,7 @@ export async function completeChangeRecord(root, selector, options = {}) {
   }
   const completedAt = new Date().toISOString();
   record.status = 'completed';
+  record.revision = (record.revision || 1) + 1;
   record.updatedAt = completedAt;
   record.completion = {
     completedAt,
@@ -563,14 +685,14 @@ export function formatChangeRecord(record) {
   const changed = latest?.observedChangedFiles || [];
   const missed = latest?.comparison?.missedByPrediction || [];
   const verification = record.completion?.verifications || [];
-  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${record.completion?.outcome || 'not completed'}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
+  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${record.completion?.outcome || 'not completed'}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
 }
 
 export function formatChangeInsights(result) {
   const matches = result.matches.map((item) => `- ${item.id.slice(0, 12)} · ${item.goal} · ${item.outcome || 'unknown'} · ${item.changedFiles.length} changed paths`).join('\n') || '- No matching completed changes';
-  const coChanges = result.behavioralEvidence.fileCoChanges.slice(0, 12).map((item) => `- ${item.from} ↔ ${item.to}: ${item.count} record(s) · confidence ${item.confidence}`).join('\n') || '- Not enough relevant history';
-  const checks = result.behavioralEvidence.verificationPatterns.slice(0, 12).map((item) => `- ${item.name}: ${item.total} record(s), ${item.passed} passed, ${item.failed} failed`).join('\n') || '- No verification history';
-  return `# Change intelligence${result.query ? `: ${result.query}` : ''}\n\nCompleted records: ${result.corpus.completedRecords} · considered: ${result.corpus.consideredRecords}\n\n## Relevant history\n${matches}\n\n## Historical co-change evidence\n${coChanges}\n\n## Verification patterns\n${checks}\n\n## Coverage calibration\n- Samples: ${result.calibration.samples}\n- Average changed-path coverage: ${result.calibration.averageChangedPathCoverage ?? 'n/a'}\n- Average predicted scope touched: ${result.calibration.averagePredictedScopeTouched ?? 'n/a'}\n\n## Limitations\n${result.limitations.map((item) => `- ${item}`).join('\n')}`;
+  const coChanges = result.behavioralEvidence.fileCoChanges.slice(0, 12).map((item) => `- ${item.from} ↔ ${item.to}: ${item.count}/${item.sampleSize} records · support ${item.support} · confidence ${item.confidence}`).join('\n') || '- Not enough relevant history';
+  const checks = result.behavioralEvidence.verificationPatterns.slice(0, 12).map((item) => `- ${item.name}: ${item.total} records, pass rate ${item.passRate ?? 'n/a'}, observed-command ${item.observedCommand}`).join('\n') || '- No verification history';
+  return `# Change intelligence${result.query ? `: ${result.query}` : ''}\n\nCompleted records: ${result.corpus.completedRecords} · considered: ${result.corpus.consideredRecords}\n\n## Relevant history\n${matches}\n\n## Historical co-change evidence\n${coChanges}\n\n## Verification patterns\n${checks}\n\n## Coverage calibration\n- Samples: ${result.calibration.samples}\n- Average path recall: ${result.calibration.averagePathRecall ?? 'n/a'}\n- Average path precision: ${result.calibration.averagePathPrecision ?? 'n/a'}\n- Average path F1: ${result.calibration.averagePathF1 ?? 'n/a'}\n- Confidence: ${result.calibration.confidence}\n\n## Limitations\n${result.limitations.map((item) => `- ${item}`).join('\n')}`;
 }
 
 export function formatChangeList(result) {

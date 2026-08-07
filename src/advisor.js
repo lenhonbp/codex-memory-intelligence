@@ -136,6 +136,27 @@ async function runGit(root, args) {
   return String(result.stdout || '').trimEnd();
 }
 
+function parseGitStatusPorcelainZ(output) {
+  if (!output) return [];
+  const fields = String(output).split('\0');
+  const changes = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const record = fields[index];
+    if (!record) continue;
+    const status = record.slice(0, 2);
+    const currentPath = slash(record.slice(3));
+    if (!currentPath) continue;
+    if (status.includes('R') || status.includes('C')) {
+      const originalPath = slash(fields[index + 1] || '');
+      if (originalPath) index += 1;
+      changes.push({ status, path: currentPath, ...(originalPath ? { originalPath } : {}) });
+      continue;
+    }
+    changes.push({ status, path: currentPath });
+  }
+  return changes;
+}
+
 export async function getRepositoryBaseline(root) {
   const resolvedRoot = path.resolve(root);
   try {
@@ -166,17 +187,17 @@ export async function getRepositoryBaseline(root) {
       subject = await runGit(resolvedRoot, ['log', '-1', '--format=%s']);
       committedAt = await runGit(resolvedRoot, ['log', '-1', '--format=%cI']);
     } catch {}
-    const porcelain = await runGit(resolvedRoot, ['status', '--porcelain=v1', '--untracked-files=normal']);
-    const changes = porcelain ? porcelain.split('\n').filter(Boolean).map((line) => ({ status: line.slice(0, 2), path: slash(line.slice(3)) })) : [];
+    const porcelain = await runGit(resolvedRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']);
+    const allChanges = parseGitStatusPorcelainZ(porcelain);
     return {
       available: true,
       projectPath,
       branch: branch || 'detached',
       head,
       fullHead,
-      clean: changes.length === 0,
-      changes: bounded(changes, 200),
-      changesTruncated: changes.length > 200,
+      clean: allChanges.length === 0,
+      changes: bounded(allChanges, 200),
+      changesTruncated: allChanges.length > 200,
       upstream,
       ahead,
       behind,
@@ -433,7 +454,7 @@ export async function prepareChangeBrief(root, query, options = {}) {
 export function formatRepositoryBaseline(result) {
   if (!result.available) return `Repository baseline unavailable: ${result.reason}`;
   const sync = result.upstream ? ` · upstream ${result.upstream}${result.ahead === null ? '' : ` · ahead ${result.ahead} · behind ${result.behind}`}` : '';
-  const changes = result.clean ? '- None' : result.changes.map((item) => `- ${item.status} ${item.path}`).join('\n');
+  const changes = result.clean ? '- None' : result.changes.map((item) => `- ${item.status} ${item.path}${item.originalPath ? ` (from ${item.originalPath})` : ''}`).join('\n');
   return `# Repository baseline\n\n- Branch: ${result.branch}\n- HEAD: ${result.head || 'unborn'}\n- Worktree: ${result.clean ? 'clean' : 'dirty'}\n- Project path: ${result.projectPath}${sync}\n- Latest commit: ${result.commit?.subject || 'none'}\n\n## Changes\n${changes}`;
 }
 

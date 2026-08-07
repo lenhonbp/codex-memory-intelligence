@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "fieldDate": "2026-08-07",
+  "repositoryClass": "large-private-js-application",
+  "privacy": "anonymized-structural-evidence-only",
+  "fieldCandidate": "bd58894cad72aca7c722abede0a727c04f0f0db3",
+  "projectHealthy": true,
+  "graphCurrent": true,
+  "projectClean": true,
+  "sessionScopeCount": 0,
+  "openFindingCount": 0,
+  "beforePlanningHardening": {
+    "planningSignals": 0,
+    "recommendationCount": 0,
+    "fallbackWasGeneric": true
+  },
+  "afterPlanningHardening": {
+    "planningSignalsAtLeast": 3,
+    "recommendationCount": 3,
+    "nextActionKind": "source-linked-planning-review-candidate",
+    "sourceClass": "nested-current-priorities-document",
+    "confidence": "low",
+    "guardrails": [
+      "do-not-treat-planning-as-command",
+      "no-auto-command-or-truth"
+    ]
+  },
+  "expectedInterpretation": "Concrete planning review candidate is useful only as advisory continuation evidence; it is not business priority or execution authority."
+}

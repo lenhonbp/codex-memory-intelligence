@@ -39,7 +39,7 @@ A change record never contains source diffs by default. It stores bounded metada
 - observed changed project-relative paths;
 - prediction gaps;
 - observed boundaries;
-- user- or agent-supplied verification names and statuses;
+- user- or agent-supplied verification names, statuses, and provenance;
 - completion outcome and unexpected impact;
 - review-only learning candidates.
 
@@ -115,7 +115,7 @@ Write-enabled tools add:
 - `observe_change_record`
 - `complete_change_record`
 
-The `run_change_intelligence_loop` MCP prompt guides a connected agent through BEFORE → DURING → AFTER. Enabling writes does not authorize CMI to execute arbitrary project commands. The agent still runs tests, builds, profilers, migrations, or other tools through its normal environment and records only the resulting evidence status in CMI.
+The `run_change_intelligence_loop` MCP prompt guides a connected agent through BEFORE → DURING → AFTER. Enabling writes does not authorize CMI to execute arbitrary project commands. The agent still runs tests, builds, profilers, migrations, or other tools through its normal environment and records only the resulting evidence status/provenance in CMI.
 
 ## Historical intelligence
 
@@ -127,50 +127,73 @@ Records are ranked with deterministic token overlap across goals, observed files
 
 ### File co-change evidence
 
-If two paths repeatedly appear in the same completed change records, CMI reports a co-change edge:
+If two paths repeatedly appear in the same completed change records, CMI reports a co-change edge with local support and sample size.
+
+For example:
 
 ```text
 src/api/checkout.ts ↔ src/payments/ledger.ts
 count: 3
-confidence: high
+sample size: 8
+support: 0.375
+confidence: medium
 ```
 
-This means only that the files changed together in three stored records. It does not mean one depends on, calls, owns, or causes the other.
+Confidence is sample-sensitive. A pair appearing in every record of a tiny history does not receive high confidence merely because support is 100%.
+
+This means only that the files changed together in stored records. It does not mean one depends on, calls, owns, or causes the other. The evidence type is explicitly `historical-correlation`.
 
 ### Boundary co-change evidence
 
-The same bounded counting is applied to inferred project boundaries. Boundary names remain advisory because the boundary map itself is inferred from repository structure and imports.
+The same bounded counting and sample-sensitive confidence are applied to inferred project boundaries. Boundary names remain advisory because the boundary map itself is inferred from repository structure and imports.
 
 ### Verification patterns
 
-CMI counts named verification evidence across matching completed changes. For example, if `payment regression` was recorded in four relevant tasks, the next agent can see that this check historically accompanied that work.
+CMI counts named verification evidence across matching completed changes. Patterns expose totals, status counts, pass rate, and the fraction carrying supplied `observed-command` provenance.
 
-CMI never executes those verification commands itself and never treats a reported pass as independently verified truth.
+Verification provenance has two classes:
 
-### Changed-path coverage calibration
+- `reported`: a human or agent supplied the status;
+- `observed-command`: the caller supplied bounded command-result metadata such as command, exit code, and observation time.
+
+CMI never executes those verification commands itself. `observed-command` is stronger provenance metadata than an unlabeled report, but it is not independent attestation by CMI.
+
+### Expected-vs-actual path calibration
 
 For completed records CMI compares:
 
 ```text
-predicted scope before editing
+predicted file scope before editing
 vs.
 observed paths actually changed
 ```
 
-Two bounded ratios are recorded:
+Per-record comparison and aggregated history expose:
 
-- `changedPathCoverage`: how much of the observed changed-path set was already inside the predicted file scope;
-- `predictedScopeTouched`: how much of the predicted file scope was directly changed.
+- `pathRecall`: how much of the observed changed-path set was already inside the predicted file scope;
+- `pathPrecision`: how much of the predicted file scope was directly changed;
+- `pathF1`: harmonic mean of the two when both are defined;
+- sample count and sample-sensitive calibration confidence.
 
-These are not compiler precision/recall metrics and are not claims about complete runtime impact. A correct implementation can affect files that never change, and an observed changed file can be incidental.
+Compatibility aliases from v0.7 (`changedPathCoverage`, `predictedScopeTouched`) remain available, but the path precision/recall names state the relationship more clearly.
 
-## Dirty worktrees
+These are not claims about complete runtime impact. A correct implementation can affect files that never change, and an observed changed file can be incidental.
+
+## Dirty worktrees and Git edge cases
 
 When a change starts from a clean Git worktree, CMI can strongly attribute new worktree paths and commits after the recorded HEAD.
 
 When the worktree was already dirty, CMI marks attribution as `limited-preexisting-worktree`. Paths that were already dirty are reported separately as ambiguous instead of being silently credited to the current task.
 
 For projects outside Git, attribution is `explicit-files-only` and CMI relies on paths supplied by the human or agent.
+
+The v0.8 development line parses Git worktree status using NUL-delimited porcelain records. Rename/copy entries retain the destination path as `path` and, when present, the source path as `originalPath`; CMI does not store the human-formatted `old -> new` display string as a project path. Detached HEAD is represented explicitly as branch `detached` while commit identity remains available.
+
+## Stale and lifecycle-aware preparation
+
+Pre-change retrieval now distinguishes evidence freshness from reviewed memory lifecycle. Active stale/review memory remains labeled and down-ranked by default; deprecated, rejected, and superseded knowledge is excluded from normal task context unless explicitly requested for historical inspection.
+
+See [Durable Memory Lifecycle](MEMORY_LIFECYCLE.md) for the lifecycle, refresh, supersession, and concurrent-writer contract.
 
 ## Learning policy
 
@@ -206,5 +229,7 @@ CMI does not:
 - infer causality from historical co-change;
 - write learning candidates into durable memory automatically;
 - access the network to enrich change records.
+
+Change records are runtime-validated when written/read, bounded during history reads, and locally serialized per record to reduce concurrent-writer corruption. Durable project memory uses a separate shared local writer lock for append/refresh/lifecycle mutations.
 
 This keeps the change-intelligence layer explainable, portable, and useful across unrelated project types.

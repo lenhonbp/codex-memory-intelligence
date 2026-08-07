@@ -23,13 +23,13 @@ The first public package version must be published manually after npm account ve
    npm run verify
    npm run benchmark:smoke
    npm run package:smoke
-   npm run release:check -- v0.5.0
+   npm run release:check -- v0.8.0
    ```
 
 3. Merge the release pull request after CI and CodeQL pass.
 4. Configure npm Trusted Publishing for the exact repository and reviewed workflow filename.
 5. Add and review a minimal tag-triggered publish workflow with `contents: read` and `id-token: write`; do not store a long-lived npm token.
-6. Create a signed semantic tag such as `v0.5.0` on the reviewed `main` commit.
+6. Create a signed semantic tag such as `v0.8.0` on the reviewed `main` commit.
 7. Let the trusted workflow revalidate the tag/version pair, tests, benchmark smoke, and packed installation before running `npm publish --access public`.
 8. Create and publish the matching GitHub Release.
 9. Install the published package on a clean machine and run `cmi --version`, `cmi doctor`, and a small project scan.

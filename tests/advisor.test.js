@@ -65,6 +65,31 @@ test('repository baseline is bounded and does not expose absolute paths', async 
   assert.ok(baseline.changes.some((item) => item.path === 'src/api/checkout.js'));
 });
 
+test('repository baseline parses rename destinations and origins without arrow pseudo-paths', async (context) => {
+  const root = await fixture();
+  if (!await initializeGit(root, context)) return;
+  await execFileAsync('git', ['mv', 'src/api/checkout.js', 'src/api/purchase.js'], { cwd: root });
+  const baseline = await getRepositoryBaseline(root);
+  const rename = baseline.changes.find((item) => item.status.includes('R'));
+  assert.ok(rename);
+  assert.equal(rename.path, 'src/api/purchase.js');
+  assert.equal(rename.originalPath, 'src/api/checkout.js');
+  assert.ok(!rename.path.includes(' -> '));
+  assert.ok(!JSON.stringify(baseline).includes(root));
+});
+
+test('repository baseline remains usable in detached HEAD state', async (context) => {
+  const root = await fixture();
+  if (!await initializeGit(root, context)) return;
+  await execFileAsync('git', ['checkout', '--detach'], { cwd: root });
+  const baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.available, true);
+  assert.equal(baseline.branch, 'detached');
+  assert.ok(baseline.head);
+  assert.ok(baseline.fullHead);
+  assert.equal(baseline.clean, true);
+});
+
 test('non-Git projects still receive a complete advisory brief', async () => {
   const root = await fixture();
   const baseline = await getRepositoryBaseline(root);

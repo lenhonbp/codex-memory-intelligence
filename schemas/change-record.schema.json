@@ -7,6 +7,7 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "id": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
     "status": { "enum": ["active", "completed"] },
     "goal": { "type": "string", "minLength": 1, "maxLength": 500 },
     "workspace": { "type": ["string", "null"] },
@@ -65,6 +66,9 @@
               "predictedButUnchanged": { "type": "array", "items": { "type": "string" } },
               "changedPathCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
               "predictedScopeTouched": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "pathRecall": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "pathPrecision": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "pathF1": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
               "interpretation": { "type": "string" }
             },
             "additionalProperties": false
@@ -84,12 +88,23 @@
           "maxItems": 20,
           "items": {
             "type": "object",
-            "required": ["name", "status"],
+            "required": ["name", "status", "provenance"],
             "properties": {
               "name": { "type": "string", "minLength": 1, "maxLength": 500 },
               "status": { "enum": ["passed", "failed", "skipped", "unknown"] },
-              "evidence": { "type": "string", "maxLength": 500 }
+              "provenance": { "enum": ["reported", "observed-command"] },
+              "evidence": { "type": "string", "maxLength": 500 },
+              "command": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "exitCode": { "type": "integer" },
+              "observedAt": { "type": "string", "format": "date-time" },
+              "outputDigest": { "type": "string", "maxLength": 500 }
             },
+            "allOf": [
+              {
+                "if": { "properties": { "provenance": { "const": "observed-command" } }, "required": ["provenance"] },
+                "then": { "required": ["command", "exitCode", "observedAt"] }
+              }
+            ],
             "additionalProperties": false
           }
         },

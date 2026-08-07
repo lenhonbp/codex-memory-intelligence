@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { initProject, scanProject, remember, snapshot, status, doctor, explainIgnore } from './core.js';
 import { searchMemory, buildContextPack, formatResults } from './search.js';
 import { loadProjectGraph, impactAnalysis, formatImpact } from './graph.js';
-import { checkStaleMemory, formatStaleReport, refreshMemory } from './stale.js';
+import { checkStaleMemory, formatStaleReport, refreshMemory, setMemoryLifecycle } from './stale.js';
 import { formatWorkspaces } from './workspaces.js';
 import {
   getRepositoryBaseline,
@@ -34,7 +34,7 @@ const pathCommands = new Set(['init','scan','status','graph','stale','doctor','w
 const json = args.includes('--json');
 
 function help() {
-  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including memory and change records, are disabled unless --write is explicitly requested.\n`);
+  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi session <start|observe|status|close|show|list|handoff> ...\n  cmi finding <list|show|state> ...\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nInactive memory is excluded from search/context by default; --include-inactive is an explicit historical-inspection mode.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including memory, change, session, and finding records, are disabled unless --write is explicitly requested.\n`);
 }
 
 function optionValues(name) {
@@ -49,7 +49,7 @@ function positional(excluded = []) {
   const output = [];
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
-    if (['--json','--write','--bulk-refresh','--full','--directory'].includes(value)) continue;
+    if (['--json','--write','--bulk-refresh','--full','--directory','--include-inactive'].includes(value)) continue;
     if (withValue.has(value)) { index += 1; continue; }
     if (value.startsWith('--')) continue;
     output.push(value);
@@ -98,9 +98,11 @@ try {
     console.log(json ? JSON.stringify(result, null, 2) : `${result.ignored ? 'IGNORED' : 'INCLUDED'} ${result.path}\n${result.reason}`);
   }
   else if (cmd === 'search' || cmd === 'context') {
-    const query = positional(['--limit','--workspace']).join(' ').trim();
-    if (!query) throw new Error(`Usage: cmi ${cmd} <query> [--limit N] [--workspace name-or-path]`);
-    const options = { workspace: optionValues('--workspace')[0] };
+    const query = positional(['--limit','--workspace','--stale-policy']).join(' ').trim();
+    if (!query) throw new Error(`Usage: cmi ${cmd} <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive]`);
+    const stalePolicy = optionValues('--stale-policy')[0];
+    if (stalePolicy && !['demote','include','exclude'].includes(stalePolicy)) throw new Error('--stale-policy must be demote, include, or exclude');
+    const options = { workspace: optionValues('--workspace')[0], stalePolicy, includeInactive: hasFlag('--include-inactive') };
     if (cmd === 'context') {
       const pack = await buildContextPack(process.cwd(), query, optionNumber('--limit', 8), options);
       console.log(json ? JSON.stringify(pack, null, 2) : formatResults(pack.results));
@@ -130,7 +132,10 @@ try {
   else if (cmd === 'change') {
     const values = positional(['--limit','--depth','--workspace','--file','--outcome','--verify','--unexpected','--note','--status']);
     const action = values.shift();
-    if (action === 'start') {
+    if (action === 'help' || hasFlag('--help') || hasFlag('-h')) {
+      console.log('Usage: cmi change <start|observe|complete|show|list|history> ...\n\nUse `cmi --help` for the full command surface.');
+    }
+    else if (action === 'start') {
       const goal = values.join(' ').trim();
       if (!goal) throw new Error('Usage: cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path]');
       const result = await startChangeRecord(process.cwd(), goal, { limit: optionNumber('--limit', 12), depth: optionNumber('--depth', 3), workspace: optionValues('--workspace')[0] });
@@ -177,13 +182,19 @@ try {
     const metadata = await remember(process.cwd(), type, text.join(' '), { sources: optionValues('--source') });
     console.log(`Memory updated: ${metadata.id.slice(0, 8)}${metadata.sources.length ? ` · ${metadata.sources.length} source(s)` : ''}`);
   }
+  else if (cmd === 'memory-state') {
+    const [selector, state] = positional(['--reason','--changed-by','--superseded-by']);
+    if (!selector || !state) throw new Error('Usage: cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id]');
+    const result = await setMemoryLifecycle(process.cwd(), selector, state, { reason: optionValues('--reason')[0], changedBy: optionValues('--changed-by')[0], supersededBy: optionValues('--superseded-by')[0] });
+    console.log(json ? JSON.stringify(result, null, 2) : `Memory ${result.id.slice(0, 8)} is now ${result.state}.`);
+  }
   else if (cmd === 'stale') {
     const result = await checkStaleMemory(commandRoot());
     console.log(json ? JSON.stringify(result, null, 2) : formatStaleReport(result));
     const failOn = optionValues('--fail-on')[0];
     if (failOn === 'stale' && result.counts.stale > 0) process.exitCode = 2;
     else if (failOn === 'review' && (result.counts.stale + result.counts.review + result.counts.untracked) > 0) process.exitCode = 2;
-    else if (failOn === 'any' && result.entries.some((entry) => entry.status !== 'fresh')) process.exitCode = 2;
+    else if (failOn === 'any' && result.entries.some((entry) => !['fresh','inactive'].includes(entry.status))) process.exitCode = 2;
     else if (failOn && !['stale','review','any'].includes(failOn)) throw new Error('--fail-on must be stale, review, or any');
   }
   else if (cmd === 'refresh-memory') {
@@ -195,7 +206,7 @@ try {
   else if (cmd === 'snapshot') console.log(`Created ${await snapshot(process.cwd(), positional().join(' ') || 'snapshot')}`);
   else if (cmd === 'status') {
     const result = await status(commandRoot());
-    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Memory ${result.healthy ? 'healthy' : 'needs attention'} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
+    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Memory ${result.healthy ? 'healthy' : 'needs attention'} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.inactive || 0} inactive · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
   }
   else if (cmd === 'doctor') {
     const result = await doctor(commandRoot());
@@ -203,7 +214,7 @@ try {
     if (!result.healthy) process.exitCode = 1;
   }
   else if (cmd === 'mcp-config') {
-    const executable = fileURLToPath(new URL('./mcp.js', import.meta.url));
+    const executable = fileURLToPath(new URL('./mcp-entry.js', import.meta.url));
     const env = { CMI_PROJECT_ROOT: process.cwd(), CMI_WRITE_ENABLED: hasFlag('--write') ? '1' : '0' };
     if (hasFlag('--bulk-refresh')) {
       if (!hasFlag('--write')) throw new Error('--bulk-refresh requires --write');

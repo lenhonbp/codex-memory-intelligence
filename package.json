@@ -1,11 +1,11 @@
 {
   "name": "codex-memory-intelligence",
-  "version": "0.7.0",
-  "description": "Local-first project memory, dependency intelligence, impact analysis, and evidence-driven change intelligence for AI coding agents.",
+  "version": "0.8.0",
+  "description": "Local-first project memory, dependency and impact intelligence, evidence-driven change history, and session continuation for AI coding agents.",
   "type": "module",
   "bin": {
-    "cmi": "src/cli.js",
-    "cmi-mcp": "src/mcp.js"
+    "cmi": "src/cli-entry.js",
+    "cmi-mcp": "src/mcp-entry.js"
   },
   "scripts": {
     "test": "node --test",
@@ -31,6 +31,8 @@
     "pre-change-analysis",
     "change-intelligence",
     "change-history",
+    "session-intelligence",
+    "continuation-intelligence",
     "code-intelligence",
     "project-intelligence",
     "local-first",

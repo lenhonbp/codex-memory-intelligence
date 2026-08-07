@@ -13,6 +13,7 @@ import {
   getChangeRecord,
   listChangeRecords,
   buildChangeInsights,
+  validateChangeRecord,
 } from '../src/change-intelligence.js';
 
 const execFileAsync = promisify(execFile);
@@ -50,11 +51,13 @@ test('change record captures bounded BEFORE evidence without turning proposals i
   const decisionsAfter = await fs.readFile(path.join(root, '.codex-memory', 'decisions.md'), 'utf8');
   assert.equal(decisionsBefore, decisionsAfter);
   assert.equal(record.status, 'active');
+  assert.equal(record.revision, 1);
   assert.equal(record.before.baseline.clean, true);
   assert.ok(record.before.predicted.files.includes('src/api/checkout.js'));
   assert.ok(record.before.predicted.boundaries.length > 0);
   assert.equal(record.before.attribution, 'strong');
   assert.ok(!JSON.stringify(record).includes(root));
+  assert.equal(validateChangeRecord(record).valid, true);
   const stored = JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'changes', `${record.id}.json`), 'utf8'));
   assert.equal(stored.id, record.id);
   assert.match(stored.policy, /does not automatically create durable facts/i);
@@ -73,32 +76,42 @@ test('DURING observation compares predicted scope with Git and explicit evidence
   assert.ok(observation.comparison.missedByPrediction.includes('src/cache/profile.js'));
   assert.ok(observation.observedChangedFiles.every((file) => !file.startsWith('.codex-memory/')));
   assert.equal(observation.attribution, 'strong');
+  assert.equal(observation.comparison.pathRecall, observation.comparison.changedPathCoverage);
+  assert.equal(observation.comparison.pathPrecision, observation.comparison.predictedScopeTouched);
   assert.match(observation.comparison.interpretation, /do not prove full impact accuracy/i);
 });
 
-test('AFTER completion stores verification evidence and review-only learning candidates', async (context) => {
+test('AFTER completion distinguishes reported verification from observed command metadata', async (context) => {
   const root = await fixture();
   if (!await initializeGit(root, context)) return;
   const record = await startChangeRecord(root, 'change checkout billing flow');
   await fs.appendFile(path.join(root, 'src', 'api', 'checkout.js'), '\nexport const checkoutVersion = 3;\n');
+  const observedAt = new Date().toISOString();
   const completed = await completeChangeRecord(root, record.id, {
     outcome: 'partial',
     files: ['src/cache/profile.js'],
-    verifications: [{ name: 'npm test', status: 'passed', evidence: '25 tests passed' }, { name: 'integration retry', status: 'failed' }],
+    verifications: [
+      { name: 'npm test', status: 'passed', evidence: '25 tests passed' },
+      { name: 'npm run verify', status: 'passed', command: 'npm run verify', exitCode: 0, observedAt, outputDigest: 'sha256:test-digest' },
+      { name: 'integration retry', status: 'failed' },
+    ],
     unexpectedImpact: ['Profile cache also required invalidation.'],
     notes: ['Retry behavior still needs provider-level validation.'],
   });
   assert.equal(completed.status, 'completed');
   assert.equal(completed.completion.outcome, 'partial');
-  assert.equal(completed.completion.verifications[0].status, 'passed');
+  assert.equal(completed.completion.verifications[0].provenance, 'reported');
+  assert.equal(completed.completion.verifications[1].provenance, 'observed-command');
+  assert.equal(completed.completion.verifications[1].exitCode, 0);
   assert.ok(completed.completion.learningCandidates.some((item) => item.type === 'failure-mode'));
   assert.ok(completed.completion.learningCandidates.some((item) => item.type === 'unexpected-impact'));
   assert.match(completed.completion.policy, /never writes project memory automatically/i);
+  assert.equal(validateChangeRecord(completed).valid, true);
   await assert.rejects(() => observeChangeRecord(root, record.id), /immutable/i);
   await assert.rejects(() => startChangeRecord(root, 'api_key=abcdefghijk secret migration'), /secret/i);
 });
 
-test('historical insights expose correlation with explicit limitations instead of claiming causality', async () => {
+test('historical insights expose calibrated correlation instead of causal confidence', async () => {
   const root = await fixture();
   const first = await startChangeRecord(root, 'checkout billing retry');
   await completeChangeRecord(root, first.id, {
@@ -113,12 +126,17 @@ test('historical insights expose correlation with explicit limitations instead o
     verifications: [{ name: 'payment regression', status: 'passed' }],
   });
   const insights = await buildChangeInsights(root, 'checkout billing');
+  assert.equal(insights.schemaVersion, 2);
   assert.equal(insights.corpus.completedRecords, 2);
   assert.equal(insights.matches.length, 2);
   const edge = insights.behavioralEvidence.fileCoChanges.find((item) => item.from === 'src/api/checkout.js' && item.to === 'src/billing/ledger.js');
   assert.equal(edge.count, 2);
-  assert.equal(edge.confidence, 'medium');
+  assert.equal(edge.sampleSize, 2);
+  assert.equal(edge.support, 1);
+  assert.equal(edge.confidence, 'low');
+  assert.equal(edge.evidenceType, 'historical-correlation');
   assert.ok(insights.behavioralEvidence.verificationPatterns.some((item) => item.name === 'payment regression' && item.passed === 2));
+  assert.equal(insights.calibration.confidence, 'low');
   assert.ok(insights.limitations.some((item) => /correlation, not a causal dependency/i.test(item)));
   assert.ok(insights.limitations.some((item) => /does not execute/i.test(item)));
 });
@@ -137,6 +155,18 @@ test('non-Git projects remain usable through explicit observed paths', async () 
   assert.equal(list.records.length, 1);
   const loaded = await getChangeRecord(root, record.id.slice(0, 8));
   assert.equal(loaded.id, record.id);
+});
+
+test('runtime validation rejects structurally incomplete durable records', async () => {
+  const root = await fixture();
+  const record = await startChangeRecord(root, 'bounded history read');
+  const changes = path.join(root, '.codex-memory', 'changes');
+  const invalidId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  await fs.writeFile(path.join(changes, `${invalidId}.json`), JSON.stringify({ schemaVersion: 1, id: invalidId }), 'utf8');
+  const list = await listChangeRecords(root);
+  assert.ok(list.records.some((item) => item.id === record.id));
+  assert.ok(!list.records.some((item) => item.id === invalidId));
+  assert.equal(list.invalidRecords, 1);
 });
 
 test('change history rejects oversized record files before parsing them', async () => {

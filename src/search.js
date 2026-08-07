@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { checkStaleMemory } from './stale.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
 const STOP = new Set(['the','and','for','with','that','this','from','into','cua','cho','voi','nhung','mot','cac','trong','duoc']);
@@ -53,32 +54,83 @@ function sections(content, source) {
   return output;
 }
 
+function fingerprintMatches(stat, fingerprint) {
+  if (!stat || typeof fingerprint !== 'string') return false;
+  const [size, mtimeMs, ctimeMs] = fingerprint.split(':').map(Number);
+  if (![size, mtimeMs, ctimeMs].every(Number.isFinite)) return false;
+  return stat.size === size && Math.trunc(stat.mtimeMs) === mtimeMs && Math.trunc(stat.ctimeMs) === ctimeMs;
+}
+
 async function graphChunks(root) {
   try {
     const graph = JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'project-graph.json'), 'utf8'));
-    return graph.nodes.map((node) => {
+    const chunks = [];
+    let staleNodes = 0;
+    let missingNodes = 0;
+    for (const node of graph.nodes || []) {
+      let stat = null;
+      try { stat = await fs.stat(path.join(root, node.path)); } catch {}
+      if (!stat?.isFile()) { missingNodes += 1; continue; }
+      if (!fingerprintMatches(stat, node.fingerprint)) { staleNodes += 1; continue; }
       const symbols = node.symbols.map((symbol) => `${symbol.name} (${symbol.kind}${symbol.exported ? ', exported' : ''})`).join(', ');
       const localImports = node.imports.filter((item) => item.resolved).map((item) => item.resolved).join(', ');
       const externalImports = node.imports.filter((item) => item.external).map((item) => item.specifier).join(', ');
       const dependents = (graph.reverseDependents[node.path] || []).join(', ');
-      return {
+      chunks.push({
         source: 'project-graph.json',
         title: `File ${node.path}`,
         text: `Language: ${node.language}\nWorkspace: ${node.workspace || 'unassigned'}\nSymbols: ${symbols || 'none'}\nLocal imports: ${localImports || 'none'}\nDependents: ${dependents || 'none'}\nExternal imports: ${externalImports || 'none'}`,
-        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [] },
+        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [], evidenceStatus: 'observed', knowledgeState: 'active', graphGeneratedAt: graph.generatedAt || null },
         kind: 'graph',
-      };
-    });
-  } catch { return []; }
+      });
+    }
+    return { chunks, health: { available: true, totalNodes: (graph.nodes || []).length, freshNodes: chunks.length, staleNodes, missingNodes, current: staleNodes === 0 && missingNodes === 0 } };
+  } catch {
+    return { chunks: [], health: { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, current: false } };
+  }
 }
 
-export async function loadMemory(root) {
+async function memoryHealthMap(root) {
+  try {
+    const report = await checkStaleMemory(root);
+    const byId = new Map();
+    const byHeading = new Map();
+    for (const entry of report.entries || []) {
+      if (entry.id) byId.set(entry.id, entry);
+      byHeading.set(`${entry.file}\u0000${entry.heading}`, entry);
+    }
+    return { report, byId, byHeading };
+  } catch {
+    return { report: null, byId: new Map(), byHeading: new Map() };
+  }
+}
+
+function annotateMemoryChunk(chunk, health) {
+  if (chunk.kind !== 'memory') return chunk;
+  const tracked = (chunk.metadata?.id && health.byId.get(chunk.metadata.id)) || health.byHeading.get(`${chunk.source}\u0000${chunk.title}`) || null;
+  const status = tracked?.status || (chunk.metadata ? 'unknown' : 'untracked');
+  return {
+    ...chunk,
+    metadata: {
+      ...(chunk.metadata || {}),
+      evidenceStatus: status === 'fresh' ? 'reviewed-current' : status,
+      knowledgeState: tracked?.lifecycleState || chunk.metadata?.lifecycle?.state || 'active',
+      staleReasons: tracked?.reasons || [],
+      lifecycle: tracked?.lifecycle || chunk.metadata?.lifecycle || null,
+    },
+  };
+}
+
+export async function loadMemory(root, options = {}) {
   const directory = path.join(root, '.codex-memory');
   const chunks = [];
+  const health = await memoryHealthMap(root);
   for (const file of MEMORY_FILES) {
-    try { chunks.push(...sections(await fs.readFile(path.join(directory, file), 'utf8'), file)); } catch {}
+    try { chunks.push(...sections(await fs.readFile(path.join(directory, file), 'utf8'), file).map((chunk) => annotateMemoryChunk(chunk, health))); } catch {}
   }
-  chunks.push(...await graphChunks(root));
+  const graph = await graphChunks(root);
+  chunks.push(...graph.chunks);
+  if (options.withHealth) return { chunks, memoryHealth: health.report, graphHealth: graph.health };
   return chunks;
 }
 
@@ -116,11 +168,37 @@ function workspaceMatches(chunk, scope) {
   });
 }
 
+function stalePolicyAllows(chunk, policy) {
+  if (chunk.kind !== 'memory') return true;
+  const status = chunk.metadata?.evidenceStatus;
+  if (policy === 'exclude') return status === 'reviewed-current' || status === 'observed';
+  return true;
+}
+
+function knowledgePolicyAllows(chunk, includeInactive) {
+  if (chunk.kind !== 'memory' || includeInactive) return true;
+  return (chunk.metadata?.knowledgeState || 'active') === 'active';
+}
+
+function evidenceAdjustment(chunk, stalePolicy, includeInactive) {
+  if (chunk.kind !== 'memory') return 0;
+  if ((chunk.metadata?.knowledgeState || 'active') !== 'active') return includeInactive ? 0 : -10;
+  const status = chunk.metadata?.evidenceStatus;
+  if (status === 'reviewed-current') return 1;
+  if (status === 'review') return stalePolicy === 'include' ? -0.25 : -1;
+  if (status === 'untracked' || status === 'unknown') return stalePolicy === 'include' ? -0.5 : -1.5;
+  if (status === 'stale') return stalePolicy === 'include' ? -1 : -4;
+  return 0;
+}
+
 export async function searchMemory(root, query, limit = 6, options = {}) {
   const terms = tokenize(query);
   if (!terms.length) return [];
   const workspaceScope = await resolveWorkspaceScope(root, options.workspace);
-  const chunks = (await loadMemory(root)).filter((chunk) => workspaceMatches(chunk, workspaceScope));
+  const loaded = await loadMemory(root, { withHealth: true });
+  const stalePolicy = ['include', 'exclude', 'demote'].includes(options.stalePolicy) ? options.stalePolicy : 'demote';
+  const includeInactive = Boolean(options.includeInactive);
+  const chunks = loaded.chunks.filter((chunk) => workspaceMatches(chunk, workspaceScope) && knowledgePolicyAllows(chunk, includeInactive) && stalePolicyAllows(chunk, stalePolicy));
   if (!chunks.length) return [];
   const documentFrequencies = new Map();
   const documents = chunks.map((chunk) => {
@@ -138,6 +216,7 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
     const normalizedTitle = normalize(chunk.title);
     const document = documents[index];
     let score = chunk.source === 'decisions.md' ? 0.8 : chunk.source === 'mistakes.md' ? 0.6 : 0;
+    score += evidenceAdjustment(chunk, stalePolicy, includeInactive);
     for (const term of terms) {
       const tf = document.frequencies.get(term) || 0;
       if (tf) {
@@ -158,15 +237,21 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
 }
 
 export async function buildContextPack(root, query, limit = 8, options = {}) {
+  const loaded = await loadMemory(root, { withHealth: true });
   const results = await searchMemory(root, query, limit, options);
   const decisions = results.filter((item) => item.source === 'decisions.md');
   const risks = results.filter((item) => item.source === 'mistakes.md');
   const files = results.filter((item) => item.kind === 'graph');
   const globalKnowledge = results.filter((item) => item.kind !== 'graph' && !['decisions.md', 'mistakes.md'].includes(item.source));
   const estimatedCharacters = results.reduce((sum, item) => sum + item.title.length + item.text.length, 0);
+  const staleResults = results.filter((item) => item.metadata?.evidenceStatus === 'stale').length;
+  const reviewResults = results.filter((item) => ['review', 'untracked', 'unknown'].includes(item.metadata?.evidenceStatus)).length;
+  const inactiveResults = results.filter((item) => (item.metadata?.knowledgeState || 'active') !== 'active').length;
   return {
     query,
     workspace: options.workspace || null,
+    evidencePolicy: { stalePolicy: options.stalePolicy || 'demote', includeInactive: Boolean(options.includeInactive), staleResults, reviewResults, inactiveResults },
+    health: { memory: loaded.memoryHealth?.counts || null, graph: loaded.graphHealth },
     summary: {
       results: results.length,
       decisions: decisions.length,
@@ -186,6 +271,8 @@ export function formatResults(results) {
   return results.map((item, index) => {
     const sources = item.metadata?.sources?.length ? ` · sources ${item.metadata.sources.join(', ')}` : '';
     const workspace = item.metadata?.workspace ? ` · workspace ${item.metadata.workspace}` : '';
-    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${workspace}${sources}\n\n${item.text}`;
+    const evidence = item.metadata?.evidenceStatus ? ` · evidence ${item.metadata.evidenceStatus}` : '';
+    const knowledge = item.metadata?.knowledgeState && item.metadata.knowledgeState !== 'active' ? ` · knowledge ${item.metadata.knowledgeState}` : '';
+    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${workspace}${sources}${evidence}${knowledge}\n\n${item.text}`;
   }).join('\n\n');
 }

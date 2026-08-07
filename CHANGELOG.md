@@ -4,6 +4,60 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.8.0] - 2026-08-07
+
+### Added
+
+- Stale-aware durable-memory retrieval with explicit evidence status and `demote`, `include`, and `exclude` policies.
+- Source-fingerprint checks that omit stale/missing graph nodes from current graph retrieval and surface graph drift through context health, `status`, and `doctor`.
+- Reviewed durable-memory lifecycle states: `active`, `deprecated`, `rejected`, and `superseded`, with reviewer/reason audit metadata and active-replacement validation for supersession.
+- `cmi memory-state` and the write-enabled MCP `set_project_memory_state` tool for explicit lifecycle review.
+- Explicit historical retrieval of inactive knowledge through CLI/MCP `includeInactive`, while inactive knowledge remains excluded from normal task context.
+- Shared local durable-memory write locking across remember, refresh, and lifecycle mutations.
+- Versioned durable-memory metadata for new/refreshed entries (`schemaVersion: 1`, active lifecycle state).
+- Runtime structural validation, per-record write locking, revision metadata, and stale-lock reclamation for durable change records.
+- Verification provenance classes (`reported`, `observed-command`) with bounded command metadata supported consistently by runtime, JSON Schema, and MCP input Schema.
+- Sample-sensitive historical co-change support/confidence, explicit `historical-correlation` evidence type, verification pass/evidence rates, and expected-vs-actual path precision/recall/F1 calibration.
+- Durable Session Continuation Intelligence for coding, debugging, audit, review, research, verification, and no-code investigation sessions.
+- `cmi session start`, `observe`, `status`, `close`, `show`, `list`, and `handoff` workflows with explicit outcome, unresolved findings, recommended next actions, and one highest-priority next action.
+- Persistent `.codex-memory/findings.json` project findings with `open`, `resolved`, `accepted`, `dismissed`, and `superseded` lifecycle states so unresolved issues survive AI-session boundaries.
+- Deterministic P0–P3 recommendation ordering for blockers, failed/incomplete verification, project-health gaps, active change records, prediction gaps, unexpected impact, open questions, and worktree/session-attribution gaps.
+- Bounded session handoffs containing objective, branch/HEAD/worktree state, observed scope, accomplishments, decisions, questions, completed/active changes, open findings, next actions, and review-only knowledge candidates.
+- Versioned `schemas/session-record.schema.json` storage contract for durable session/outcome intelligence.
+- Session-aware MCP tools for status/report/list/handoff/findings plus write-enabled start/observe/finalize/finding-review workflows while retaining the existing MCP surface.
+- MCP resources `cmi://project/session/latest`, `cmi://project/session-handoff/latest`, and `cmi://project/findings`.
+- MCP prompts `close_project_session` and `continue_from_session_handoff`, plus initialize instructions telling compliant agents to surface P0/P1 findings and the highest-priority next action before ending substantial work.
+- Regression coverage for stale retrieval policy semantics, stale graph health, memory lifecycle, ambiguous ID prefixes, concurrent memory mutation serialization, verification provenance, record validation, calibrated behavioral confidence, Git renames, detached HEAD baselines, no-code sessions, persistent blockers, finding auto-resolution, CLI close-session reporting, and MCP session continuation behavior.
+
+### Changed
+
+- Default memory search/context now preserves stale evidence as clearly labeled, heavily down-ranked evidence instead of silently treating it as current; `exclude` is the opt-in strict-current mode.
+- Inactive durable memory remains human-reviewable history but no longer drives normal ranked retrieval or makes project memory unhealthy.
+- Reviewed memory mutations require a unique ID/prefix; ambiguous prefixes fail closed.
+- Bulk refresh skips intentionally inactive knowledge, and refreshing a single inactive entry requires explicit reactivation first.
+- Co-change confidence no longer maps directly from occurrence count; tiny samples cannot receive high confidence merely because support is 100%.
+- Change-history calibration now reports path precision, recall, F1, sample count, and sample-sensitive confidence while retaining compatibility aliases for v0.7 metrics.
+- Git worktree parsing now uses NUL-delimited porcelain output so rename/copy destination paths and original paths remain distinct instead of becoming `old -> new` pseudo-paths.
+- The installed `cmi` entrypoint now adds Session/Finding Intelligence commands while delegating all existing commands to the original CLI implementation.
+- The installed `cmi-mcp` entrypoint now exposes a unified existing + session-continuation MCP surface and preserves the existing server as the protocol core.
+- MCP documentation/prompts distinguish lifecycle state, stale-evidence policy, historical correlation, supplied command-result provenance, persistent findings, and next-action advice from independently verified truth.
+- Session close is designed to surface problems and evidence-based follow-up immediately instead of requiring the user to ask what should happen next.
+
+### Fixed
+
+- Top-level CLI help now exposes the Session and Finding command groups, and `change`, `session`, and `finding` group help exits cleanly.
+- `cmi mcp-config` now points to the session-aware `mcp-entry.js`, keeping generated configuration aligned with the installed `cmi-mcp` surface.
+
+### Evidence limits
+
+- Session recommendations do not execute project commands and do not prove business priority.
+- Persistent findings can only cover conditions CMI can observe or that a human/agent explicitly records.
+- Historical verification suggestions remain correlation, not causal proof that a command is required.
+- MCP instructions encourage close-session finalization but cannot force arbitrary clients that ignore MCP guidance to invoke it before disconnecting.
+- Session and change learning candidates remain review-only and are never promoted to durable project truth automatically.
+
 ## [0.7.0] - 2026-08-07
 
 ### Added
