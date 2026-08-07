@@ -1,0 +1,46 @@
+name: CMI v0.8 exact PR-head experiential audit
+on:
+  push:
+    branches:
+      - validation/v08-final-pr-experiential-10820bea
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout audit harness
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Checkout exact PR candidate
+        uses: actions/checkout@v6
+        with:
+          repository: lenhonbp/codex-memory-intelligence
+          ref: 10820bea317613b6c4ec37931619416d5fbaacea
+          path: candidate
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Assert exact candidate SHA and pack it
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C candidate rev-parse HEAD)"
+          test "$actual" = "10820bea317613b6c4ec37931619416d5fbaacea"
+          tarball="$(cd candidate && npm pack --ignore-scripts --silent)"
+          echo "tarball=$PWD/candidate/$tarball" >> "$GITHUB_OUTPUT"
+      - name: Primary installed-package experiential audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 300s node scripts/experiential-audit.js "${{ steps.pack.outputs.tarball }}"
+      - name: Extended installed-package experiential audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 300s node scripts/experiential-audit-extended.js "${{ steps.pack.outputs.tarball }}"
