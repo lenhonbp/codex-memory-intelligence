@@ -171,9 +171,8 @@ function workspaceMatches(chunk, scope) {
 function stalePolicyAllows(chunk, policy) {
   if (chunk.kind !== 'memory') return true;
   const status = chunk.metadata?.evidenceStatus;
-  if (policy === 'include') return true;
   if (policy === 'exclude') return status === 'reviewed-current' || status === 'observed';
-  return status !== 'stale';
+  return true;
 }
 
 function knowledgePolicyAllows(chunk, includeInactive) {
