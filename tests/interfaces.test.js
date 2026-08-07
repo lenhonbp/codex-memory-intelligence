@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { VERSION } from '../src/version.js';
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const mcp = fileURLToPath(new URL('../src/mcp.js', import.meta.url));
@@ -70,10 +71,10 @@ async function initialize(server, version = '2025-11-25') {
   return initialized;
 }
 
-test('CLI exposes v0.5 incremental, workspace, advisory, ignore, and version workflows', async () => {
+test('CLI exposes incremental, workspace, advisory, ignore, and version workflows', async () => {
   const root = await fixture();
   let result = await run(process.execPath, [cli, '--version'], { cwd: root });
-  assert.equal(result.stdout.trim(), '0.5.0');
+  assert.equal(result.stdout.trim(), VERSION);
   result = await run(process.execPath, [cli, 'scan', '--json'], { cwd: root });
   assert.equal(result.code, 0);
   assert.equal(JSON.parse(result.stdout).graph.parsedFiles, 2);
