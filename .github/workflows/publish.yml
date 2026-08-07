@@ -4,9 +4,11 @@ on:
   push:
     tags:
       - "v*.*.*"
+    branches:
+      - "release/v*.*.*"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
@@ -15,12 +17,16 @@ concurrency:
 
 jobs:
   publish:
-    if: github.repository == 'lenhonbp/codex-memory-intelligence'
+    if: >-
+      github.repository == 'lenhonbp/codex-memory-intelligence' &&
+      (github.ref_type == 'tag' || github.actor == 'lenhonbp')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
@@ -28,8 +34,46 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
+      - name: Resolve and guard release target
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+            release_branch="false"
+          elif [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" =~ ^release/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            tag="${BASH_REMATCH[1]}"
+            release_branch="true"
+            git fetch origin main --depth=1
+            main_sha="$(git rev-parse origin/main)"
+            if [[ "$GITHUB_SHA" != "$main_sha" ]]; then
+              echo "Release branch must point exactly at current main ($main_sha), got $GITHUB_SHA." >&2
+              exit 1
+            fi
+          else
+            echo "Unsupported release ref: $GITHUB_REF" >&2
+            exit 1
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          fi
+
+          remote_tag_sha="$(git ls-remote --refs origin "refs/tags/$tag" | awk '{print $1}')"
+          if [[ -n "$remote_tag_sha" && "$remote_tag_sha" != "$GITHUB_SHA" ]]; then
+            echo "Tag $tag already exists at $remote_tag_sha instead of $GITHUB_SHA." >&2
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_branch=$release_branch" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=$([[ -n "$remote_tag_sha" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Verify release metadata
-        run: npm run release:check -- "$GITHUB_REF_NAME"
+        run: npm run release:check -- "${{ steps.release.outputs.tag }}"
 
       - name: Verify repository
         run: npm run verify
@@ -40,5 +84,86 @@ jobs:
       - name: Test packed installation
         run: npm run package:smoke
 
+      - name: Create release tag
+        if: steps.release.outputs.release_branch == 'true' && steps.release.outputs.tag_exists != 'true'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Check npm publication state
+        id: npm_state
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          if npm view "$package_name@$package_version" version --json >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to npm
+        if: steps.npm_state.outputs.published != 'true'
         run: npm publish --access public
+
+      - name: Verify npm publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          published_version="$(npm view "$package_name@$package_version" version)"
+          test "$published_version" = "$package_version"
+
+      - name: Prepare GitHub release notes
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const tag = process.env.RELEASE_TAG;
+          const version = tag.replace(/^v/, '');
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const marker = `## [${version}]`;
+          const start = changelog.indexOf(marker);
+          if (start < 0) throw new Error(`Missing changelog section for ${version}`);
+          const afterStart = changelog.slice(start + marker.length);
+          const next = afterStart.search(/^## \[/m);
+          const section = (next >= 0 ? afterStart.slice(0, next) : afterStart).trim();
+          if (!section) throw new Error(`Empty changelog section for ${version}`);
+          const notes = `# CMI ${tag}\n\n${section}\n`;
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'release-notes.md'), notes);
+          NODE
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $RELEASE_TAG already exists; keeping it unchanged."
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "CMI $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+
+      - name: Remove temporary release branch
+        if: success() && steps.release.outputs.release_branch == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --delete "$GITHUB_REF_NAME"
