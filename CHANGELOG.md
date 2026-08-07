@@ -4,6 +4,26 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Evidence-driven Change Intelligence Loop with durable BEFORE → DURING → AFTER records under `.codex-memory/changes/`.
+- `cmi change start`, `observe`, `complete`, `show`, `list`, and `history` CLI workflows.
+- Versioned JSON Schema for change-record storage.
+- Prediction-versus-observation comparison with changed-path coverage, predicted-scope touched, and explicit prediction gaps.
+- Bounded historical file/boundary co-change evidence and verification patterns derived from completed local change records.
+- Review-only learning candidates for prediction gaps, failed verification claims, and unexpected impact.
+- MCP read tools for change history and records, plus write-enabled lifecycle tools behind the existing explicit write opt-in.
+- `cmi://project/change-history` MCP resource and `run_change_intelligence_loop` prompt.
+- Git and non-Git tests covering change attribution, completion evidence, historical correlation, secret rejection, and record immutability.
+
+### Changed
+
+- `prepare_project_change` now instructs agents to consult relevant completed project-change history before implementation.
+- MCP `--write` documentation now covers durable change-record writes as well as durable memory writes.
+- CMI-internal `.codex-memory/` paths are excluded from observed product-change scope so change records cannot observe themselves.
+- Change-record Git baselines preserve the number of omitted CMI-internal changes while calculating project attribution from non-CMI paths only.
+- Historical co-change is explicitly labeled correlation rather than causality, and verification results are explicitly treated as evidence claims rather than commands executed by CMI.
+
 ## [0.6.0] - 2026-08-07
 
 ### Added

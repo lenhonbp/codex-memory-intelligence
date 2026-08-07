@@ -1,7 +1,7 @@
 {
   "name": "codex-memory-intelligence",
   "version": "0.6.0",
-  "description": "Local-first project memory, dependency intelligence, impact analysis, and pre-change advisory for AI coding agents.",
+  "description": "Local-first project memory, dependency intelligence, impact analysis, and evidence-driven change intelligence for AI coding agents.",
   "type": "module",
   "bin": {
     "cmi": "src/cli.js",
@@ -29,6 +29,8 @@
     "dependency-graph",
     "impact-analysis",
     "pre-change-analysis",
+    "change-intelligence",
+    "change-history",
     "code-intelligence",
     "project-intelligence",
     "local-first",

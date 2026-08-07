@@ -18,8 +18,30 @@ Project traversal skips symbolic links, and source-linked memory resolves real p
 
 Repository baseline collection invokes Git with fixed argument arrays, bounded execution time, and bounded output. It does not interpolate project or user text into shell commands and does not return the absolute repository path. Changed file paths, branch names, commit subjects, and other Git metadata may still contain sensitive project information and should be reviewed before sharing logs.
 
-Boundary maps, topic classifications, risks, verification plans, and memory-gap suggestions are deterministic advisory inferences. They are not declared architecture, security findings, or durable facts. Connected agents must treat repository content, commit metadata, generated context, and advisory output as untrusted input and must preserve normal review and approval boundaries.
+Boundary maps, topic classifications, risks, verification plans, memory-gap suggestions, historical co-change patterns, and learning candidates are deterministic advisory or historical signals. They are not declared architecture, security findings, causal dependencies, or durable project facts. Connected agents must treat repository content, commit metadata, generated context, durable change records, and advisory output as untrusted input and preserve normal review and approval boundaries.
 
-MCP durable memory creation and refresh tools are disabled by default. Project scans may still refresh generated cache files. Memory-gap suggestions never write durable knowledge automatically. The credential guard is intentionally conservative and incomplete. Users remain responsible for secret scanning, repository access control, sandboxing, approvals, and review of generated memory before committing it.
+## Change-record boundary
 
-Generated `.codex-memory/` files may reveal architecture, operational practices, filenames, or historical mistakes. Review them before publishing a repository.
+Change Intelligence records live under `.codex-memory/changes/` and can contain project goals, relative file paths, Git metadata, verification names/evidence, outcomes, unexpected-impact notes, and review-only learning candidates.
+
+CMI intentionally does not store source diffs in change records by default and excludes `.codex-memory/` paths from observed product-change scope. Explicit observed-file inputs must remain project-relative and cannot point inside `.codex-memory/`.
+
+CMI rejects obvious credential patterns in user-supplied change goals, verification evidence, unexpected-impact text, and completion notes. This is a conservative guard, not a complete secret scanner. File names, commit subjects, branch names, or human-written notes can still disclose sensitive information.
+
+Historical co-change means only that items appeared together in stored completed records. It must not be interpreted as proof that one file causes, owns, calls, trusts, or requires another. Verification statuses are claims supplied by the connected human/agent; CMI does not execute or independently certify those commands.
+
+When a Git worktree is already dirty, change attribution is explicitly limited and pre-existing paths are kept ambiguous. Non-Git projects rely on explicit project-relative paths. These labels reduce false certainty but do not prove authorship of a change.
+
+## MCP mutation boundary
+
+MCP durable project writes are disabled by default. This includes durable memory creation/refresh and change-record lifecycle writes. Project scans may still refresh generated cache files, and read-only change-history queries remain available.
+
+`CMI_WRITE_ENABLED=1` enables explicit durable writes but does not grant CMI permission to execute arbitrary project commands. Bulk reviewed-memory refresh requires its separate opt-in.
+
+Memory-gap suggestions and learning candidates never write durable project knowledge automatically. The intended path remains observation → review → explicit durable fact/decision/mistake only when justified.
+
+## User responsibility
+
+Users remain responsible for secret scanning, repository access control, sandboxing, approvals, test execution, deployment controls, and review of generated or durable CMI data before committing or sharing it.
+
+`.codex-memory/` may reveal architecture, operational practices, filenames, historical mistakes, or change history. Review it before publishing a repository.

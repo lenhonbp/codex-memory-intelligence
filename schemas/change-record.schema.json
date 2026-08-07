@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/change-record.schema.json",
+  "title": "CMI change record",
+  "type": "object",
+  "required": ["schemaVersion", "id", "status", "goal", "createdAt", "updatedAt", "before", "observations", "policy"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "format": "uuid" },
+    "status": { "enum": ["active", "completed"] },
+    "goal": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "workspace": { "type": ["string", "null"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "before": {
+      "type": "object",
+      "required": ["baseline", "predicted", "historicalEvidence", "attribution"],
+      "properties": {
+        "baseline": { "type": "object" },
+        "predicted": {
+          "type": "object",
+          "required": ["files", "boundaries", "risks", "verification"],
+          "properties": {
+            "files": { "type": "array", "maxItems": 160, "items": { "type": "string" } },
+            "boundaries": { "type": "array", "maxItems": 30, "items": { "type": "object" } },
+            "risks": { "type": "array", "maxItems": 20, "items": { "type": "object" } },
+            "verification": { "type": "array", "maxItems": 20, "items": { "type": "object" } }
+          },
+          "additionalProperties": false
+        },
+        "memoryCoverage": { "type": ["object", "null"] },
+        "provenance": { "type": "object" },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "historicalEvidence": { "type": "object" },
+        "attribution": { "enum": ["strong", "limited-preexisting-worktree", "explicit-files-only"] }
+      },
+      "additionalProperties": false
+    },
+    "observations": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "required": ["observedAt", "baseline", "attribution", "observedChangedFiles", "observedBoundaries", "comparison"],
+        "properties": {
+          "observedAt": { "type": "string", "format": "date-time" },
+          "baseline": { "type": "object" },
+          "attribution": { "enum": ["strong", "limited-preexisting-worktree", "explicit-files-only"] },
+          "observedChangedFiles": { "type": "array", "maxItems": 160, "items": { "type": "string" } },
+          "committedFilesSinceStart": { "type": "array", "maxItems": 160, "items": { "type": "string" } },
+          "explicitFiles": { "type": "array", "maxItems": 160, "items": { "type": "string" } },
+          "ambiguousPreExistingFiles": { "type": "array", "maxItems": 160, "items": { "type": "string" } },
+          "observedBoundaries": { "type": "array", "items": { "type": "object" } },
+          "unmappedFiles": { "type": "array", "maxItems": 160, "items": { "type": "string" } },
+          "unexpectedBoundaries": { "type": "array", "items": { "type": "object" } },
+          "comparison": {
+            "type": "object",
+            "required": ["predictedFileCount", "observedChangedFileCount", "overlapCount", "missedByPrediction", "predictedButUnchanged", "interpretation"],
+            "properties": {
+              "predictedFileCount": { "type": "integer", "minimum": 0 },
+              "observedChangedFileCount": { "type": "integer", "minimum": 0 },
+              "overlapCount": { "type": "integer", "minimum": 0 },
+              "overlap": { "type": "array", "items": { "type": "string" } },
+              "missedByPrediction": { "type": "array", "items": { "type": "string" } },
+              "predictedButUnchanged": { "type": "array", "items": { "type": "string" } },
+              "changedPathCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "predictedScopeTouched": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "interpretation": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "completion": {
+      "type": ["object", "null"],
+      "properties": {
+        "completedAt": { "type": "string", "format": "date-time" },
+        "outcome": { "enum": ["succeeded", "failed", "partial", "abandoned", "unknown"] },
+        "finalObservation": { "type": "object" },
+        "verifications": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["name", "status"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "status": { "enum": ["passed", "failed", "skipped", "unknown"] },
+              "evidence": { "type": "string", "maxLength": 500 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "unexpectedImpact": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "notes": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "learningCandidates": { "type": "array", "items": { "type": "object" } },
+        "policy": { "type": "string" }
+      },
+      "required": ["completedAt", "outcome", "finalObservation", "verifications", "unexpectedImpact", "notes", "learningCandidates", "policy"],
+      "additionalProperties": false
+    },
+    "policy": { "type": "string" }
+  },
+  "additionalProperties": false
+}

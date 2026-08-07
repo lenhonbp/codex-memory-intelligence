@@ -16,6 +16,17 @@ import {
   formatMemorySuggestions,
   formatChangeBrief,
 } from './advisor.js';
+import {
+  startChangeRecord,
+  observeChangeRecord,
+  completeChangeRecord,
+  getChangeRecord,
+  listChangeRecords,
+  buildChangeInsights,
+  formatChangeRecord,
+  formatChangeInsights,
+  formatChangeList,
+} from './change-intelligence.js';
 import { VERSION } from './version.js';
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -23,7 +34,7 @@ const pathCommands = new Set(['init','scan','status','graph','stale','doctor','w
 const json = args.includes('--json');
 
 function help() {
-  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nBoundary maps, risks, and memory-gap suggestions are advisory inferences with explicit confidence.\nMCP durable-memory mutations are disabled unless --write is explicitly requested.\n`);
+  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including memory and change records, are disabled unless --write is explicitly requested.\n`);
 }
 
 function optionValues(name) {
@@ -115,6 +126,50 @@ try {
     if (!target) throw new Error('Usage: cmi impact <file-or-symbol> [--depth N]');
     const result = await impactAnalysis(process.cwd(), target, optionNumber('--depth', 3));
     console.log(json ? JSON.stringify(result, null, 2) : formatImpact(result));
+  }
+  else if (cmd === 'change') {
+    const values = positional(['--limit','--depth','--workspace','--file','--outcome','--verify','--unexpected','--note','--status']);
+    const action = values.shift();
+    if (action === 'start') {
+      const goal = values.join(' ').trim();
+      if (!goal) throw new Error('Usage: cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path]');
+      const result = await startChangeRecord(process.cwd(), goal, { limit: optionNumber('--limit', 12), depth: optionNumber('--depth', 3), workspace: optionValues('--workspace')[0] });
+      console.log(json ? JSON.stringify(result, null, 2) : formatChangeRecord(result));
+    }
+    else if (action === 'observe') {
+      const selector = values[0];
+      if (!selector) throw new Error('Usage: cmi change observe <id> [--file path ...]');
+      const result = await observeChangeRecord(process.cwd(), selector, { files: optionValues('--file') });
+      console.log(json ? JSON.stringify(result, null, 2) : `Observed ${result.observedChangedFiles.length} changed path(s) · attribution ${result.attribution} · prediction gaps ${result.comparison.missedByPrediction.length}`);
+    }
+    else if (action === 'complete') {
+      const selector = values[0];
+      if (!selector) throw new Error('Usage: cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown]');
+      const result = await completeChangeRecord(process.cwd(), selector, {
+        outcome: optionValues('--outcome')[0] || 'unknown',
+        files: optionValues('--file'),
+        verifications: optionValues('--verify'),
+        unexpectedImpact: optionValues('--unexpected'),
+        notes: optionValues('--note'),
+      });
+      console.log(json ? JSON.stringify(result, null, 2) : formatChangeRecord(result));
+    }
+    else if (action === 'show') {
+      const selector = values[0];
+      if (!selector) throw new Error('Usage: cmi change show <id> [--json]');
+      const result = await getChangeRecord(process.cwd(), selector);
+      console.log(json ? JSON.stringify(result, null, 2) : formatChangeRecord(result));
+    }
+    else if (action === 'list') {
+      const result = await listChangeRecords(process.cwd(), { status: optionValues('--status')[0], limit: optionNumber('--limit', 20) });
+      console.log(json ? JSON.stringify(result, null, 2) : formatChangeList(result));
+    }
+    else if (action === 'history') {
+      const query = values.join(' ').trim();
+      const result = await buildChangeInsights(process.cwd(), query, { limit: optionNumber('--limit', 6) });
+      console.log(json ? JSON.stringify(result, null, 2) : formatChangeInsights(result));
+    }
+    else throw new Error('Usage: cmi change <start|observe|complete|show|list|history> ...');
   }
   else if (cmd === 'remember') {
     const [type, ...text] = positional(['--source']);
