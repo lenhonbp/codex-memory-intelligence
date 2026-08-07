@@ -107,14 +107,15 @@ function parsePlanningFile(relativePath, content, fileOrder) {
     const checkbox = line.match(/^\s*[-*+]\s+\[\s\]\s+(.+?)\s*$/i);
     if (checkbox) {
       const text = boundedText(checkbox[1]);
-      if (text) output.push(signal(relativePath, index, section, text, 'unchecked-markdown-task', 'medium', fileOrder, 40));
+      if (text) output.push(signal(relativePath, index, section, text, 'unchecked-markdown-task', 'medium', fileOrder, 500));
       continue;
     }
+    if (/^\s*[-*+]\s+\[[xX]\]\s+/.test(line)) continue;
 
     const explicit = line.match(/^\s*(?:[-*+]\s*)?(?:TODO|NEXT|ACTION|FOLLOW[- ]?UP)\s*[:\-]\s*(.+?)\s*$/i);
     if (explicit) {
       const text = boundedText(explicit[1]);
-      if (text) output.push(signal(relativePath, index, section, text, 'explicit-planning-marker', 'medium', fileOrder, 30));
+      if (text) output.push(signal(relativePath, index, section, text, 'explicit-planning-marker', 'medium', fileOrder, 450));
       continue;
     }
 
@@ -146,6 +147,6 @@ export async function getPlanningSignals(root, options = {}) {
     totalDetected: signals.length,
     truncated: signals.length > limit,
     inspectedFiles: candidates.length,
-    policy: 'Planning tasks, explicit planning markers, and list items under current/next/priority-style planning sections are observed planning evidence, not proof of current business priority. Non-checkbox list items are lower-confidence review candidates. CMI recommends reviewing planning evidence only after stronger unresolved evidence is addressed.',
+    policy: 'Planning tasks, explicit planning markers, and list items under current/next/priority-style planning sections are observed planning evidence, not proof of current business priority. Explicit unchecked tasks/markers carry stronger planning evidence than ordinary list items; checked tasks are excluded. Non-checkbox list items are lower-confidence review candidates. CMI recommends reviewing planning evidence only after stronger unresolved evidence is addressed.',
   };
 }
