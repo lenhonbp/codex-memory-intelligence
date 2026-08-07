@@ -1,0 +1,22 @@
+name: CMI v0.8 experiential fix validation
+on:
+  push:
+    branches:
+      - validation/v08-experiential-fixes
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Verify fixed source and regression tests
+        run: npm run verify
+      - name: Benchmark smoke
+        run: npm run benchmark:smoke
+      - name: Package smoke
+        run: npm run package:smoke
