@@ -141,8 +141,8 @@ export async function getRepositoryBaseline(root) {
   try {
     const inside = await runGit(resolvedRoot, ['rev-parse', '--is-inside-work-tree']);
     if (inside !== 'true') return { available: false, reason: 'The project is not inside a Git worktree.' };
-    const repositoryRoot = await runGit(resolvedRoot, ['rev-parse', '--show-toplevel']);
-    const projectPath = slash(path.relative(repositoryRoot, resolvedRoot) || '.');
+    const projectPrefix = await runGit(resolvedRoot, ['rev-parse', '--show-prefix']);
+    const projectPath = slash(projectPrefix).replace(/\/$/, '') || '.';
     let branch = null;
     let upstream = null;
     let ahead = null;
