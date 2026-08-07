@@ -42,6 +42,8 @@ The v0.8 foundation strengthens evidence quality before expanding intelligence s
 - [x] Add reviewed memory lifecycle states (`active`, `deprecated`, `rejected`, `superseded`) with reason/reviewer audit metadata and active-replacement validation for supersession.
 - [x] Exclude inactive knowledge from trusted retrieval by default while preserving explicit historical inspection.
 - [x] Reject ambiguous memory-ID prefixes for reviewed mutations instead of mutating multiple entries.
+- [x] Serialize durable-memory append, refresh, and lifecycle mutation through one local writer lock.
+- [x] Version new/refreshed durable-memory metadata while preserving backward-compatible reads.
 - [x] Runtime-validate durable change records on write and read instead of relying on a documentation-only JSON Schema.
 - [x] Add atomic per-record write locking and revision metadata for local concurrent-writer safety.
 - [x] Distinguish reported verification claims from supplied observed-command metadata without executing commands inside CMI.
@@ -50,6 +52,7 @@ The v0.8 foundation strengthens evidence quality before expanding intelligence s
 - [x] Expose historical correlation as an explicit evidence type rather than causal dependency.
 - [x] Track verification pass rates and observed-command evidence rates across relevant completed changes.
 - [x] Add expected-vs-actual path recall, precision, F1, and sample-count confidence while retaining compatibility aliases.
+- [x] Parse Git rename/copy worktree status as destination/original paths instead of arrow pseudo-paths, with detached-HEAD regression coverage.
 - [x] Keep learning candidates review-only and preserve the observed/reviewed/inferred distinction.
 
 ### v0.8 field-validation work
@@ -57,7 +60,7 @@ The v0.8 foundation strengthens evidence quality before expanding intelligence s
 These items require real evidence from multiple repositories or longer-lived histories. They must not be marked complete from synthetic fixtures alone.
 
 - [ ] Build a real-repository fixture corpus with anonymized expected graphs, change records, and advisory outputs.
-- [ ] Stress incremental correctness for renames, clock skew, rebases, detached HEADs, dirty worktrees, and large monorepos.
+- [ ] Stress incremental correctness for renames after scan, clock skew, rebases, dirty worktrees, and large monorepos beyond the deterministic Git-baseline fixtures already covered.
 - [ ] Validate change-history usefulness across unrelated repository types instead of tuning examples around one product domain.
 - [ ] Recalibrate behavioral confidence thresholds from enough real completed tasks to replace provisional thresholds with empirical ones.
 - [ ] Measure whether historical verification patterns improve agent verification choices on repeated project work.
