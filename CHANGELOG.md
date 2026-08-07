@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+This section describes development-branch work only. The published package remains `0.7.0` until an intentional release changes version metadata and produces release artifacts.
+
 ### Added
 
 - Stale-aware durable-memory retrieval with explicit evidence status and `demote`, `include`, and `exclude` policies.
