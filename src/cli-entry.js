@@ -54,9 +54,15 @@ function sessionOptions() {
   };
 }
 function print(value, formatted) { console.log(json ? JSON.stringify(value, null, 2) : formatted); }
+function groupHelp(name) {
+  if (name === 'session') return 'Usage: cmi session <start|observe|status|close|show|list|handoff> ...\n\nTrack project work, persist findings, and produce an evidence-based handoff/next action.';
+  return 'Usage: cmi finding <list|show|state> ...\n\nInspect and explicitly review persistent project findings.';
+}
 
 try {
-  if (command === 'session') {
+  if (hasFlag('--help') || hasFlag('-h') || args[0] === 'help') {
+    console.log(groupHelp(command));
+  } else if (command === 'session') {
     const values = positional(['--file','--note','--accomplished','--blocker','--decision','--question','--outcome','--status','--limit']);
     const action = values.shift();
     if (action === 'start') {
