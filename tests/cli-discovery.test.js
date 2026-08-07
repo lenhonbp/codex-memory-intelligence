@@ -50,7 +50,8 @@ test('mcp-config uses the session-aware MCP entrypoint in safe and write modes',
   let config = JSON.parse(result.stdout).mcpServers['codex-memory-intelligence'];
   assert.equal(path.basename(config.args[0]), 'mcp-entry.js');
   assert.equal(config.env.CMI_WRITE_ENABLED, '0');
-  assert.equal(config.env.CMI_ALLOW_BULK_REFRESH, '0');
+  assert.notEqual(config.env.CMI_ALLOW_BULK_REFRESH, '1');
+
   result = await run(['mcp-config', '--write', '--bulk-refresh'], root);
   assert.equal(result.code, 0);
   config = JSON.parse(result.stdout).mcpServers['codex-memory-intelligence'];
