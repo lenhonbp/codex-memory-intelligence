@@ -2,6 +2,23 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Bounded local Git baseline reporting without absolute-path disclosure.
+- Deterministic advisory project-boundary maps derived from workspaces, paths, and import edges.
+- Review-only task-specific memory-gap proposals with confidence and evidence.
+- Structured pre-change briefs combining baseline, ranked context, impact, boundaries, risks, verification, assumptions, and provenance.
+- CLI commands: `baseline`, `boundaries`, `memory-gaps`, and `prepare`.
+- MCP tools and resources for repository baseline, boundary maps, memory-gap proposals, and pre-change briefs.
+- Versioned JSON Schema for pre-change brief output.
+
+### Changed
+
+- The `prepare_project_change` MCP prompt now directs agents to use the structured pre-change brief and treat all inferred knowledge as advisory.
+- Architecture and security documentation now distinguish observed project evidence from inferred advisory output.
+
 ## [0.5.0] - 2026-08-06
 
 ### Added

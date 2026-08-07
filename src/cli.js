@@ -6,14 +6,24 @@ import { searchMemory, buildContextPack, formatResults } from './search.js';
 import { loadProjectGraph, impactAnalysis, formatImpact } from './graph.js';
 import { checkStaleMemory, formatStaleReport, refreshMemory } from './stale.js';
 import { formatWorkspaces } from './workspaces.js';
+import {
+  getRepositoryBaseline,
+  mapProjectBoundaries,
+  suggestProjectMemory,
+  prepareChangeBrief,
+  formatRepositoryBaseline,
+  formatBoundaryMap,
+  formatMemorySuggestions,
+  formatChangeBrief,
+} from './advisor.js';
 import { VERSION } from './version.js';
 
 const [cmd, ...args] = process.argv.slice(2);
-const pathCommands = new Set(['init','scan','status','graph','stale','doctor','workspaces']);
+const pathCommands = new Set(['init','scan','status','graph','stale','doctor','workspaces','baseline','boundaries']);
 const json = args.includes('--json');
 
 function help() {
-  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nMCP durable-memory mutations are disabled unless --write is explicitly requested.\n`);
+  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nBoundary maps, risks, and memory-gap suggestions are advisory inferences with explicit confidence.\nMCP durable-memory mutations are disabled unless --write is explicitly requested.\n`);
 }
 
 function optionValues(name) {
@@ -62,6 +72,14 @@ try {
     if (!workspaces) throw new Error('Project workspace index is missing. Run cmi scan.');
     console.log(json ? JSON.stringify(workspaces, null, 2) : formatWorkspaces(workspaces));
   }
+  else if (cmd === 'baseline') {
+    const result = await getRepositoryBaseline(commandRoot());
+    console.log(json ? JSON.stringify(result, null, 2) : formatRepositoryBaseline(result));
+  }
+  else if (cmd === 'boundaries') {
+    const result = await mapProjectBoundaries(commandRoot());
+    console.log(json ? JSON.stringify(result, null, 2) : formatBoundaryMap(result));
+  }
   else if (cmd === 'explain-ignore') {
     const candidate = positional()[0];
     if (!candidate) throw new Error('Usage: cmi explain-ignore <path> [--directory]');
@@ -79,6 +97,18 @@ try {
       const results = await searchMemory(process.cwd(), query, optionNumber('--limit', 6), options);
       console.log(json ? JSON.stringify(results, null, 2) : formatResults(results));
     }
+  }
+  else if (cmd === 'prepare') {
+    const query = positional(['--limit','--depth','--workspace']).join(' ').trim();
+    if (!query) throw new Error('Usage: cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path]');
+    const result = await prepareChangeBrief(process.cwd(), query, { limit: optionNumber('--limit', 12), depth: optionNumber('--depth', 3), workspace: optionValues('--workspace')[0] });
+    console.log(json ? JSON.stringify(result, null, 2) : formatChangeBrief(result));
+  }
+  else if (cmd === 'memory-gaps') {
+    const query = positional(['--limit','--workspace']).join(' ').trim();
+    if (!query) throw new Error('Usage: cmi memory-gaps <query> [--limit N] [--workspace name-or-path]');
+    const result = await suggestProjectMemory(process.cwd(), query, { limit: optionNumber('--limit', 20), workspace: optionValues('--workspace')[0] });
+    console.log(json ? JSON.stringify(result, null, 2) : formatMemorySuggestions(result));
   }
   else if (cmd === 'impact') {
     const target = positional(['--depth']).join(' ').trim();

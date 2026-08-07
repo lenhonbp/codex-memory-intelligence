@@ -6,14 +6,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
-A local-first memory, dependency-intelligence, and impact-analysis layer for Codex and other AI coding agents.
+A local-first memory, dependency-intelligence, impact-analysis, and pre-change advisory layer for Codex and other AI coding agents.
 
-CMI helps an agent answer four questions before changing a project:
+CMI helps an agent answer six questions before changing a project:
 
 1. **What has the team already learned or decided?**
-2. **Which files, symbols, and workspaces are connected to this change?**
-3. **Is the stored knowledge still current?**
-4. **Which repository content should be ignored or treated as generated noise?**
+2. **Which files, symbols, workspaces, and inferred boundaries are connected to this change?**
+3. **What is the current Git baseline?**
+4. **What could be affected, and how complete is that inference?**
+5. **Which reviewed project knowledge is missing?**
+6. **Which verification work should happen before the change is considered complete?**
 
 Everything stays in a human-reviewable `.codex-memory/` directory. There is no cloud service, API key, database, or telemetry.
 
@@ -23,7 +25,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 v0.5 is a real-world public beta, published on npm as `codex-memory-intelligence`. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and release-metadata validation.
 
-Static parsing remains best effort rather than compiler-grade analysis. See [Architecture](docs/ARCHITECTURE.md), [Benchmarks](docs/BENCHMARKS.md), and [Roadmap](ROADMAP.md).
+Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Every inferred boundary, risk, and memory-gap proposal is labeled as advisory and includes confidence or provenance. See [Architecture](docs/ARCHITECTURE.md), [Benchmarks](docs/BENCHMARKS.md), and [Roadmap](ROADMAP.md).
 
 ## Install
 
@@ -50,8 +52,9 @@ cmi doctor
 cmi init
 cmi scan
 cmi remember fact "Production runs on Cloudflare Pages"
-cmi remember decision "Schema changes must use D1 migrations" --source wrangler.toml
-cmi context "change the leaderboard migration"
+cmi remember decision "Schema changes must use versioned migrations" --source package.json
+cmi context "change the account migration"
+cmi prepare "change the account migration"
 cmi impact migrate
 cmi stale
 cmi snapshot before-refactor
@@ -60,6 +63,28 @@ cmi status
 
 A second unchanged `cmi scan` reuses previously parsed source nodes. Use `cmi scan --full` after parser/configuration experiments or when you deliberately want a complete rebuild.
 
+## Pre-change intelligence
+
+CMI can assemble a bounded, evidence-labeled brief before an agent edits code:
+
+```bash
+cmi baseline
+cmi boundaries
+cmi memory-gaps "add retry-safe payment processing"
+cmi prepare "add retry-safe payment processing"
+```
+
+The brief combines:
+
+- bounded Git branch, commit, worktree, upstream, and ahead/behind context;
+- ranked durable memory and relevant graph files;
+- deterministic boundary inference from workspaces, directory structure, and import edges;
+- exact impact analysis when a file or symbol matches, with clearly labeled context-seed fallback otherwise;
+- review-only proposals for missing facts, decisions, and lessons;
+- risk and verification suggestions derived from observable task and path evidence.
+
+CMI does not claim that inferred boundaries are declared architecture. It does not write suggested memory automatically. Durable memory still requires an explicit write-enabled process and review.
+
 ## Monorepos and workspaces
 
 CMI detects npm/pnpm workspaces, Cargo workspace members, and Go workspaces/modules.
@@ -67,6 +92,7 @@ CMI detects npm/pnpm workspaces, Cargo workspace members, and Go workspaces/modu
 ```bash
 cmi workspaces
 cmi context "authentication flow" --workspace packages/web
+cmi prepare "change authentication flow" --workspace packages/web
 cmi search "shared API" --workspace @company/core
 ```
 
@@ -101,9 +127,13 @@ cmi init [path]
 cmi scan [path] [--full] [--json]
 cmi graph [path] [--json]
 cmi workspaces [path] [--json]
+cmi baseline [path] [--json]
+cmi boundaries [path] [--json]
 cmi explain-ignore <path> [--directory] [--json]
 cmi search <query> [--limit N] [--workspace name-or-path] [--json]
 cmi context <query> [--limit N] [--workspace name-or-path] [--json]
+cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]
+cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]
 cmi impact <file-or-symbol> [--depth N] [--json]
 cmi remember <fact|decision|mistake> <text> [--source path ...]
 cmi stale [path] [--fail-on stale|review|any] [--json]
@@ -135,7 +165,7 @@ Bulk refresh requires a second opt-in:
 cmi mcp-config --write --bulk-refresh
 ```
 
-The server exposes tools, resources, and prompt templates. It supports stable MCP protocol versions from `2024-11-05` through `2025-11-25`, negotiates the client version when supported, and uses newline-delimited JSON-RPC over stdio. Scanning may refresh generated cache files; durable Markdown memory remains protected by explicit write opt-in.
+The server exposes tools, resources, and prompt templates. Read tools include repository baseline, inferred boundary maps, memory-gap proposals, and a structured pre-change brief. It supports stable MCP protocol versions from `2024-11-05` through `2025-11-25`, negotiates the client version when supported, and uses newline-delimited JSON-RPC over stdio. Scanning may refresh generated cache files; durable Markdown memory remains protected by explicit write opt-in.
 
 See [MCP integration](docs/MCP.md).
 
@@ -145,6 +175,8 @@ See [MCP integration](docs/MCP.md).
 - Source-linked memory accepts regular files only and verifies real paths remain inside the project.
 - Built-in dependency and generated paths cannot be negated through `.cmiignore`.
 - Hidden paths are excluded by default except root `.github/` and `.cmiignore`.
+- Git baseline collection uses fixed bounded commands and does not expose absolute repository paths.
+- Boundary, risk, and memory-gap outputs are explicitly advisory rather than durable truth.
 - MCP durable-memory tools are disabled by default.
 - Bulk memory refresh requires a separate opt-in.
 - Obvious credentials and private keys are rejected, but CMI is not a complete secret scanner.
