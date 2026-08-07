@@ -4,7 +4,9 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-This section describes development-branch work only. The published package remains `0.7.0` until an intentional release changes version metadata and produces release artifacts.
+No unreleased changes yet.
+
+## [0.8.0] - 2026-08-07
 
 ### Added
 
@@ -42,6 +44,11 @@ This section describes development-branch work only. The published package remai
 - The installed `cmi-mcp` entrypoint now exposes a unified existing + session-continuation MCP surface and preserves the existing server as the protocol core.
 - MCP documentation/prompts distinguish lifecycle state, stale-evidence policy, historical correlation, supplied command-result provenance, persistent findings, and next-action advice from independently verified truth.
 - Session close is designed to surface problems and evidence-based follow-up immediately instead of requiring the user to ask what should happen next.
+
+### Fixed
+
+- Top-level CLI help now exposes the Session and Finding command groups, and `change`, `session`, and `finding` group help exits cleanly.
+- `cmi mcp-config` now points to the session-aware `mcp-entry.js`, keeping generated configuration aligned with the installed `cmi-mcp` surface.
 
 ### Evidence limits
 

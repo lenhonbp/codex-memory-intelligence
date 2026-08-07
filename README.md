@@ -25,9 +25,9 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.7.0` is the current published release line for the **Change Intelligence Loop**. It combines incremental project intelligence and evidence-labeled pre-change briefs with durable BEFORE → DURING → AFTER records that compare predicted scope with observed changed paths and derive bounded historical co-change and verification evidence. The npm badge above is the authoritative indicator of the version currently published to the registry.
+`v0.8.0` is the current source release line for **Behavioral Change Intelligence, trust hardening, and Session Continuation Intelligence**. It builds on the Change Intelligence Loop with stale-aware retrieval, graph freshness checks, reviewed memory lifecycle, runtime-validated change records, local writer serialization, verification provenance, sample-sensitive behavioral calibration, persistent cross-session findings, prioritized next actions, and durable handoffs. The npm badge above is the authoritative indicator of the version currently published to the registry.
 
-The development branch for the next release is hardening trust and adding **Session Continuation Intelligence**: stale-aware retrieval, graph freshness checks, reviewed memory lifecycle, runtime-validated change records, local writer serialization, verification provenance, sample-sensitive behavioral calibration, persistent cross-session findings, prioritized next actions, and durable handoffs. These changes remain **unreleased** until the package version and release artifacts are intentionally advanced.
+Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
 See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
@@ -93,7 +93,7 @@ CMI does not claim inferred boundaries are declared architecture. Durable memory
 
 ## Memory evidence and lifecycle
 
-On the unreleased v0.8 development line, durable memory separates **lifecycle** from **freshness**.
+In v0.8.0, durable memory separates **lifecycle** from **freshness**.
 
 Reviewed lifecycle states are `active`, `deprecated`, `rejected`, and `superseded`. Inactive knowledge remains in the human-reviewable Markdown history but is excluded from normal ranked task context. Supersession requires a distinct active replacement entry.
 
@@ -153,7 +153,7 @@ cmi change history "payment retry"
 
 Completed records can provide relevant previous changes, repeated file/boundary co-change, verification history, and expected-vs-actual changed-path calibration. These are historical signals, not causal claims. CMI does not execute tests, builds, profilers, migrations, or project code on behalf of the change-intelligence layer.
 
-The unreleased v0.8 line distinguishes ordinary `reported` verification from supplied `observed-command` metadata. `observed-command` still means only that command-result metadata was provided through the interface; CMI does not independently execute or attest that command.
+v0.8.0 distinguishes ordinary `reported` verification from supplied `observed-command` metadata. `observed-command` still means only that command-result metadata was provided through the interface; CMI does not independently execute or attest that command.
 
 Change records live in `.codex-memory/changes/` and are intentionally reviewable and commit-friendly. CMI-internal paths are excluded from product-change scope so the records do not observe themselves.
 
@@ -161,7 +161,7 @@ See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md) for attribution rules, no
 
 ## Session Continuation Intelligence
 
-The unreleased v0.8 development line adds a layer above individual code changes so CMI can answer:
+v0.8.0 adds a layer above individual code changes so CMI can answer:
 
 > **What happened, what is still unresolved, and what should happen next?**
 
