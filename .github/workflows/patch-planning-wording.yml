@@ -1,0 +1,67 @@
+name: Patch planning evidence wording
+
+on:
+  push:
+    branches:
+      - staging/session-continuation-intelligence
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: staging/session-continuation-intelligence
+          fetch-depth: 0
+      - name: Patch evidence-specific wording and remove helper workflow
+        shell: python
+        run: |
+          from pathlib import Path
+          target = Path('src/session-intelligence.js')
+          text = target.read_text()
+          old = '''function planningRecommendations(signals) {
+            return bounded((signals || []).map((signal) => ({
+              id: signal.id, priority: 'P3',
+              action: `Review whether the unchecked planning item "${signal.text}" should be the next project task.`,
+              reason: `Observed unchecked planning task in ${signal.path}:${signal.line}${signal.section ? ` under "${signal.section}"` : ''}.`,
+              evidenceType: 'observed', evidenceSubtype: 'planning-task', evidence: [`${signal.path}:${signal.line}`],
+              confidence: signal.confidence || 'medium', relatedFindingIds: [],
+            })), 3);
+          }'''.replace('          ', '')
+          new = '''function planningRecommendations(signals) {
+            return bounded((signals || []).map((signal) => {
+              const label = signal.type === 'unchecked-markdown-task'
+                ? 'unchecked planning task'
+                : signal.type === 'explicit-planning-marker'
+                  ? 'explicit planning marker'
+                  : 'planning item';
+              return {
+                id: signal.id, priority: 'P3',
+                action: `Review whether the ${label} "${signal.text}" should be the next project task.`,
+                reason: `Observed ${label} in ${signal.path}:${signal.line}${signal.section ? ` under "${signal.section}"` : ''}.`,
+                evidenceType: 'observed', evidenceSubtype: 'planning-task', evidence: [`${signal.path}:${signal.line}`],
+                confidence: signal.confidence || 'medium', relatedFindingIds: [],
+              };
+            }), 3);
+          }'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('planningRecommendations block not found')
+          text = text.replace(old, new, 1)
+          old_guardrail = "if (recommendations.some((item) => item.evidenceSubtype === 'planning-task')) items.push({ id: 'do-not-treat-planning-as-command', rule: 'Do not treat an unchecked roadmap/TODO item as proven current business priority; review it after stronger unresolved evidence.', reason: 'Planning checkboxes are observed planning evidence, not execution authority.' });"
+          new_guardrail = "if (recommendations.some((item) => item.evidenceSubtype === 'planning-task')) items.push({ id: 'do-not-treat-planning-as-command', rule: 'Do not treat planning text as proven current business priority; review it after stronger unresolved evidence.', reason: 'Planning files are observed planning evidence, not execution authority.' });"
+          if old_guardrail not in text:
+              raise SystemExit('planning guardrail wording not found')
+          target.write_text(text.replace(old_guardrail, new_guardrail, 1))
+          Path('.github/workflows/patch-planning-wording.yml').unlink()
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/session-intelligence.js .github/workflows/patch-planning-wording.yml
+          git commit -m "fix: label planning recommendations by evidence type"
+          git push origin HEAD:staging/session-continuation-intelligence
