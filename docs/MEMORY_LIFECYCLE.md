@@ -124,7 +124,7 @@ is available in the CLI and separately gated in MCP. Bulk refresh skips intentio
 
 `remember`, reviewed refresh, and lifecycle mutation share one local project write lock. This prevents one writer from replacing a Markdown file using an older read while another writer is appending new durable knowledge.
 
-The lock lives under the already ignored `.codex-memory/snapshots/` directory, is process-local metadata only, and is removed after the mutation. A stale lock can be reclaimed after the configured short safety window in the implementation.
+The lock lives under the already ignored `.codex-memory/snapshots/` directory, is process-local metadata only, and is removed after the mutation. A lock older than the implementation's fixed short safety window can be reclaimed so a crashed writer does not permanently block the project.
 
 This is local concurrency protection, not a distributed lock and not a cloud synchronization protocol.
 
