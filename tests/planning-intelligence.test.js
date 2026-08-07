@@ -30,16 +30,23 @@ test('planning intelligence returns unchecked tasks with source lines and does n
 
 test('planning intelligence ignores oversized and symlinked planning files', async (context) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-planning-safe-'));
-  await fs.writeFile(path.join(root, 'TODO.md'), 'x'.repeat(256_001));
-  const outside = path.join(os.tmpdir(), `cmi-planning-outside-${Date.now()}.md`);
-  await fs.writeFile(outside, '- [ ] Outside task\n');
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-planning-outside-'));
+  const outside = path.join(outsideRoot, 'outside.md');
   try {
-    await fs.symlink(outside, path.join(root, 'ROADMAP.md'));
-  } catch (error) {
-    if (['EPERM', 'EACCES', 'ENOSYS'].includes(error.code)) { context.skip('Symlinks are unavailable on this runner.'); return; }
-    throw error;
+    await fs.writeFile(path.join(root, 'TODO.md'), 'x'.repeat(256_001));
+    await fs.writeFile(outside, '- [ ] Outside task\n');
+    try {
+      await fs.symlink(outside, path.join(root, 'ROADMAP.md'));
+    } catch (error) {
+      if (['EPERM', 'EACCES', 'ENOSYS'].includes(error.code)) {
+        context.skip('Symlinks are unavailable on this runner.');
+        return;
+      }
+      throw error;
+    }
+    const result = await getPlanningSignals(root);
+    assert.equal(result.totalDetected, 0);
+  } finally {
+    await fs.rm(outsideRoot, { recursive: true, force: true });
   }
-  const result = await getPlanningSignals(root);
-  assert.equal(result.totalDetected, 0);
-  await fs.rm(outside, { force: true });
 });
