@@ -118,20 +118,21 @@ export async function safeReadMemoryJson(root, relative, options = {}) {
   return text === null ? null : JSON.parse(text);
 }
 
-async function assertExistingTargetSafe(target, relative) {
+async function existingTargetStat(target, relative) {
   try {
     const stat = await fs.lstat(target);
     if (stat.isSymbolicLink() || !stat.isFile()) throw unsafe(`durable write target is not a regular file: ${relative}`);
-    return true;
+    return stat;
   } catch (error) {
-    if (error?.code === 'ENOENT') return false;
+    if (error?.code === 'ENOENT') return null;
     throw error;
   }
 }
 
 export async function safeWriteMemoryFile(root, relative, content, options = {}) {
   const target = await resolveSafeFile(root, relative, { createParent: true });
-  const exists = await assertExistingTargetSafe(target, relative);
+  const existingStat = await existingTargetStat(target, relative);
+  const exists = Boolean(existingStat);
   if (options.ifMissing && exists) return false;
   if (options.ifMissing) {
     const handle = await openNoFollow(target, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL, 0o600);
@@ -171,12 +172,14 @@ export async function safeWriteMemoryFile(root, relative, content, options = {})
 
 export async function safeAppendMemoryFile(root, relative, content) {
   const target = await resolveSafeFile(root, relative, { createParent: true });
-  const exists = await assertExistingTargetSafe(target, relative);
+  const before = await existingTargetStat(target, relative);
+  const exists = Boolean(before);
   const flags = fsConstants.O_WRONLY | fsConstants.O_APPEND | (exists ? 0 : fsConstants.O_CREAT) | (exists ? 0 : fsConstants.O_EXCL);
   const handle = await openNoFollow(target, flags, 0o600);
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw unsafe(`durable append target is not a regular file: ${relative}`);
+    const opened = await handle.stat();
+    if (!opened.isFile()) throw unsafe(`durable append target is not a regular file: ${relative}`);
+    if (before && (before.dev !== opened.dev || before.ino !== opened.ino)) throw unsafe(`durable append target identity changed while opening: ${relative}`);
     await handle.writeFile(content, 'utf8');
   } finally { await handle.close(); }
 }

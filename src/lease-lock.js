@@ -68,8 +68,8 @@ export async function acquireLeaseLock(target, options = {}) {
 export async function releaseLeaseLock(lock) {
   if (!lock) return;
   clearInterval(lock.heartbeat);
-  await removeIfOwned(lock.target, lock.ownerId);
   await lock.handle?.close().catch(() => {});
+  await removeIfOwned(lock.target, lock.ownerId);
 }
 
 export async function withLeaseLock(target, operation, options = {}) {
