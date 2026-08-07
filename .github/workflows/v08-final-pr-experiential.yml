@@ -34,6 +34,19 @@ jobs:
           test "$actual" = "76f54a30387bba0819c97a7d4c672528a5d2d136"
           tarball="$(cd candidate && npm pack --ignore-scripts --silent)"
           echo "tarball=$PWD/candidate/$tarball" >> "$GITHUB_OUTPUT"
+      - name: Make audit harness candidate-version aware
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const file = 'scripts/experiential-audit.js';
+          const source = fs.readFileSync(file, 'utf8');
+          const from = "assert.equal(cmiRun(['--version']).stdout.trim(), '0.7.0');";
+          const to = "assert.equal(cmiRun(['--version']).stdout.trim(), JSON.parse(fs.readFileSync(path.join(installedRoot, 'package.json'), 'utf8')).version);";
+          if (!source.includes(from)) throw new Error('expected legacy version assertion not found in audit harness');
+          fs.writeFileSync(file, source.replace(from, to));
+          NODE
       - name: Primary installed-package experiential audit
         shell: bash
         run: |
