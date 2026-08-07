@@ -14,6 +14,7 @@ import {
   closeSession,
   getSession,
   getSessionHandoff,
+  listSessions,
   listFindings,
   getFinding,
   setFindingState,
@@ -219,4 +220,25 @@ test('session durable input rejects secrets and unsafe explicit paths', async ()
   await assert.rejects(() => observeSession(root, session.id, { files: ['../outside.js'] }), /escapes the project/i);
   await assert.rejects(() => observeSession(root, session.id, { files: ['.codex-memory/private.json'] }), /must not point inside/i);
   await assert.rejects(() => observeSession(root, session.id, { notes: ['password=supersecret123'] }), /secret/i);
+});
+
+test('a clean session surfaces a concrete unchecked planning item instead of falling back to ask the user what is next', async () => {
+  const root = await fixture();
+  await fs.writeFile(path.join(root, 'ROADMAP.md'), '# Current priorities\n\n- [ ] Validate the next real-repository fixture\n');
+  const session = await startSession(root, 'finish current review');
+  const closed = await closeSession(root, session.id, { outcome: 'investigated', notes: ['Current review is complete.'] });
+  assert.equal(closed.close.handoff.nextAction.priority, 'P3');
+  assert.match(closed.close.handoff.nextAction.action, /Validate the next real-repository fixture/i);
+  assert.equal(closed.close.handoff.nextAction.evidenceSubtype, 'planning-task');
+  assert.ok(closed.close.handoff.guardrails.some((item) => item.id === 'do-not-treat-planning-as-command'));
+  assert.ok(closed.close.handoff.planningSignals.some((item) => item.path === 'ROADMAP.md' && item.line === 3));
+});
+
+test('corrupt session records are ignored and reported instead of entering continuation evidence', async () => {
+  const root = await fixture();
+  const directory = path.join(root, '.codex-memory', 'sessions');
+  await fs.writeFile(path.join(directory, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.json'), '{not-json', 'utf8');
+  const listed = await listSessions(root, { limit: 20 });
+  assert.equal(listed.invalidRecords, 1);
+  assert.ok(!listed.records.some((item) => item.id === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'));
 });
