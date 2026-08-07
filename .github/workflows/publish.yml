@@ -62,9 +62,9 @@ jobs:
             exit 1
           fi
 
-          remote_tag_sha="$(git ls-remote --refs origin "refs/tags/$tag" | awk '{print $1}')"
+          remote_tag_sha="$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" | awk '/\^\{\}$/ { peeled=$1 } !/\^\{\}$/ { direct=$1 } END { print peeled ? peeled : direct }')"
           if [[ -n "$remote_tag_sha" && "$remote_tag_sha" != "$GITHUB_SHA" ]]; then
-            echo "Tag $tag already exists at $remote_tag_sha instead of $GITHUB_SHA." >&2
+            echo "Tag $tag already resolves to $remote_tag_sha instead of $GITHUB_SHA." >&2
             exit 1
           fi
 
@@ -117,8 +117,15 @@ jobs:
           set -euo pipefail
           package_name="$(node -p "require('./package.json').name")"
           package_version="$(node -p "require('./package.json').version")"
-          published_version="$(npm view "$package_name@$package_version" version)"
-          test "$published_version" = "$package_version"
+          for attempt in 1 2 3 4 5 6; do
+            published_version="$(npm view "$package_name@$package_version" version 2>/dev/null || true)"
+            if [[ "$published_version" == "$package_version" ]]; then
+              exit 0
+            fi
+            if [[ "$attempt" != "6" ]]; then sleep 5; fi
+          done
+          echo "npm registry did not report $package_name@$package_version after publication." >&2
+          exit 1
 
       - name: Prepare GitHub release notes
         shell: bash
@@ -133,15 +140,14 @@ jobs:
           const tag = process.env.RELEASE_TAG;
           const version = tag.replace(/^v/, '');
           const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-          const marker = `## [${version}]`;
-          const start = changelog.indexOf(marker);
-          if (start < 0) throw new Error(`Missing changelog section for ${version}`);
-          const afterStart = changelog.slice(start + marker.length);
-          const next = afterStart.search(/^## \[/m);
-          const section = (next >= 0 ? afterStart.slice(0, next) : afterStart).trim();
+          const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const heading = new RegExp(`^## \\[${escaped}\\].*$`, 'm').exec(changelog);
+          if (!heading) throw new Error(`Missing changelog section for ${version}`);
+          const afterHeading = changelog.slice(heading.index + heading[0].length);
+          const next = afterHeading.search(/^## \[/m);
+          const section = (next >= 0 ? afterHeading.slice(0, next) : afterHeading).trim();
           if (!section) throw new Error(`Empty changelog section for ${version}`);
-          const notes = `# CMI ${tag}\n\n${section}\n`;
-          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'release-notes.md'), notes);
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'release-notes.md'), `${section}\n`);
           NODE
 
       - name: Create GitHub Release
