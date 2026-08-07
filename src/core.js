@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { buildProjectGraph, loadProjectGraph } from './graph.js';
 import { checkStaleMemory, sourceFingerprints } from './stale.js';
+import { loadMemory } from './search.js';
 import { resolveProjectFile } from './paths.js';
 import { createIgnoreMatcher, explainIgnore as explainIgnoreRule } from './ignore.js';
 import { detectWorkspaces, formatWorkspaces } from './workspaces.js';
@@ -257,11 +258,14 @@ export async function status(root) {
   const snapshots = await fs.readdir(path.join(directory, 'snapshots')).catch(() => []);
   const entries = { facts: await countEntries(path.join(directory, 'memory.md')), decisions: await countEntries(path.join(directory, 'decisions.md')), mistakes: await countEntries(path.join(directory, 'mistakes.md')) };
   const memoryHealth = await checkStaleMemory(root);
+  const loaded = await loadMemory(root, { withHealth: true });
+  const graphHealth = loaded.graphHealth;
   return {
     initialized: true,
-    healthy: Boolean(index && graph && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
+    healthy: Boolean(index && graph && graphHealth.current && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
     index,
     graph: graph?.summary || null,
+    graphHealth,
     workspaces: index?.workspaces || null,
     entries,
     memoryHealth: memoryHealth.counts,
@@ -288,10 +292,12 @@ export async function doctor(root) {
   if (initialized) {
     const projectStatus = await status(root);
     add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
-    add('memory-health', projectStatus.healthy ? 'pass' : 'warn', projectStatus.healthy ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
+    add('graph-health', projectStatus.graphHealth?.current ? 'pass' : 'warn', projectStatus.graphHealth?.current ? 'Project graph fingerprints match current source files.' : `Project graph is stale or incomplete (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing). Run cmi scan.`);
+    const memoryCurrent = projectStatus.memoryHealth?.stale === 0 && projectStatus.memoryHealth?.review === 0 && projectStatus.memoryHealth?.untracked === 0;
+    add('memory-health', memoryCurrent ? 'pass' : 'warn', memoryCurrent ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
     add('workspaces', 'pass', `${projectStatus.workspaces?.count || 0} configured workspace(s) detected.`);
   }
-  return { version: VERSION, healthy: checks.every((check) => check.status !== 'fail'), checks };
+  return { version: VERSION, healthy: checks.every((check) => check.status !== 'fail' && check.status !== 'warn'), checks };
 }
 
 export async function explainIgnore(root, candidate, options = {}) {
