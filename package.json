@@ -5,7 +5,7 @@
   "type": "module",
   "bin": {
     "cmi": "src/cli-entry.js",
-    "cmi-mcp": "src/mcp.js"
+    "cmi-mcp": "src/mcp-entry.js"
   },
   "scripts": {
     "test": "node --test",
