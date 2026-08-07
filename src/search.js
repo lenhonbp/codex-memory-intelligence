@@ -80,7 +80,7 @@ async function graphChunks(root) {
         source: 'project-graph.json',
         title: `File ${node.path}`,
         text: `Language: ${node.language}\nWorkspace: ${node.workspace || 'unassigned'}\nSymbols: ${symbols || 'none'}\nLocal imports: ${localImports || 'none'}\nDependents: ${dependents || 'none'}\nExternal imports: ${externalImports || 'none'}`,
-        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [], evidenceStatus: 'observed', graphGeneratedAt: graph.generatedAt || null },
+        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [], evidenceStatus: 'observed', knowledgeState: 'active', graphGeneratedAt: graph.generatedAt || null },
         kind: 'graph',
       });
     }
@@ -114,7 +114,9 @@ function annotateMemoryChunk(chunk, health) {
     metadata: {
       ...(chunk.metadata || {}),
       evidenceStatus: status === 'fresh' ? 'reviewed-current' : status,
+      knowledgeState: tracked?.lifecycleState || chunk.metadata?.lifecycle?.state || 'active',
       staleReasons: tracked?.reasons || [],
+      lifecycle: tracked?.lifecycle || chunk.metadata?.lifecycle || null,
     },
   };
 }
@@ -174,8 +176,14 @@ function stalePolicyAllows(chunk, policy) {
   return status !== 'stale';
 }
 
+function knowledgePolicyAllows(chunk, includeInactive) {
+  if (chunk.kind !== 'memory' || includeInactive) return true;
+  return (chunk.metadata?.knowledgeState || 'active') === 'active';
+}
+
 function evidenceAdjustment(chunk) {
   if (chunk.kind !== 'memory') return 0;
+  if ((chunk.metadata?.knowledgeState || 'active') !== 'active') return -10;
   const status = chunk.metadata?.evidenceStatus;
   if (status === 'reviewed-current') return 1;
   if (status === 'review') return -1;
@@ -190,7 +198,8 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
   const workspaceScope = await resolveWorkspaceScope(root, options.workspace);
   const loaded = await loadMemory(root, { withHealth: true });
   const stalePolicy = ['include', 'exclude', 'demote'].includes(options.stalePolicy) ? options.stalePolicy : 'demote';
-  const chunks = loaded.chunks.filter((chunk) => workspaceMatches(chunk, workspaceScope) && stalePolicyAllows(chunk, stalePolicy));
+  const includeInactive = Boolean(options.includeInactive);
+  const chunks = loaded.chunks.filter((chunk) => workspaceMatches(chunk, workspaceScope) && knowledgePolicyAllows(chunk, includeInactive) && stalePolicyAllows(chunk, stalePolicy));
   if (!chunks.length) return [];
   const documentFrequencies = new Map();
   const documents = chunks.map((chunk) => {
@@ -238,10 +247,11 @@ export async function buildContextPack(root, query, limit = 8, options = {}) {
   const estimatedCharacters = results.reduce((sum, item) => sum + item.title.length + item.text.length, 0);
   const staleResults = results.filter((item) => item.metadata?.evidenceStatus === 'stale').length;
   const reviewResults = results.filter((item) => ['review', 'untracked', 'unknown'].includes(item.metadata?.evidenceStatus)).length;
+  const inactiveResults = results.filter((item) => (item.metadata?.knowledgeState || 'active') !== 'active').length;
   return {
     query,
     workspace: options.workspace || null,
-    evidencePolicy: { stalePolicy: options.stalePolicy || 'demote', staleResults, reviewResults },
+    evidencePolicy: { stalePolicy: options.stalePolicy || 'demote', includeInactive: Boolean(options.includeInactive), staleResults, reviewResults, inactiveResults },
     health: { memory: loaded.memoryHealth?.counts || null, graph: loaded.graphHealth },
     summary: {
       results: results.length,
@@ -263,6 +273,7 @@ export function formatResults(results) {
     const sources = item.metadata?.sources?.length ? ` · sources ${item.metadata.sources.join(', ')}` : '';
     const workspace = item.metadata?.workspace ? ` · workspace ${item.metadata.workspace}` : '';
     const evidence = item.metadata?.evidenceStatus ? ` · evidence ${item.metadata.evidenceStatus}` : '';
-    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${workspace}${sources}${evidence}\n\n${item.text}`;
+    const knowledge = item.metadata?.knowledgeState && item.metadata.knowledgeState !== 'active' ? ` · knowledge ${item.metadata.knowledgeState}` : '';
+    return `## ${index + 1}. ${item.title}\nSource: ${item.source} · score ${item.score}${workspace}${sources}${evidence}${knowledge}\n\n${item.text}`;
   }).join('\n\n');
 }
