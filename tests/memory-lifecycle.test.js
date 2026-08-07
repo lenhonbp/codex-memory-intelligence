@@ -6,6 +6,7 @@ import path from 'node:path';
 import { scanProject, remember, status } from '../src/core.js';
 import { searchMemory } from '../src/search.js';
 import { checkStaleMemory, refreshMemory, setMemoryLifecycle } from '../src/stale.js';
+import { withMemoryWriteLock } from '../src/memory-lock.js';
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-lifecycle-'));
@@ -15,6 +16,33 @@ async function fixture() {
   await scanProject(root);
   return root;
 }
+
+test('new durable memory has versioned active lifecycle metadata', async () => {
+  const root = await fixture();
+  const entry = await remember(root, 'fact', 'Versioned memory marker.', { sources: ['src/policy.js'] });
+  assert.equal(entry.schemaVersion, 1);
+  assert.equal(entry.lifecycle.state, 'active');
+  const result = (await searchMemory(root, 'versioned memory marker', 10)).find((item) => item.metadata?.id === entry.id);
+  assert.equal(result.metadata.schemaVersion, 1);
+  assert.equal(result.metadata.knowledgeState, 'active');
+});
+
+test('durable memory write lock serializes competing local writers', async () => {
+  const root = await fixture();
+  const sequence = [];
+  const first = withMemoryWriteLock(root, async () => {
+    sequence.push('first-start');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    sequence.push('first-end');
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const second = withMemoryWriteLock(root, async () => {
+    sequence.push('second-start');
+    sequence.push('second-end');
+  });
+  await Promise.all([first, second]);
+  assert.deepEqual(sequence, ['first-start', 'first-end', 'second-start', 'second-end']);
+});
 
 test('inactive knowledge is preserved as history but excluded from trusted retrieval by default', async () => {
   const root = await fixture();
