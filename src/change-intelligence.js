@@ -21,6 +21,10 @@ function slash(value) { return String(value || '').replace(/\\/g, '/'); }
 function unique(values) { return [...new Set((values || []).filter(Boolean))]; }
 function bounded(values, limit) { return (values || []).slice(0, Math.max(0, limit)); }
 function round(value) { return Number.isFinite(value) ? Number(value.toFixed(3)) : null; }
+function isCmiInternalPath(value) {
+  const normalized = slash(value).trim().replace(/^\.\//, '');
+  return normalized === MEMORY_DIR || normalized.startsWith(`${MEMORY_DIR}/`);
+}
 function looksSensitive(text) {
   return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)
     || /\b(?:api[_ -]?key|password|secret|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S{6,}/i.test(text)
@@ -46,8 +50,13 @@ function normalizeRelativeFile(value) {
   if (!segments.length || segments.some((segment) => segment === '..' || segment === '.')) throw new Error(`Observed file path escapes the project: ${value}`);
   return segments.join('/');
 }
+function normalizeObservedFile(value) {
+  const file = normalizeRelativeFile(value);
+  if (isCmiInternalPath(file)) throw new Error('Observed file paths must not point inside .codex-memory/. CMI internal evidence is excluded from product-change scope.');
+  return file;
+}
 function normalizeExplicitFiles(files) {
-  return bounded(unique((files || []).map(normalizeRelativeFile)), MAX_PATHS);
+  return bounded(unique((files || []).map(normalizeObservedFile)), MAX_PATHS);
 }
 function changesDirectory(root) { return path.join(root, MEMORY_DIR, CHANGE_DIR); }
 function recordPath(root, id) { return path.join(changesDirectory(root), `${id}.json`); }
@@ -143,13 +152,37 @@ function projectRelative(value, projectPath = '.') {
   return normalized.startsWith(`${prefix}/`) ? normalized.slice(prefix.length + 1) : normalized;
 }
 
+function sanitizeChangeBaseline(baseline) {
+  if (!baseline?.available) return baseline;
+  const changes = [];
+  let cmiInternalChangesOmitted = 0;
+  for (const item of baseline.changes || []) {
+    const relative = normalizeRelativeFile(projectRelative(item.path, baseline.projectPath));
+    if (isCmiInternalPath(relative)) {
+      cmiInternalChangesOmitted += 1;
+      continue;
+    }
+    changes.push({ ...item, path: relative });
+  }
+  return {
+    ...baseline,
+    clean: changes.length === 0,
+    changes: bounded(changes, 200),
+    cmiInternalChangesOmitted,
+  };
+}
+
 async function committedFilesSince(root, beforeBaseline, currentBaseline) {
   const startHead = beforeBaseline?.fullHead;
   const currentHead = currentBaseline?.fullHead;
   if (!/^[0-9a-f]{40}$/i.test(startHead || '') || !/^[0-9a-f]{40}$/i.test(currentHead || '') || startHead === currentHead) return [];
   const output = await runGit(root, ['diff', '--name-only', '--relative', startHead, currentHead, '--']);
   if (!output) return [];
-  return bounded(unique(output.split(/\r?\n/).filter(Boolean).map(normalizeRelativeFile)), MAX_PATHS);
+  const files = output.split(/\r?\n/)
+    .filter(Boolean)
+    .map(normalizeRelativeFile)
+    .filter((file) => !isCmiInternalPath(file));
+  return bounded(unique(files), MAX_PATHS);
 }
 
 function predictedFilesFromBrief(brief) {
@@ -160,7 +193,7 @@ function predictedFilesFromBrief(brief) {
     ...(brief.impact?.seedFiles || []),
     ...(brief.impact?.directDependents || []),
     ...(brief.impact?.affectedFiles || []),
-  ]).map(normalizeRelativeFile), MAX_PATHS);
+  ]).map(normalizeRelativeFile).filter((file) => !isCmiInternalPath(file)), MAX_PATHS);
 }
 
 function predictedBoundariesFromBrief(brief) {
@@ -359,6 +392,10 @@ export async function startChangeRecord(root, goal, options = {}) {
   const history = await buildChangeInsights(root, normalizedGoal, { limit: 5 });
   const now = new Date().toISOString();
   const predictedFiles = predictedFilesFromBrief(brief);
+  const baseline = sanitizeChangeBaseline(brief.baseline);
+  const storedRisks = bounded((brief.risks || [])
+    .filter((item) => !(item.id === 'dirty-worktree' && baseline?.available && baseline.clean))
+    .map((item) => ({ id: item.id, title: item.title, severity: item.severity, confidence: item.confidence })), 20);
   const record = {
     schemaVersion: 1,
     id: crypto.randomUUID(),
@@ -368,11 +405,11 @@ export async function startChangeRecord(root, goal, options = {}) {
     createdAt: now,
     updatedAt: now,
     before: {
-      baseline: brief.baseline,
+      baseline,
       predicted: {
         files: predictedFiles,
         boundaries: predictedBoundariesFromBrief(brief),
-        risks: bounded((brief.risks || []).map((item) => ({ id: item.id, title: item.title, severity: item.severity, confidence: item.confidence })), 20),
+        risks: storedRisks,
         verification: bounded((brief.verification || []).map((item) => ({ id: item.id, title: item.title, guidance: item.guidance })), 20),
       },
       memoryCoverage: brief.memory?.coverage || null,
@@ -385,11 +422,11 @@ export async function startChangeRecord(root, goal, options = {}) {
         verificationPatterns: history.behavioralEvidence.verificationPatterns.slice(0, 10),
         limitations: history.limitations,
       },
-      attribution: brief.baseline?.available ? (brief.baseline.clean ? 'strong' : 'limited-preexisting-worktree') : 'explicit-files-only',
+      attribution: baseline?.available ? (baseline.clean ? 'strong' : 'limited-preexisting-worktree') : 'explicit-files-only',
     },
     observations: [],
     completion: null,
-    policy: 'This record stores bounded project-change evidence. It does not automatically create durable facts, architecture decisions, or lessons.',
+    policy: 'This record stores bounded project-change evidence. CMI-internal paths are excluded from product-change scope, and the record does not automatically create durable facts, architecture decisions, or lessons.',
   };
   await writeRecord(root, record);
   return record;
@@ -398,16 +435,18 @@ export async function startChangeRecord(root, goal, options = {}) {
 export async function observeChangeRecord(root, selector, options = {}) {
   const record = await resolveRecord(root, selector);
   if (record.status !== 'active') throw new Error('Completed change records are immutable. Start a new record for additional work.');
-  const baseline = await getRepositoryBaseline(root);
+  const baseline = sanitizeChangeBaseline(await getRepositoryBaseline(root));
   const explicitFiles = normalizeExplicitFiles(options.files || []);
-  const committed = baseline.available ? await committedFilesSince(root, record.before?.baseline, baseline) : [];
-  const initialDirty = new Set((record.before?.baseline?.changes || []).map((item) => projectRelative(item.path, record.before?.baseline?.projectPath)));
-  const currentDirty = baseline.available
-    ? unique((baseline.changes || []).map((item) => projectRelative(item.path, baseline.projectPath)).map(normalizeRelativeFile))
+  const committed = baseline?.available ? await committedFilesSince(root, record.before?.baseline, baseline) : [];
+  const initialDirty = new Set((record.before?.baseline?.changes || [])
+    .map((item) => normalizeRelativeFile(item.path))
+    .filter((file) => !isCmiInternalPath(file)));
+  const currentDirty = baseline?.available
+    ? unique((baseline.changes || []).map((item) => normalizeRelativeFile(item.path)).filter((file) => !isCmiInternalPath(file)))
     : [];
   const attributableDirty = record.before?.baseline?.clean ? currentDirty : currentDirty.filter((file) => !initialDirty.has(file));
   const ambiguousPreExisting = record.before?.baseline?.clean ? [] : currentDirty.filter((file) => initialDirty.has(file));
-  const observedChangedFiles = bounded(unique([...committed, ...attributableDirty, ...explicitFiles]).sort(), MAX_PATHS);
+  const observedChangedFiles = bounded(unique([...committed, ...attributableDirty, ...explicitFiles]).filter((file) => !isCmiInternalPath(file)).sort(), MAX_PATHS);
   const boundaryMap = await mapProjectBoundaries(root);
   const boundaryReport = observedBoundaryReport(boundaryMap, observedChangedFiles);
   const comparison = compareScopes(record.before?.predicted?.files || [], observedChangedFiles);
@@ -416,7 +455,7 @@ export async function observeChangeRecord(root, selector, options = {}) {
   const observation = {
     observedAt: new Date().toISOString(),
     baseline,
-    attribution: baseline.available ? (record.before?.baseline?.clean ? 'strong' : 'limited-preexisting-worktree') : 'explicit-files-only',
+    attribution: baseline?.available ? (record.before?.baseline?.clean ? 'strong' : 'limited-preexisting-worktree') : 'explicit-files-only',
     observedChangedFiles,
     committedFilesSinceStart: committed,
     explicitFiles,
