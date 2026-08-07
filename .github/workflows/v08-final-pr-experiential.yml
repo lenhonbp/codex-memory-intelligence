@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: lenhonbp/codex-memory-intelligence
-          ref: 2ca12596c9e3f8296ceae37a7f3fb60ca596b9c1
+          ref: d3f1e852dadf1c0f2bcb3edde19dd938b47eedfc
           path: candidate
           fetch-depth: 1
       - uses: actions/setup-node@v6
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           actual="$(git -C candidate rev-parse HEAD)"
-          test "$actual" = "2ca12596c9e3f8296ceae37a7f3fb60ca596b9c1"
+          test "$actual" = "d3f1e852dadf1c0f2bcb3edde19dd938b47eedfc"
           tarball="$(cd candidate && npm pack --ignore-scripts --silent)"
           echo "tarball=$PWD/candidate/$tarball" >> "$GITHUB_OUTPUT"
       - name: Make audit harness candidate-version aware
