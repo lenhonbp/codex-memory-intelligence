@@ -25,7 +25,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.8.0` is the current source release line for **Behavioral Change Intelligence, trust hardening, and Session Continuation Intelligence**. It builds on the Change Intelligence Loop with stale-aware retrieval, graph freshness checks, reviewed memory lifecycle, runtime-validated change records, local writer serialization, verification provenance, sample-sensitive behavioral calibration, persistent cross-session findings, prioritized next actions, and durable handoffs. The npm badge above is the authoritative indicator of the version currently published to the registry.
+`v0.8.1` is the current source release line. It hardens the v0.8 intelligence layer with complete-vs-truncated graph health, stale-impact fail-closed behavior, project-local durable-storage guards, owner-tagged lease locking, broader best-effort secret detection, and a strict separation between source-fingerprint refresh and semantic review. It retains the Behavioral Change Intelligence and Session Continuation capabilities introduced in v0.8.0. The npm badge above is the authoritative indicator of the version currently published to the registry.
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
@@ -93,7 +93,7 @@ CMI does not claim inferred boundaries are declared architecture. Durable memory
 
 ## Memory evidence and lifecycle
 
-In v0.8.0, durable memory separates **lifecycle** from **freshness**.
+In v0.8.1, durable memory keeps **lifecycle**, **source freshness**, and **semantic review provenance** distinct.
 
 Reviewed lifecycle states are `active`, `deprecated`, `rejected`, and `superseded`. Inactive knowledge remains in the human-reviewable Markdown history but is excluded from normal ranked task context. Supersession requires a distinct active replacement entry.
 
@@ -110,7 +110,7 @@ cmi search "retry policy" --stale-policy exclude
 cmi search "retry policy" --include-inactive --stale-policy include
 ```
 
-`demote` is the default: stale/review evidence remains visible but is strongly down-ranked and labeled. `exclude` is strict-current mode. `include` is intended for explicit historical inspection. See [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md).
+`demote` is the default: stale/review evidence remains visible but is strongly down-ranked and labeled. `exclude` is strict-current mode. `include` is intended for explicit historical inspection. `cmi refresh-memory` refreshes source/project fingerprints only; use an explicit `cmi memory-state <id> active --reason ... --changed-by ...` attestation when knowledge has actually been semantically reviewed. See [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md).
 
 ## Change Intelligence Loop
 
@@ -274,7 +274,7 @@ cmi finding state <id> <open|resolved|accepted|dismissed|superseded> --reason te
 cmi remember <fact|decision|mistake> <text> [--source path ...]
 cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
 cmi stale [path] [--fail-on stale|review|any] [--json]
-cmi refresh-memory <id|all> [--reviewed-by name] [--reason text]
+cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]
 cmi snapshot [label]
 cmi status [path] [--json]
 cmi doctor [path] [--json]
@@ -330,13 +330,14 @@ See [MCP integration](docs/MCP.md) and [Session Continuation Intelligence](docs/
 - Stale/missing graph nodes are not returned as current graph evidence before a rescan.
 - Active stale/review memory is evidence-labeled and policy-controlled; inactive lifecycle states are excluded from normal retrieval.
 - Reviewed memory mutations reject ambiguous ID prefixes and preserve lifecycle audit metadata instead of silently deleting history.
-- Durable memory append/refresh/lifecycle mutations share a local write lock to reduce concurrent-writer loss.
+- Durable storage rejects a symlinked `.codex-memory` root and unsafe durable read/write targets; bounded reads use opened-handle identity checks where applicable.
+- Durable memory append/refresh/lifecycle mutations share owner-tagged heartbeat leases with owner-checked cleanup to reduce concurrent-writer loss.
 - CMI-internal paths are excluded from observed product/session scope.
 - Boundary, risk, memory-gap, co-change, finding recommendations, and learning-candidate outputs are advisory rather than durable truth.
 - Historical co-change and historical verification patterns are correlation only; confidence is evidence/sample-sensitive.
 - Change and session intelligence do not execute verification commands or store source diffs automatically.
 - Change/session-history reads are bounded; session/change records reject unsafe symlinked reads where supported.
-- User-supplied session/finding/change durable text is secret-pattern guarded, but CMI is not a complete secret scanner.
+- User-supplied durable text receives best-effort secret-pattern/credential-shape checks, but CMI is not DLP, a complete secret scanner, or a security boundary.
 - MCP durable project writes are disabled by default.
 - Bulk memory refresh requires a separate opt-in.
 - Repository content, durable memory, change records, session records, and findings remain untrusted input for connected agents.

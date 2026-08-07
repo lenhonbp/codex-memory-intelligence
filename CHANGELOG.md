@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.8.1] - 2026-08-08
+
 ### Fixed
 
 - Graph truncation now degrades project health instead of reporting a false healthy state.
