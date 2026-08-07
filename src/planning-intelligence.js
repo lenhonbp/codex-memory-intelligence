@@ -44,11 +44,22 @@ function sourcePriority(relativePath) {
 async function readPlanningFile(root, relativePath) {
   const target = path.resolve(root, relativePath);
   if (!insideRoot(root, target)) return null;
+  let handle;
   try {
-    const stat = await fs.lstat(target);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_FILE_BYTES) return null;
-    return await fs.readFile(target, 'utf8');
+    handle = await fs.open(target, 'r');
+    const [openedStat, pathStat] = await Promise.all([
+      handle.stat(),
+      fs.lstat(target),
+    ]);
+    const sameFile = openedStat.dev === pathStat.dev && openedStat.ino === pathStat.ino;
+    if (!openedStat.isFile() || pathStat.isSymbolicLink() || !sameFile || openedStat.size > MAX_FILE_BYTES) return null;
+    return await handle.readFile('utf8');
   } catch { return null; }
+  finally {
+    if (handle) {
+      try { await handle.close(); } catch { /* best-effort close */ }
+    }
+  }
 }
 async function discoverPlanningFiles(root) {
   const found = [...CANDIDATES];
