@@ -39,9 +39,11 @@ A change record never contains source diffs by default. It stores bounded metada
 - observed changed project-relative paths;
 - prediction gaps;
 - observed boundaries;
-- user- or agent-supplied verification names and statuses;
+- verification names, statuses, and provenance;
 - completion outcome and unexpected impact;
 - review-only learning candidates.
+
+Durable records are structurally validated on write and read. Invalid or incomplete records are excluded from history instead of being treated as valid evidence. Record writes use a per-record lock and atomic temporary-file replacement to reduce concurrent-writer corruption.
 
 CMI rejects obvious credentials in user-supplied goals, verification evidence, unexpected-impact notes, and completion notes. This is a safety guard, not a complete secret scanner.
 
@@ -73,6 +75,10 @@ cmi change complete <id> \
   --verify "npm test=passed" \
   --verify "payment retry integration=passed"
 ```
+
+CLI `--verify name=status` entries are explicitly classified as `reported` evidence. CMI does not infer that a command really ran simply because its name looks like a command.
+
+Programmatic/MCP callers may attach bounded command metadata (`command`, integer `exitCode`, `observedAt`, optional `outputDigest`). Such entries are classified as `observed-command`. This provenance means command-result metadata was supplied to CMI; it still does **not** mean CMI executed or independently attested the command.
 
 Record unexpected impact only when it was actually observed:
 
@@ -115,11 +121,11 @@ Write-enabled tools add:
 - `observe_change_record`
 - `complete_change_record`
 
-The `run_change_intelligence_loop` MCP prompt guides a connected agent through BEFORE → DURING → AFTER. Enabling writes does not authorize CMI to execute arbitrary project commands. The agent still runs tests, builds, profilers, migrations, or other tools through its normal environment and records only the resulting evidence status in CMI.
+The `run_change_intelligence_loop` MCP prompt guides a connected agent through BEFORE → DURING → AFTER. Enabling writes does not authorize CMI to execute arbitrary project commands. The agent still runs tests, builds, profilers, migrations, or other tools through its normal environment and records only the resulting evidence in CMI.
 
 ## Historical intelligence
 
-`cmi change history` derives bounded evidence from completed records:
+`cmi change history` derives bounded evidence from completed records.
 
 ### Relevant completed changes
 
@@ -127,42 +133,65 @@ Records are ranked with deterministic token overlap across goals, observed files
 
 ### File co-change evidence
 
-If two paths repeatedly appear in the same completed change records, CMI reports a co-change edge:
+If two paths repeatedly appear in the same completed change records, CMI reports a co-change edge with:
+
+- `count`: matching records containing the pair;
+- `sampleSize`: relevant records considered;
+- `support`: `count / sampleSize`;
+- `confidence`: a conservative bucket based on both sample size and support;
+- `evidenceType: historical-correlation`.
+
+For example:
 
 ```text
 src/api/checkout.ts ↔ src/payments/ledger.ts
 count: 3
-confidence: high
+sampleSize: 6
+support: 0.5
+confidence: medium
 ```
 
-This means only that the files changed together in three stored records. It does not mean one depends on, calls, owns, or causes the other.
+This means only that the files changed together in half of the six relevant stored records. It does not mean one depends on, calls, owns, or causes the other. A tiny sample cannot receive high confidence merely because every tiny-sample record contains the pair.
 
 ### Boundary co-change evidence
 
-The same bounded counting is applied to inferred project boundaries. Boundary names remain advisory because the boundary map itself is inferred from repository structure and imports.
+The same bounded calibration is applied to inferred project boundaries. Boundary names remain advisory because the boundary map itself is inferred from repository structure and imports.
 
 ### Verification patterns
 
-CMI counts named verification evidence across matching completed changes. For example, if `payment regression` was recorded in four relevant tasks, the next agent can see that this check historically accompanied that work.
+CMI counts named verification evidence across matching completed changes and reports pass/fail frequency plus the fraction backed by `observed-command` metadata. Confidence is intentionally sample-sensitive.
 
 CMI never executes those verification commands itself and never treats a reported pass as independently verified truth.
 
-### Changed-path coverage calibration
+### Expected-vs-actual calibration
 
 For completed records CMI compares:
 
 ```text
-predicted scope before editing
+predicted path scope before editing
 vs.
 observed paths actually changed
 ```
 
-Two bounded ratios are recorded:
+It records path-level:
 
-- `changedPathCoverage`: how much of the observed changed-path set was already inside the predicted file scope;
-- `predictedScopeTouched`: how much of the predicted file scope was directly changed.
+- `pathRecall`: fraction of observed changed paths that were predicted;
+- `pathPrecision`: fraction of predicted paths that were actually changed;
+- `pathF1`: harmonic mean of the two when defined.
 
-These are not compiler precision/recall metrics and are not claims about complete runtime impact. A correct implementation can affect files that never change, and an observed changed file can be incidental.
+Legacy aliases `changedPathCoverage` and `predictedScopeTouched` remain for compatibility. Aggregate history reports averages plus a confidence bucket based on the number of usable historical samples.
+
+These are **path-overlap calibration metrics**, not compiler/runtime impact precision and recall. A correct implementation can affect files that never change, and an observed changed file can be incidental.
+
+## Stale evidence integration
+
+Durable source-linked memory is no longer retrieved as if stale state did not matter. Retrieval labels memory with evidence status and supports three policies:
+
+- `demote` (default): stale evidence is explicitly labeled and heavily down-ranked;
+- `include`: keep stale evidence visible with its stale reasons;
+- `exclude`: omit stale/review/untracked memory from trusted retrieval.
+
+Project-graph nodes are checked against their stored file fingerprint before being surfaced as current retrieval evidence. Changed or missing nodes are omitted from current graph context, and `status` / `doctor` expose graph drift so agents know to run `cmi scan`.
 
 ## Dirty worktrees
 
