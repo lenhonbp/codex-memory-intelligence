@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { resolveProjectFile, slash } from './paths.js';
 import { workspaceForPath } from './workspaces.js';
+import { safeReadMemoryJson } from './storage.js';
 
 const SOURCE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx',
@@ -318,18 +319,49 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
 }
 
 export async function loadProjectGraph(root) {
-  try { return JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'project-graph.json'), 'utf8')); } catch { return null; }
+  try { return await safeReadMemoryJson(root, 'project-graph.json', { optional: true }); } catch { return null; }
+}
+
+function graphFingerprintMatches(stat, fingerprint) {
+  if (!stat || typeof fingerprint !== 'string') return false;
+  const [size, mtimeMs, ctimeMs] = fingerprint.split(':').map(Number);
+  if (![size, mtimeMs, ctimeMs].every(Number.isFinite)) return false;
+  return stat.size === size && Math.trunc(stat.mtimeMs) === mtimeMs && Math.trunc(stat.ctimeMs) === ctimeMs;
+}
+
+export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
+  const graph = suppliedGraph || await loadProjectGraph(root);
+  if (!graph) return { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, truncated: false, current: false, complete: false, healthy: false, state: 'missing' };
+  let freshNodes = 0;
+  let staleNodes = 0;
+  let missingNodes = 0;
+  for (const node of graph.nodes || []) {
+    let stat = null;
+    try { stat = await fs.lstat(path.join(root, node.path)); } catch {}
+    if (!stat?.isFile() || stat.isSymbolicLink()) { missingNodes += 1; continue; }
+    if (!graphFingerprintMatches(stat, node.fingerprint)) { staleNodes += 1; continue; }
+    freshNodes += 1;
+  }
+  const truncated = Boolean(graph.summary?.truncated);
+  const current = staleNodes === 0 && missingNodes === 0;
+  const complete = !truncated;
+  const healthy = current && complete;
+  const state = !current ? 'stale' : !complete ? 'incomplete' : 'healthy';
+  return { available: true, totalNodes: (graph.nodes || []).length, freshNodes, staleNodes, missingNodes, truncated, current, complete, healthy, state };
 }
 
 export async function impactAnalysis(root, target, maxDepth = 3) {
   const graph = await loadProjectGraph(root);
-  if (!graph) return { found: false, reason: 'Project graph is missing. Run cmi scan.' };
+  if (!graph) return { found: false, blocked: true, reason: 'Project graph is missing. Run cmi scan.', graphHealth: await inspectProjectGraphHealth(root, graph) };
+  const graphHealth = await inspectProjectGraphHealth(root, graph);
+  if (!graphHealth.current) return { found: false, blocked: true, reason: 'Project graph is stale. Run cmi scan before relying on impact analysis.', graphHealth, recommendedAction: { command: 'cmi scan', reason: 'Source fingerprints no longer match the stored graph.' } };
+  const warnings = graphHealth.complete ? [] : ['Impact coverage is incomplete because the project graph is truncated.'];
   const query = String(target || '').trim().toLowerCase();
   if (!query) throw new Error('Impact target cannot be empty');
   const fileMatches = graph.nodes.filter((node) => node.path.toLowerCase() === query || node.path.toLowerCase().endsWith(`/${query}`) || node.path.toLowerCase().includes(query));
   const symbolMatches = graph.nodes.flatMap((node) => node.symbols.filter((symbol) => symbol.name.toLowerCase() === query || symbol.name.toLowerCase().includes(query)).map((symbol) => ({ ...symbol, path: node.path, workspace: node.workspace })));
   const seeds = [...new Set([...fileMatches.map((node) => node.path), ...symbolMatches.map((symbol) => symbol.path)])];
-  if (!seeds.length) return { found: false, target, reason: 'No matching file or symbol in the current graph.' };
+  if (!seeds.length) return { found: false, target, reason: graphHealth.complete ? 'No matching file or symbol in the current graph.' : 'No matching file or symbol in the incomplete project graph.', graphHealth, warnings };
   const visited = new Set(seeds);
   let frontier = [...seeds];
   const levels = [];
@@ -343,13 +375,14 @@ export async function impactAnalysis(root, target, maxDepth = 3) {
   const affectedFiles = levels.flatMap((level) => level.files);
   const workspaceMap = new Map(graph.nodes.map((node) => [node.path, node.workspace]));
   const affectedWorkspaces = [...new Set([...seeds, ...affectedFiles].map((file) => workspaceMap.get(file)).filter(Boolean))].sort();
-  return { found: true, target, matchedFiles: fileMatches.map((node) => node.path), matchedSymbols: symbolMatches.slice(0, 50), directDependents: levels[0]?.files || [], affectedFiles, affectedWorkspaces, levels };
+  return { found: true, target, matchedFiles: fileMatches.map((node) => node.path), matchedSymbols: symbolMatches.slice(0, 50), directDependents: levels[0]?.files || [], affectedFiles, affectedWorkspaces, levels, graphHealth, warnings, evidenceStatus: graphHealth.complete ? 'current' : 'incomplete' };
 }
 
 export function formatImpact(result) {
-  if (!result.found) return result.reason;
+  const warnings = result.warnings?.length ? `\n\n## Evidence warnings\n${result.warnings.map((warning) => `- ${warning}`).join('\n')}` : '';
+  if (!result.found) return `${result.reason}${warnings}`;
   const symbolText = result.matchedSymbols.length ? result.matchedSymbols.map((item) => `- ${item.name} (${item.kind}) in \`${item.path}:${item.line}\``).join('\n') : '- None';
   const levelText = result.levels.length ? result.levels.map((level) => `### Depth ${level.depth}\n${level.files.map((file) => `- \`${file}\``).join('\n')}`).join('\n\n') : 'No dependent files found.';
   const workspaceText = result.affectedWorkspaces?.length ? result.affectedWorkspaces.map((workspace) => `- ${workspace}`).join('\n') : '- None detected';
-  return `# Impact analysis: ${result.target}\n\n## Matched files\n${result.matchedFiles.map((file) => `- \`${file}\``).join('\n') || '- None'}\n\n## Matched symbols\n${symbolText}\n\n## Affected workspaces\n${workspaceText}\n\n## Dependents\n${levelText}`;
+  return `# Impact analysis: ${result.target}\n\nEvidence: ${result.evidenceStatus || 'current'}${warnings}\n\n## Matched files\n${result.matchedFiles.map((file) => `- \`${file}\``).join('\n') || '- None'}\n\n## Matched symbols\n${symbolText}\n\n## Affected workspaces\n${workspaceText}\n\n## Dependents\n${levelText}`;
 }

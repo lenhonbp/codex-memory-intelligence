@@ -3,11 +3,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { resolveProjectFile } from './paths.js';
 import { withMemoryWriteLock } from './memory-lock.js';
+import { safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile } from './storage.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md'];
 const META_PATTERN = /<!--\s*cmi-meta:(\{.*?\})\s*-->/;
 const LIFECYCLE_STATES = new Set(['active', 'deprecated', 'rejected', 'superseded']);
-async function readJson(filePath) { try { return JSON.parse(await fs.readFile(filePath, 'utf8')); } catch { return null; } }
 async function hashResolvedFile(filePath) { try { return crypto.createHash('sha256').update(await fs.readFile(filePath)).digest('hex'); } catch { return null; } }
 
 export async function sourceFingerprints(root, sources = []) {
@@ -59,7 +59,7 @@ async function uniqueTrackedEntry(root, selector) {
 }
 async function replaceMetadata(root, target, updater) {
   const filePath = path.join(root, '.codex-memory', target.file);
-  const content = await fs.readFile(filePath, 'utf8');
+  const content = await safeReadMemoryFile(root, target.file);
   const entries = parseEntries(content, target.file);
   const current = entries.find((entry) => entry.metadata?.id === target.metadata?.id);
   if (!current) throw new Error(`Memory entry changed before mutation: ${target.metadata?.id || 'unknown'}`);
@@ -68,22 +68,19 @@ async function replaceMetadata(root, target, updater) {
   const marker = `<!-- cmi-meta:${JSON.stringify(nextMetadata)} -->`;
   const replacement = section.replace(META_PATTERN, marker);
   const next = `${content.slice(0, current.start)}${replacement}${content.slice(current.end)}`;
-  const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-  await fs.writeFile(temporary, next, 'utf8');
-  try { await fs.rename(temporary, filePath); }
-  catch (error) { await fs.rm(temporary, { force: true }).catch(() => {}); throw error; }
+  await safeWriteMemoryFile(root, target.file, next);
   return nextMetadata;
 }
 export async function loadTrackedMemory(root) {
   const directory = path.join(root, '.codex-memory');
   const entries = [];
-  for (const file of MEMORY_FILES) try { entries.push(...parseEntries(await fs.readFile(path.join(directory, file), 'utf8'), file)); } catch {}
+  for (const file of MEMORY_FILES) try { entries.push(...parseEntries(await safeReadMemoryFile(root, file), file)); } catch {}
   return entries;
 }
 export async function checkStaleMemory(root) {
   const directory = path.join(root, '.codex-memory');
-  const index = await readJson(path.join(directory, 'project-index.json'));
-  const config = await readJson(path.join(directory, 'config.json')) || {};
+  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
+  const config = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
   const staleAfterDays = Number(config.staleAfterDays) || 90;
   const now = Date.now();
   const entries = await loadTrackedMemory(root);
@@ -123,16 +120,16 @@ export async function checkStaleMemory(root) {
 export async function refreshMemory(root, selector = 'all', options = {}) {
   return withMemoryWriteLock(root, async () => {
     const directory = path.join(root, '.codex-memory');
-    const index = await readJson(path.join(directory, 'project-index.json'));
+    const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
     let updated = 0;
-    const reviewedBy = boundedText(options.reviewedBy, 'human', 100) || 'human';
-    const reviewReason = boundedText(options.reason, 'Reviewed against the current project.', 500) || 'Reviewed against the current project.';
+    const refreshedBy = boundedText(options.refreshedBy || options.reviewedBy, 'human', 100) || 'human';
+    const refreshReason = boundedText(options.reason, 'Source fingerprints refreshed against the current project.', 500) || 'Source fingerprints refreshed against the current project.';
     const target = selector === 'all' ? null : await uniqueTrackedEntry(root, selector);
     if (target && lifecycleOf(target.metadata).state !== 'active') throw new Error(`Cannot refresh ${lifecycleOf(target.metadata).state} memory. Reactivate it explicitly first.`);
     for (const file of MEMORY_FILES) {
       const filePath = path.join(directory, file);
       let content;
-      try { content = await fs.readFile(filePath, 'utf8'); } catch { continue; }
+      try { content = await safeReadMemoryFile(root, file); } catch { continue; }
       const entries = parseEntries(content, file).reverse();
       let next = content;
       for (const entry of entries) {
@@ -140,22 +137,18 @@ export async function refreshMemory(root, selector = 'all', options = {}) {
         if (target && meta?.id !== target.metadata.id) continue;
         if (!target && meta && lifecycleOf(meta).state !== 'active') continue;
         const baseMetadata = meta || { id: crypto.randomUUID(), type: ({ 'memory.md': 'fact', 'decisions.md': 'decision', 'mistakes.md': 'mistake' })[file], createdAt: entry.heading, sources: [] };
-        const refreshed = { ...baseMetadata, schemaVersion: 1, lifecycle: baseMetadata.lifecycle || { state: 'active' }, sourceHashes: await sourceFingerprints(root, baseMetadata.sources || []), projectHash: index?.hash || baseMetadata.projectHash || null, reviewedAt: new Date().toISOString(), reviewedBy, reviewReason };
+        const refreshedAt = new Date().toISOString();
+        const refreshed = { ...baseMetadata, schemaVersion: 1, lifecycle: baseMetadata.lifecycle || { state: 'active' }, sourceHashes: await sourceFingerprints(root, baseMetadata.sources || []), projectHash: index?.hash || baseMetadata.projectHash || null, sourceRefreshedAt: refreshedAt, sourceRefreshedBy: refreshedBy, sourceRefreshReason: refreshReason };
         const section = next.slice(entry.start, entry.end);
         const marker = `<!-- cmi-meta:${JSON.stringify(refreshed)} -->`;
         const replacement = meta ? section.replace(META_PATTERN, marker) : section.replace(/^##[^\n]*\n?/, (heading) => `${heading}\n${marker}\n`);
         next = `${next.slice(0, entry.start)}${replacement}${next.slice(entry.end)}`;
         updated += 1;
       }
-      if (next !== content) {
-        const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-        await fs.writeFile(temporary, next, 'utf8');
-        try { await fs.rename(temporary, filePath); }
-        catch (error) { await fs.rm(temporary, { force: true }).catch(() => {}); throw error; }
-      }
+      if (next !== content) await safeWriteMemoryFile(root, file, next);
     }
     if (selector !== 'all' && updated === 0) throw new Error(`No memory entry matches: ${selector}`);
-    return { selector: target?.metadata?.id || selector, updated, reviewedBy, reviewReason };
+    return { selector: target?.metadata?.id || selector, updated, refreshedBy, refreshReason, semanticReview: false };
   });
 }
 export async function setMemoryLifecycle(root, selector, state, options = {}) {
@@ -178,6 +171,7 @@ export async function setMemoryLifecycle(root, selector, state, options = {}) {
     const metadata = await replaceMetadata(root, target, async (meta) => ({
       ...meta,
       schemaVersion: 1,
+      ...(normalizedState === 'active' ? { reviewedAt: changedAt, reviewedBy: changedBy, reviewReason: reason } : {}),
       lifecycle: {
         state: normalizedState,
         changedAt,

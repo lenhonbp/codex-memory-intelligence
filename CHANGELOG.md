@@ -4,7 +4,15 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Fixed
+
+- Graph truncation now degrades project health instead of reporting a false healthy state.
+- Impact and pre-change intelligence fail closed on stale graph fingerprints instead of returning obsolete dependency evidence.
+- `.codex-memory` storage rejects symlinked roots and unsafe nested durable directories; Markdown/JSON memory reads use bounded no-follow file-handle validation.
+- Memory, change, and session writer locks use owner-tagged leases with heartbeat and owner-checked release so an old writer cannot delete a replacement lock.
+- Secret guards share broader best-effort credential patterns while remaining explicitly non-DLP.
+- `refresh-memory` now refreshes source fingerprints without asserting semantic review metadata; an explicit `memory-state <id> active --reason ...` review records `reviewedAt`, `reviewedBy`, and `reviewReason`.
+
 
 ## [0.8.0] - 2026-08-07
 
