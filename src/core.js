@@ -297,7 +297,7 @@ export async function doctor(root) {
     add('memory-health', memoryCurrent ? 'pass' : 'warn', memoryCurrent ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
     add('workspaces', 'pass', `${projectStatus.workspaces?.count || 0} configured workspace(s) detected.`);
   }
-  return { version: VERSION, healthy: checks.every((check) => check.status !== 'fail' && check.status !== 'warn'), checks };
+  return { version: VERSION, healthy: checks.every((check) => check.status !== 'fail'), checks };
 }
 
 export async function explainIgnore(root, candidate, options = {}) {
