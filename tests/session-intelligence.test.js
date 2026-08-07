@@ -237,6 +237,7 @@ test('a clean session surfaces a concrete unchecked planning item instead of fal
 test('corrupt session records are ignored and reported instead of entering continuation evidence', async () => {
   const root = await fixture();
   const directory = path.join(root, '.codex-memory', 'sessions');
+  await fs.mkdir(directory, { recursive: true });
   await fs.writeFile(path.join(directory, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.json'), '{not-json', 'utf8');
   const listed = await listSessions(root, { limit: 20 });
   assert.equal(listed.invalidRecords, 1);
