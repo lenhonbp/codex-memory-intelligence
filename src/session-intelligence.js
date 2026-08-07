@@ -19,7 +19,9 @@ const MAX_RECORDS = 500;
 const MAX_PATHS = 160;
 const MAX_TEXT_ITEMS = 40;
 const MAX_TEXT_LENGTH = 500;
-const LOCK_STALE_MS = 30_000;
+const LOCK_STALE_MS = 120_000;
+const LOCK_RETRIES = 120;
+const LOCK_RETRY_MS = 20;
 const SESSION_OUTCOMES = new Set(['succeeded', 'partial', 'blocked', 'investigated', 'abandoned', 'unknown']);
 const FINDING_STATES = new Set(['open', 'resolved', 'accepted', 'dismissed', 'superseded']);
 const SEVERITY_ORDER = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
@@ -31,6 +33,7 @@ function unique(values) { return [...new Set((values || []).filter(Boolean))]; }
 function bounded(values, limit) { return (values || []).slice(0, Math.max(0, limit)); }
 function nowIso() { return new Date().toISOString(); }
 function validIso(value) { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function isCmiInternalPath(value) {
   const normalized = slash(value).trim().replace(/^\.\//, '');
   return normalized === MEMORY_DIR || normalized.startsWith(`${MEMORY_DIR}/`);
@@ -62,7 +65,7 @@ function normalizePath(value) {
 function normalizePaths(values) { return bounded(unique((values || []).map(normalizePath)), MAX_PATHS); }
 function sessionsDirectory(root) { return path.join(root, MEMORY_DIR, SESSION_DIR); }
 function sessionPath(root, id) { return path.join(sessionsDirectory(root), `${id}.json`); }
-function sessionLockPath(root, id) { return path.join(sessionsDirectory(root), `${id}.lock`); }
+function sessionLockPath(root, id) { return path.join(root, MEMORY_DIR, 'snapshots', `session-${id}.lock`); }
 function findingsPath(root) { return path.join(root, MEMORY_DIR, FINDINGS_FILE); }
 function findingsLockPath(root) { return path.join(root, MEMORY_DIR, 'snapshots', 'findings.lock'); }
 function intelligenceLockPath(root) { return path.join(root, MEMORY_DIR, 'snapshots', 'session-intelligence.lock'); }
@@ -74,21 +77,23 @@ async function ensureStorage(root) {
 }
 async function acquireLock(target) {
   await fs.mkdir(path.dirname(target), { recursive: true });
-  try {
-    const handle = await fs.open(target, 'wx');
-    await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: nowIso() }));
-    return handle;
-  } catch (error) {
-    if (error?.code !== 'EEXIST') throw error;
-    const stat = await fs.stat(target).catch(() => null);
-    if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-      await fs.rm(target, { force: true });
+  for (let attempt = 0; attempt <= LOCK_RETRIES; attempt += 1) {
+    try {
       const handle = await fs.open(target, 'wx');
-      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: nowIso(), reclaimed: true }));
+      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: nowIso() }));
       return handle;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      const stat = await fs.stat(target).catch(() => null);
+      if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+        await fs.rm(target, { force: true }).catch(() => {});
+        continue;
+      }
+      if (attempt >= LOCK_RETRIES) throw new Error(`CMI intelligence record remained locked by another writer: ${path.basename(target)}`);
+      await sleep(Math.min(100, LOCK_RETRY_MS + attempt));
     }
-    throw new Error(`CMI intelligence record is locked by another writer: ${path.basename(target)}`);
   }
+  throw new Error(`Unable to acquire CMI intelligence lock: ${path.basename(target)}`);
 }
 async function releaseLock(target, handle) {
   await handle?.close().catch(() => {});
@@ -161,9 +166,12 @@ async function readSessionRecords(root) {
 async function resolveSession(root, selector, options = {}) {
   const { records } = await readSessionRecords(root);
   if ((!selector || selector === 'latest') && options.allowLatest !== false) {
-    const selected = options.status ? records.find((item) => item.status === options.status) : records[0];
-    if (!selected) throw new Error('No matching session record exists.');
-    return selected;
+    const matches = options.status ? records.filter((item) => item.status === options.status) : records;
+    if (!matches.length) throw new Error('No matching session record exists.');
+    if (options.status === 'active' && matches.length > 1 && options.allowAmbiguousLatest !== true) {
+      throw new Error('Multiple active sessions exist. Provide an explicit session ID or unique prefix instead of latest.');
+    }
+    return matches[0];
   }
   const raw = String(selector || '').trim().toLowerCase();
   if (!raw || !/^[0-9a-f-]+$/i.test(raw)) throw new Error('A valid session ID, unique prefix, or latest is required.');
@@ -258,15 +266,34 @@ async function committedPathsSince(root, startHead, currentHead) {
   const output = await runGit(root, ['diff', '--name-only', '--relative', startHead, currentHead, '--']);
   return bounded(unique(output.split(/\r?\n/).filter(Boolean).map(slash).filter((item) => !isCmiInternalPath(item))), MAX_PATHS);
 }
-function baselinePaths(baseline) { return unique((baseline?.changes || []).map((item) => slash(item.path)).filter((item) => item && !isCmiInternalPath(item))); }
+function sessionRepositoryBaseline(repository) {
+  if (!repository?.available) return repository;
+  const projectChanges = [];
+  let cmiInternalChangesOmitted = 0;
+  for (const item of repository.changes || []) {
+    if (isCmiInternalPath(item.path)) cmiInternalChangesOmitted += 1;
+    else projectChanges.push(item);
+  }
+  return {
+    ...repository,
+    projectClean: projectChanges.length === 0,
+    projectChanges: bounded(projectChanges, 200),
+    cmiInternalChangesOmitted,
+  };
+}
+function baselinePaths(baseline) {
+  const changes = baseline?.projectChanges || baseline?.changes || [];
+  return unique(changes.map((item) => slash(item.path)).filter((item) => item && !isCmiInternalPath(item)));
+}
 function summarizeHealth(project) { return { initialized: Boolean(project?.initialized), healthy: Boolean(project?.healthy), graph: project?.graphHealth || null, memory: project?.memoryHealth || null }; }
 async function captureState(root) {
-  const [repository, project, active, completed] = await Promise.all([
+  const [rawRepository, project, active, completed] = await Promise.all([
     getRepositoryBaseline(root),
     getProjectStatus(root),
     listChangeRecords(root, { status: 'active', limit: 100 }),
     listChangeRecords(root, { status: 'completed', limit: 100 }),
   ]);
+  const repository = sessionRepositoryBaseline(rawRepository);
   return {
     capturedAt: nowIso(),
     repository,
@@ -384,7 +411,7 @@ function detectFindings({ record, current, completedDetails, scopePaths, staleRe
     if ((completion.unexpectedImpact || []).length) findings.push(makeFinding('unexpected-impact', 'medium', 'Unexpected impact was recorded', completion.unexpectedImpact.join(' '), { target: change.id, evidence: [`change:${change.id}`] }));
   }
   if (scopePaths.length && !completedDetails.length && !(current.activeChanges || []).length) findings.push(makeFinding('uncaptured-session-change', 'medium', 'Session changed project scope without a change record', `${scopePaths.length} project path(s) changed during the session but no active or completed CMI change record is associated with the session window.`, { target: record.id, evidence: ['git-session-scope'], relatedFiles: scopePaths }));
-  if (current.repository?.available && !current.repository.clean && scopePaths.length) findings.push(makeFinding('uncommitted-session-work', 'low', 'Session ends with uncommitted project work', `${scopePaths.length} session-related path(s) remain in the Git worktree. Preserve or explicitly hand off this state before switching tasks.`, { target: record.id, evidence: ['git-worktree'], relatedFiles: scopePaths }));
+  if (current.repository?.available && current.repository.projectClean === false && scopePaths.length) findings.push(makeFinding('uncommitted-session-work', 'low', 'Session ends with uncommitted project work', `${scopePaths.length} session-related path(s) remain in the Git worktree. Preserve or explicitly hand off this state before switching tasks.`, { target: record.id, evidence: ['git-worktree'], relatedFiles: scopePaths }));
   return findings;
 }
 function priorityFor(finding) {
@@ -482,7 +509,7 @@ function inferOutcome(explicit, record, current, completedDetails, currentFindin
     return normalized;
   }
   if (currentFindings.some((item) => item.severity === 'critical' || item.category === 'session-blocker')) return 'blocked';
-  if ((current.activeChanges || []).length || currentFindings.some((item) => ['verification-missing', 'verification-incomplete'].includes(item.category)) || (current.repository?.available && !current.repository.clean && scopePaths.length)) return 'partial';
+  if ((current.activeChanges || []).length || currentFindings.some((item) => ['verification-missing', 'verification-incomplete'].includes(item.category)) || (current.repository?.available && current.repository.projectClean === false && scopePaths.length)) return 'partial';
   if (completedDetails.length && completedDetails.every((item) => item.completion?.outcome === 'succeeded')) return 'succeeded';
   if (!scopePaths.length && record.observations.some((item) => item.notes?.length || item.decisions?.length || item.questions?.length || item.accomplished?.length)) return 'investigated';
   return 'unknown';
@@ -539,13 +566,20 @@ function mergeLiveFindings(open, detected) {
 function buildHandoff(record, current, scopePaths, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, outcome) {
   const observations = record.observations;
   const fallback = { priority: 'P3', action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.', reason: 'CMI found no unresolved evidence requiring a more specific action.', evidenceType: 'observed', evidence: [], confidence: 'high' };
+  const projectChanges = current.repository?.projectChanges || [];
   return {
     schemaVersion: 1,
     sessionId: record.id,
     generatedAt: nowIso(),
     objective: record.goal,
     outcome,
-    repository: current.repository?.available ? { branch: current.repository.branch, head: current.repository.head, clean: current.repository.clean, changes: bounded(current.repository.changes || [], 40) } : { available: false, reason: current.repository?.reason || 'Git baseline unavailable.' },
+    repository: current.repository?.available ? {
+      branch: current.repository.branch,
+      head: current.repository.head,
+      clean: current.repository.projectClean,
+      changes: bounded(projectChanges, 40),
+      cmiInternalChangesOmitted: current.repository.cmiInternalChangesOmitted || 0,
+    } : { available: false, reason: current.repository?.reason || 'Git baseline unavailable.' },
     sessionScope: bounded(scopePaths, 80),
     accomplished: bounded(observations.flatMap((item) => item.accomplished || []), 30),
     decisions: bounded(observations.flatMap((item) => item.decisions || []), 20),
