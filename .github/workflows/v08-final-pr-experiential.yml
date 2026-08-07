@@ -1,8 +1,8 @@
-name: CMI v0.8 exact PR-head experiential audit
+name: CMI v0.8.0 exact release-prep experiential audit
 on:
   push:
     branches:
-      - validation/v08-final-pr-experiential-10820bea
+      - validation/v080-release-prep-experiential
 permissions:
   contents: read
 jobs:
@@ -14,11 +14,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - name: Checkout exact PR candidate
+      - name: Checkout exact release candidate
         uses: actions/checkout@v6
         with:
           repository: lenhonbp/codex-memory-intelligence
-          ref: 10820bea317613b6c4ec37931619416d5fbaacea
+          ref: 76f54a30387bba0819c97a7d4c672528a5d2d136
           path: candidate
           fetch-depth: 1
       - uses: actions/setup-node@v6
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           actual="$(git -C candidate rev-parse HEAD)"
-          test "$actual" = "10820bea317613b6c4ec37931619416d5fbaacea"
+          test "$actual" = "76f54a30387bba0819c97a7d4c672528a5d2d136"
           tarball="$(cd candidate && npm pack --ignore-scripts --silent)"
           echo "tarball=$PWD/candidate/$tarball" >> "$GITHUB_OUTPUT"
       - name: Primary installed-package experiential audit
