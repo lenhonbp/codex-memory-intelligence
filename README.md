@@ -24,9 +24,9 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.6.0` is the current published npm release. It provides incremental project intelligence, evidence-labeled pre-change briefs, Git baseline awareness, inferred project boundaries, review-only memory-gap proposals, and verification guidance.
+`v0.7.0` is the release line for the **Change Intelligence Loop**. It combines the existing incremental project intelligence and evidence-labeled pre-change briefs with durable BEFORE → DURING → AFTER records that compare predicted scope with observed changed paths and derive bounded historical co-change and verification evidence. The npm badge above is the authoritative indicator of the version currently published to the registry.
 
-The current `main` development line additionally contains the unreleased **Change Intelligence Loop**: durable BEFORE → DURING → AFTER records that compare predicted scope with observed changed paths and derive bounded historical co-change and verification evidence. See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md) and [Changelog](CHANGELOG.md).
+See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md) and [Changelog](CHANGELOG.md) for the storage contract, attribution rules, evidence limits, and release details.
 
 Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Historical co-change is correlation, not causality. CMI never treats an observed changed path as proof of complete runtime impact, and it never turns learning candidates into durable project truth automatically.
 
@@ -90,7 +90,7 @@ CMI does not claim inferred boundaries are declared architecture. Durable memory
 
 ## Change Intelligence Loop
 
-The unreleased change-intelligence layer preserves evidence across real coding tasks:
+The v0.7 change-intelligence layer preserves evidence across real coding tasks:
 
 ```text
 BEFORE  understand + predict + retrieve relevant history
@@ -244,6 +244,7 @@ The server also exposes `cmi://project/change-history` and the `run_change_intel
 - Boundary, risk, memory-gap, co-change, and learning-candidate outputs are explicitly advisory rather than durable truth.
 - Historical co-change is correlation only.
 - Change intelligence does not execute verification commands or store source diffs automatically.
+- Change-history reads are bounded and reject symlinked record paths; supported platforms use fixed file handles and no-follow semantics where available.
 - MCP durable project writes are disabled by default.
 - Bulk memory refresh requires a separate opt-in.
 - Obvious credentials and private keys are rejected from durable memory and user-supplied change-record text, but CMI is not a complete secret scanner.
