@@ -180,14 +180,14 @@ function knowledgePolicyAllows(chunk, includeInactive) {
   return (chunk.metadata?.knowledgeState || 'active') === 'active';
 }
 
-function evidenceAdjustment(chunk) {
+function evidenceAdjustment(chunk, stalePolicy, includeInactive) {
   if (chunk.kind !== 'memory') return 0;
-  if ((chunk.metadata?.knowledgeState || 'active') !== 'active') return -10;
+  if ((chunk.metadata?.knowledgeState || 'active') !== 'active') return includeInactive ? 0 : -10;
   const status = chunk.metadata?.evidenceStatus;
   if (status === 'reviewed-current') return 1;
-  if (status === 'review') return -1;
-  if (status === 'untracked' || status === 'unknown') return -1.5;
-  if (status === 'stale') return -4;
+  if (status === 'review') return stalePolicy === 'include' ? -0.25 : -1;
+  if (status === 'untracked' || status === 'unknown') return stalePolicy === 'include' ? -0.5 : -1.5;
+  if (status === 'stale') return stalePolicy === 'include' ? -1 : -4;
   return 0;
 }
 
@@ -216,7 +216,7 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
     const normalizedTitle = normalize(chunk.title);
     const document = documents[index];
     let score = chunk.source === 'decisions.md' ? 0.8 : chunk.source === 'mistakes.md' ? 0.6 : 0;
-    score += evidenceAdjustment(chunk);
+    score += evidenceAdjustment(chunk, stalePolicy, includeInactive);
     for (const term of terms) {
       const tf = document.frequencies.get(term) || 0;
       if (tf) {
