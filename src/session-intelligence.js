@@ -10,6 +10,7 @@ import { buildContextPack } from './search.js';
 import { checkStaleMemory } from './stale.js';
 import { listChangeRecords, getChangeRecord, buildChangeInsights } from './change-intelligence.js';
 import { getPlanningSignals } from './planning-intelligence.js';
+import { associateSessionChanges } from './session-change-association.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -146,10 +147,10 @@ export function validateSessionRecord(record) {
 function validateFindingRegistry(value) { return Boolean(value && typeof value === 'object' && value.schemaVersion === 1 && Array.isArray(value.findings)); }
 async function writeSession(root, record) {
   if (!validateSessionRecord(record)) throw new Error('Invalid session record.');
-  const targetLock = sessionLockPath(root, record.id);
-  const lock = await acquireLock(targetLock);
+  const lockTarget = sessionLockPath(root, record.id);
+  const lock = await acquireLock(lockTarget);
   try { await atomicJsonWrite(sessionPath(root, record.id), record); }
-  finally { await releaseLock(targetLock, lock); }
+  finally { await releaseLock(lockTarget, lock); }
 }
 async function readSessionRecords(root) {
   await ensureStorage(root);
@@ -185,13 +186,19 @@ async function readFindingsRegistry(root) {
   return await safeReadJson(findingsPath(root), validateFindingRegistry) || { schemaVersion: 1, updatedAt: nowIso(), findings: [] };
 }
 async function writeFindingsRegistry(root, registry) {
-  const targetLock = findingsLockPath(root);
-  const lock = await acquireLock(targetLock);
+  const lockTarget = findingsLockPath(root);
+  const lock = await acquireLock(lockTarget);
   try { registry.updatedAt = nowIso(); await atomicJsonWrite(findingsPath(root), registry); }
-  finally { await releaseLock(targetLock, lock); }
+  finally { await releaseLock(lockTarget, lock); }
 }
 function findingSummary(item) {
-  return { id: item.id, key: item.key, state: item.state, category: item.category, severity: item.severity, title: item.title, detail: item.detail, firstSeen: item.firstSeen, lastSeen: item.lastSeen, occurrences: item.occurrences, confidence: item.confidence, evidenceType: item.evidenceType, evidence: bounded(item.evidence || [], 12), relatedFiles: bounded(item.relatedFiles || [], 12) };
+  return {
+    id: item.id, key: item.key, state: item.state, category: item.category, severity: item.severity,
+    title: item.title, detail: item.detail, firstSeen: item.firstSeen, lastSeen: item.lastSeen,
+    occurrences: item.occurrences, confidence: item.confidence, evidenceType: item.evidenceType,
+    sessionRelevance: item.sessionRelevance || null,
+    evidence: bounded(item.evidence || [], 12), relatedFiles: bounded(item.relatedFiles || [], 12),
+  };
 }
 function selectFinding(registry, selector) {
   const raw = String(selector || '').trim().toLowerCase();
@@ -206,7 +213,8 @@ export async function listFindings(root, options = {}) {
   const state = options.state ? String(options.state).trim().toLowerCase() : null;
   if (state && !FINDING_STATES.has(state)) throw new Error(`Finding state must be one of: ${[...FINDING_STATES].join(', ')}.`);
   const limit = Math.max(1, Math.min(200, Number(options.limit) || 50));
-  const matching = registry.findings.filter((item) => !state || item.state === state).sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen)));
+  const matching = registry.findings.filter((item) => !state || item.state === state)
+    .sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen)));
   return { schemaVersion: 1, findings: matching.slice(0, limit).map(findingSummary), total: matching.length };
 }
 export async function getFinding(root, selector) { return selectFinding(await readFindingsRegistry(root), selector); }
@@ -261,8 +269,15 @@ function baselinePaths(baseline) {
 }
 function summarizeHealth(project) { return { initialized: Boolean(project?.initialized), healthy: Boolean(project?.healthy), graph: project?.graphHealth || null, memory: project?.memoryHealth || null }; }
 async function captureState(root) {
-  const [rawRepository, project, active, completed] = await Promise.all([getRepositoryBaseline(root), getProjectStatus(root), listChangeRecords(root, { status: 'active', limit: 100 }), listChangeRecords(root, { status: 'completed', limit: 100 })]);
-  return { capturedAt: nowIso(), repository: sessionRepositoryBaseline(rawRepository), project: summarizeHealth(project), activeChanges: active.records, completedChangeCount: completed.records.length, invalidChangeRecords: Math.max(active.invalidRecords || 0, completed.invalidRecords || 0) };
+  const [rawRepository, project, active, completed] = await Promise.all([
+    getRepositoryBaseline(root), getProjectStatus(root),
+    listChangeRecords(root, { status: 'active', limit: 100 }), listChangeRecords(root, { status: 'completed', limit: 100 }),
+  ]);
+  return {
+    capturedAt: nowIso(), repository: sessionRepositoryBaseline(rawRepository), project: summarizeHealth(project),
+    activeChanges: active.records, completedChangeCount: completed.records.length,
+    invalidChangeRecords: Math.max(active.invalidRecords || 0, completed.invalidRecords || 0),
+  };
 }
 async function captureContext(root, goal) {
   let context = null;
@@ -280,16 +295,25 @@ async function captureContext(root, goal) {
   return { context, history, planning };
 }
 function normalizeObservation(options = {}) {
-  return { observedAt: nowIso(), files: normalizePaths(options.files || []), notes: cleanItems(options.notes || [], 'Session note'), accomplished: cleanItems(options.accomplished || [], 'Accomplishment'), blockers: cleanItems(options.blockers || [], 'Blocker'), decisions: cleanItems(options.decisions || [], 'Decision'), questions: cleanItems(options.questions || [], 'Open question') };
+  return {
+    observedAt: nowIso(), files: normalizePaths(options.files || []), notes: cleanItems(options.notes || [], 'Session note'),
+    accomplished: cleanItems(options.accomplished || [], 'Accomplishment'), blockers: cleanItems(options.blockers || [], 'Blocker'),
+    decisions: cleanItems(options.decisions || [], 'Decision'), questions: cleanItems(options.questions || [], 'Open question'),
+  };
 }
-function hasObservationSignal(observation) { return observation.files.length || observation.notes.length || observation.accomplished.length || observation.blockers.length || observation.decisions.length || observation.questions.length; }
+function hasObservationSignal(observation) {
+  return observation.files.length || observation.notes.length || observation.accomplished.length || observation.blockers.length || observation.decisions.length || observation.questions.length;
+}
 
 export async function startSession(root, goal, options = {}) {
   return withMutationLock(root, async () => {
     const normalizedGoal = cleanText(goal, 'Session goal');
     const [start, intelligence] = await Promise.all([captureState(root), captureContext(root, normalizedGoal)]);
     const now = nowIso();
-    const record = { schemaVersion: 1, id: crypto.randomUUID(), revision: 1, status: 'active', goal: normalizedGoal, createdAt: now, updatedAt: now, start: { ...start, intelligence }, observations: [], close: null };
+    const record = {
+      schemaVersion: 1, id: crypto.randomUUID(), revision: 1, status: 'active', goal: normalizedGoal,
+      createdAt: now, updatedAt: now, start: { ...start, intelligence }, observations: [], close: null,
+    };
     const initial = normalizeObservation({ ...options, notes: [...(options.notes || []), ...(options.note ? [options.note] : [])] });
     if (hasObservationSignal(initial)) record.observations.push(initial);
     await writeSession(root, record);
@@ -299,7 +323,6 @@ export async function startSession(root, goal, options = {}) {
 export async function observeSession(root, selector, options = {}) {
   return withMutationLock(root, async () => {
     const record = await resolveSession(root, selector || 'latest', { status: 'active' });
-    if (record.status !== 'active') throw new Error('Only active sessions can be observed.');
     const observation = normalizeObservation(options);
     const state = await captureState(root);
     record.observations.push({ ...observation, state });
@@ -310,7 +333,10 @@ export async function observeSession(root, selector, options = {}) {
   });
 }
 
-function completedSince(summaries, startedAt) { const threshold = Date.parse(startedAt); return (summaries || []).filter((item) => item.completedAt && Date.parse(item.completedAt) >= threshold); }
+function completedSince(summaries, startedAt) {
+  const threshold = Date.parse(startedAt);
+  return (summaries || []).filter((item) => item.completedAt && Date.parse(item.completedAt) >= threshold);
+}
 async function loadCompletedDetails(root, summaries) {
   const records = [];
   for (const item of summaries.slice(0, 40)) { try { records.push(await getChangeRecord(root, item.id)); } catch {} }
@@ -318,52 +344,82 @@ async function loadCompletedDetails(root, summaries) {
 }
 function keyFor(category, target = '') { return `${category}:${String(target || '').trim().toLowerCase()}`; }
 function makeFinding(category, severity, title, detail, options = {}) {
-  return { key: keyFor(category, options.target), category, severity, title, detail, confidence: options.confidence || 'high', evidenceType: options.evidenceType || 'observed', evidence: bounded(options.evidence || [], 30), relatedFiles: bounded(options.relatedFiles || [], 30), autoResolvable: AUTO_RESOLVABLE.has(category) };
+  return {
+    key: keyFor(category, options.target), category, severity, title, detail,
+    confidence: options.confidence || 'high', evidenceType: options.evidenceType || 'observed',
+    sessionRelevance: options.sessionRelevance || null,
+    evidence: bounded(options.evidence || [], 30), relatedFiles: bounded(options.relatedFiles || [], 30),
+    autoResolvable: AUTO_RESOLVABLE.has(category),
+  };
 }
-function verificationNames(records) { return new Set(records.flatMap((record) => record.completion?.verifications || []).map((item) => String(item.name || '').trim().toLowerCase())); }
-function detectFindings({ record, current, completedDetails, scopePaths, staleReport }) {
+function verificationNames(records) {
+  return new Set(records.flatMap((record) => record.completion?.verifications || []).map((item) => String(item.name || '').trim().toLowerCase()));
+}
+function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, staleReport }) {
   const findings = [];
   const graph = current.project.graph;
-  if (!current.project.initialized || !graph) findings.push(makeFinding('project-intelligence-missing', 'high', 'Project intelligence is incomplete', 'CMI does not have a current project graph/index, so context and impact guidance are incomplete.', { target: 'graph-index', evidence: ['project-status'] }));
-  else if (!graph.current) findings.push(makeFinding('graph-drift', graph.missingNodes > 0 ? 'high' : 'medium', 'Project graph has drifted from source', `Graph evidence is stale or missing (${graph.staleNodes || 0} stale, ${graph.missingNodes || 0} missing node(s)).`, { target: 'graph', evidence: ['source-fingerprint-mismatch'] }));
+  if (!current.project.initialized || !graph) {
+    findings.push(makeFinding('project-intelligence-missing', 'high', 'Project intelligence is incomplete', 'CMI does not have a current project graph/index, so context and impact guidance are incomplete.', { target: 'graph-index', evidence: ['project-status'] }));
+  } else if (!graph.current) {
+    findings.push(makeFinding('graph-drift', graph.missingNodes > 0 ? 'high' : 'medium', 'Project graph has drifted from source', `Graph evidence is stale or missing (${graph.staleNodes || 0} stale, ${graph.missingNodes || 0} missing node(s)).`, { target: 'graph', evidence: ['source-fingerprint-mismatch'] }));
+  }
   if ((staleReport.counts?.stale || 0) > 0) findings.push(makeFinding('stale-memory', 'medium', 'Reviewed project memory is stale', `${staleReport.counts.stale} tracked memory entr${staleReport.counts.stale === 1 ? 'y is' : 'ies are'} stale against current source evidence.`, { target: 'memory', evidence: ['source-linked-memory'] }));
-  const memoryReviewCount = (staleReport.counts?.review || 0) + (staleReport.counts?.untracked || 0);
-  if (memoryReviewCount > 0) findings.push(makeFinding('memory-review', 'low', 'Project memory needs review', `${memoryReviewCount} memory entr${memoryReviewCount === 1 ? 'y needs' : 'ies need'} review or tracking.`, { target: 'memory', evidence: ['memory-health'] }));
+  const reviewCount = (staleReport.counts?.review || 0) + (staleReport.counts?.untracked || 0);
+  if (reviewCount > 0) findings.push(makeFinding('memory-review', 'low', 'Project memory needs review', `${reviewCount} memory entr${reviewCount === 1 ? 'y needs' : 'ies need'} review or tracking.`, { target: 'memory', evidence: ['memory-health'] }));
   if ((current.invalidChangeRecords || 0) > 0) findings.push(makeFinding('invalid-change-records', 'high', 'Invalid durable change records were ignored', `${current.invalidChangeRecords} change record(s) failed runtime validation and were excluded from evidence.`, { target: 'change-history', evidence: ['runtime-validation'] }));
   const preexisting = baselinePaths(record.start.repository);
   if (preexisting.length) findings.push(makeFinding('preexisting-worktree', 'medium', 'Session attribution started from a dirty worktree', `${preexisting.length} project path(s) were already dirty when the session started. CMI cannot attribute later edits to those same paths from path status alone.`, { target: record.id, evidence: ['session-start-git-baseline'], relatedFiles: preexisting }));
-  for (const active of current.activeChanges || []) findings.push(makeFinding('active-change', 'high', 'Change record remains active', `Change "${active.goal}" has not been completed or explicitly abandoned.`, { target: active.id, evidence: [`change:${active.id}`] }));
-  for (const blocker of record.observations.flatMap((item) => item.blockers || [])) findings.push(makeFinding('session-blocker', 'high', 'Session blocker remains unresolved', blocker, { target: crypto.createHash('sha1').update(blocker).digest('hex').slice(0, 12), evidence: ['session-observation'] }));
-  for (const question of record.observations.flatMap((item) => item.questions || [])) findings.push(makeFinding('open-question', 'low', 'Open project question remains', question, { target: crypto.createHash('sha1').update(question).digest('hex').slice(0, 12), evidence: ['session-observation'], confidence: 'medium' }));
+
+  for (const relation of relatedActive) {
+    const active = relation.change;
+    findings.push(makeFinding('active-change', 'high', 'Related change record remains active', `Change "${active.goal}" appears related to this session and has not been completed or explicitly abandoned.`, {
+      target: active.id, evidence: [`change:${active.id}`, `association:${relation.relation}`],
+      evidenceType: relation.evidenceType === 'inferred' ? 'inferred' : 'observed', sessionRelevance: 'related',
+    }));
+  }
+  for (const relation of concurrentActive) {
+    const active = relation.change;
+    findings.push(makeFinding('active-change', 'info', 'Concurrent active change exists', `Change "${active.goal}" remains active but CMI lacks enough evidence to attribute it to this session.`, {
+      target: active.id, evidence: [`change:${active.id}`, 'association:concurrent-unattributed'],
+      evidenceType: 'inferred', confidence: 'low', sessionRelevance: 'concurrent-unattributed',
+    }));
+  }
+
+  for (const blocker of record.observations.flatMap((item) => item.blockers || [])) findings.push(makeFinding('session-blocker', 'high', 'Session blocker remains unresolved', blocker, { target: crypto.createHash('sha1').update(blocker).digest('hex').slice(0, 12), evidence: ['session-observation'], sessionRelevance: 'related' }));
+  for (const question of record.observations.flatMap((item) => item.questions || [])) findings.push(makeFinding('open-question', 'low', 'Open project question remains', question, { target: crypto.createHash('sha1').update(question).digest('hex').slice(0, 12), evidence: ['session-observation'], confidence: 'medium', sessionRelevance: 'related' }));
+
   for (const change of completedDetails) {
     const completion = change.completion || {};
     const verifications = completion.verifications || [];
-    if (['succeeded', 'partial'].includes(completion.outcome) && verifications.length === 0) findings.push(makeFinding('verification-missing', 'high', 'Completed change has no verification evidence', `Change "${change.goal}" was completed as ${completion.outcome} without recorded verification evidence.`, { target: change.id, evidence: [`change:${change.id}`] }));
+    if (['succeeded', 'partial'].includes(completion.outcome) && verifications.length === 0) findings.push(makeFinding('verification-missing', 'high', 'Related completed change has no verification evidence', `Change "${change.goal}" was associated with this session and completed as ${completion.outcome} without recorded verification evidence.`, { target: change.id, evidence: [`change:${change.id}`], sessionRelevance: 'related' }));
     for (const verification of verifications) {
-      if (verification.status === 'failed') findings.push(makeFinding('verification-failed', 'critical', `Verification failed: ${verification.name}`, `Change "${change.goal}" records a failed verification.`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`] }));
-      else if (['skipped', 'unknown'].includes(verification.status)) findings.push(makeFinding('verification-incomplete', 'medium', `Verification incomplete: ${verification.name}`, `Verification is recorded as ${verification.status} for change "${change.goal}".`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`] }));
+      if (verification.status === 'failed') findings.push(makeFinding('verification-failed', 'critical', `Verification failed: ${verification.name}`, `Related change "${change.goal}" records a failed verification.`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
+      else if (['skipped', 'unknown'].includes(verification.status)) findings.push(makeFinding('verification-incomplete', 'medium', `Verification incomplete: ${verification.name}`, `Verification is recorded as ${verification.status} for related change "${change.goal}".`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
     }
     const comparison = completion.finalObservation?.comparison;
-    if ((comparison?.missedByPrediction || []).length) findings.push(makeFinding('prediction-gap', 'medium', 'Observed work escaped predicted scope', `${comparison.missedByPrediction.length} changed path(s) were not predicted for change "${change.goal}".`, { target: change.id, evidence: [`change:${change.id}`, 'expected-vs-actual'], relatedFiles: comparison.missedByPrediction }));
-    if ((completion.unexpectedImpact || []).length) findings.push(makeFinding('unexpected-impact', 'medium', 'Unexpected impact was recorded', completion.unexpectedImpact.join(' '), { target: change.id, evidence: [`change:${change.id}`] }));
+    if ((comparison?.missedByPrediction || []).length) findings.push(makeFinding('prediction-gap', 'medium', 'Observed related work escaped predicted scope', `${comparison.missedByPrediction.length} changed path(s) were not predicted for related change "${change.goal}".`, { target: change.id, evidence: [`change:${change.id}`, 'expected-vs-actual'], relatedFiles: comparison.missedByPrediction, sessionRelevance: 'related' }));
+    if ((completion.unexpectedImpact || []).length) findings.push(makeFinding('unexpected-impact', 'medium', 'Unexpected impact was recorded for related work', completion.unexpectedImpact.join(' '), { target: change.id, evidence: [`change:${change.id}`], sessionRelevance: 'related' }));
   }
-  if (scopePaths.length && !completedDetails.length && !(current.activeChanges || []).length) findings.push(makeFinding('uncaptured-session-change', 'medium', 'Session changed project scope without a change record', `${scopePaths.length} project path(s) changed during the session but no active or completed CMI change record is associated with the session window.`, { target: record.id, evidence: ['git-session-scope'], relatedFiles: scopePaths }));
-  if (current.repository?.available && current.repository.projectClean === false && scopePaths.length) findings.push(makeFinding('uncommitted-session-work', 'low', 'Session ends with uncommitted project work', `${scopePaths.length} session-related path(s) remain in the Git worktree. Preserve or explicitly hand off this state before switching tasks.`, { target: record.id, evidence: ['git-worktree'], relatedFiles: scopePaths }));
+
+  if (scopePaths.length && !completedDetails.length && !relatedActive.length) findings.push(makeFinding('uncaptured-session-change', 'medium', 'Session changed project scope without a related change record', `${scopePaths.length} project path(s) changed during the session but no associated active/completed CMI change record was identified.`, { target: record.id, evidence: ['git-session-scope'], relatedFiles: scopePaths, sessionRelevance: 'related' }));
+  if (current.repository?.available && current.repository.projectClean === false && scopePaths.length) findings.push(makeFinding('uncommitted-session-work', 'low', 'Session ends with uncommitted project work', `${scopePaths.length} session-related path(s) remain in the Git worktree. Preserve or explicitly hand off this state before switching tasks.`, { target: record.id, evidence: ['git-worktree'], relatedFiles: scopePaths, sessionRelevance: 'related' }));
   return findings;
 }
 function priorityFor(finding) {
+  if (finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed') return 'P3';
   if (finding.category === 'verification-failed' || finding.category === 'session-blocker') return 'P0';
   if (['verification-missing', 'active-change', 'project-intelligence-missing', 'graph-drift', 'uncaptured-session-change', 'invalid-change-records'].includes(finding.category)) return 'P1';
   if (['verification-incomplete', 'prediction-gap', 'unexpected-impact', 'stale-memory', 'preexisting-worktree'].includes(finding.category)) return 'P2';
   return 'P3';
 }
 function actionFor(finding) {
+  if (finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed') return 'Coordinate the concurrent active change only if it becomes relevant to this session; do not block current work on it by default.';
   const actions = {
     'verification-failed': `Fix the failing verification "${finding.title.replace(/^Verification failed:\s*/, '')}" and rerun it before expanding scope.`,
     'session-blocker': `Resolve or explicitly defer the blocker: ${finding.detail}`,
-    'verification-missing': 'Run and record the verification required for the completed change before treating it as fully validated.',
+    'verification-missing': 'Run and record the verification required for the related completed change before treating it as fully validated.',
     'verification-incomplete': `Complete the pending verification: ${finding.title.replace(/^Verification incomplete:\s*/, '')}.`,
-    'active-change': 'Complete or explicitly abandon the active change record before starting unrelated work.',
+    'active-change': 'Complete or explicitly abandon the related active change record before starting unrelated work.',
     'project-intelligence-missing': 'Run `cmi scan` before relying on project context or impact guidance.',
     'graph-drift': 'Run `cmi scan`, then refresh task context/impact before making further dependent changes.',
     'stale-memory': 'Run `cmi stale` and review stale entries; refresh, deprecate, reject, or supersede them based on current evidence.',
@@ -385,25 +441,31 @@ function historicalRecommendations(history, completedDetails) {
   for (const pattern of history.verificationPatterns) {
     const name = String(pattern.name || '').trim();
     if (!name || current.has(name.toLowerCase()) || pattern.total < 3) continue;
-    recommendations.push({ id: `historical-verification:${crypto.createHash('sha1').update(name.toLowerCase()).digest('hex').slice(0, 12)}`, priority: pattern.confidence === 'high' ? 'P1' : 'P2', action: `Consider running the historically repeated verification "${name}" for this work.`, reason: `This verification appears in ${pattern.total} relevant completed change(s) with pass rate ${pattern.passRate ?? 'unknown'} and observed-command evidence rate ${pattern.observedEvidenceRate ?? 'unknown'}.`, evidenceType: 'historical-correlation', evidence: [`historical-verification:${name}`], confidence: pattern.confidence || 'low', relatedFindingIds: [] });
+    recommendations.push({
+      id: `historical-verification:${crypto.createHash('sha1').update(name.toLowerCase()).digest('hex').slice(0, 12)}`,
+      priority: pattern.confidence === 'high' ? 'P1' : 'P2',
+      action: `Consider running the historically repeated verification "${name}" for this related work.`,
+      reason: `This verification appears in ${pattern.total} relevant completed change(s) with pass rate ${pattern.passRate ?? 'unknown'} and observed-command evidence rate ${pattern.observedEvidenceRate ?? 'unknown'}.`,
+      evidenceType: 'historical-correlation', evidence: [`historical-verification:${name}`], confidence: pattern.confidence || 'low', relatedFindingIds: [],
+    });
   }
   return recommendations;
 }
 function planningRecommendations(signals) {
   return bounded((signals || []).map((signal) => ({
-    id: signal.id,
-    priority: 'P3',
+    id: signal.id, priority: 'P3',
     action: `Review whether the unchecked planning item "${signal.text}" should be the next project task.`,
     reason: `Observed unchecked planning task in ${signal.path}:${signal.line}${signal.section ? ` under "${signal.section}"` : ''}.`,
-    evidenceType: 'observed',
-    evidenceSubtype: 'planning-task',
-    evidence: [`${signal.path}:${signal.line}`],
-    confidence: signal.confidence || 'medium',
-    relatedFindingIds: [],
+    evidenceType: 'observed', evidenceSubtype: 'planning-task', evidence: [`${signal.path}:${signal.line}`],
+    confidence: signal.confidence || 'medium', relatedFindingIds: [],
   })), 3);
 }
 function buildRecommendations(findings, history, completedDetails, planningSignals = []) {
-  const items = findings.map((finding) => ({ id: `finding-action:${finding.key}`, priority: priorityFor(finding), action: actionFor(finding), reason: finding.detail, evidenceType: finding.evidenceType, evidence: finding.evidence || [], confidence: finding.confidence || 'low', relatedFindingIds: finding.id ? [finding.id] : [] }));
+  const items = findings.map((finding) => ({
+    id: `finding-action:${finding.key}`, priority: priorityFor(finding), action: actionFor(finding), reason: finding.detail,
+    evidenceType: finding.evidenceType, evidence: finding.evidence || [], confidence: finding.confidence || 'low',
+    relatedFindingIds: finding.id ? [finding.id] : [],
+  }));
   items.push(...historicalRecommendations(history, completedDetails));
   items.push(...planningRecommendations(planningSignals));
   const seen = new Set();
@@ -418,10 +480,11 @@ function buildGuardrails(findings, recommendations) {
   const categories = new Set(findings.map((item) => item.category));
   const items = [];
   if (categories.has('verification-failed')) items.push({ id: 'do-not-claim-verified', rule: 'Do not treat the current work as verified or expand dependent scope while a recorded verification is failing.', reason: 'Failed verification is blocking evidence.' });
-  if (categories.has('verification-missing') || categories.has('verification-incomplete')) items.push({ id: 'do-not-claim-complete', rule: 'Do not represent the affected change as fully validated while verification evidence is missing, skipped, or unknown.', reason: 'Completion claims exceed recorded verification evidence.' });
+  if (categories.has('verification-missing') || categories.has('verification-incomplete')) items.push({ id: 'do-not-claim-complete', rule: 'Do not represent the affected related change as fully validated while verification evidence is missing, skipped, or unknown.', reason: 'Completion claims exceed recorded verification evidence.' });
   if (categories.has('graph-drift') || categories.has('project-intelligence-missing')) items.push({ id: 'do-not-trust-stale-graph', rule: 'Do not rely on graph/impact output as current evidence until project intelligence is refreshed.', reason: 'Graph evidence is unavailable or stale.' });
   if (categories.has('stale-memory')) items.push({ id: 'do-not-promote-stale-memory', rule: 'Do not treat stale reviewed memory as current project truth without source review.', reason: 'Source-linked knowledge no longer matches current evidence.' });
-  if (categories.has('active-change')) items.push({ id: 'do-not-orphan-active-change', rule: 'Do not silently abandon an active Change Intelligence record when switching tasks.', reason: 'Expected-vs-actual and verification history would become incomplete.' });
+  if (findings.some((item) => item.category === 'active-change' && item.sessionRelevance === 'related')) items.push({ id: 'do-not-orphan-active-change', rule: 'Do not silently abandon a related active Change Intelligence record when switching tasks.', reason: 'Expected-vs-actual and verification history would become incomplete.' });
+  if (findings.some((item) => item.category === 'active-change' && item.sessionRelevance === 'concurrent-unattributed')) items.push({ id: 'do-not-hijack-concurrent-change', rule: 'Do not let a concurrent/unattributed change record determine this session next action unless new evidence links it.', reason: 'CMI lacks sufficient association evidence.' });
   if (categories.has('preexisting-worktree')) items.push({ id: 'do-not-overattribute-dirty-worktree', rule: 'Do not attribute all dirty paths to this session when the session started from a dirty worktree.', reason: 'Path status alone cannot separate pre-existing edits from later edits to the same path.' });
   if (categories.has('prediction-gap')) items.push({ id: 'do-not-call-prediction-complete', rule: 'Do not treat pre-change predicted scope as complete impact evidence when observed paths escaped it.', reason: 'Expected-vs-actual evidence contains a prediction gap.' });
   if (recommendations.some((item) => item.evidenceType === 'historical-correlation')) items.push({ id: 'do-not-treat-history-as-causal', rule: 'Do not treat historical verification or co-change correlation as a causal dependency or mandatory command.', reason: 'Historical patterns are correlation-only evidence.' });
@@ -436,22 +499,22 @@ function buildKnowledgeCandidates(record, findings) {
   for (const finding of findings.filter((item) => ['prediction-gap', 'unexpected-impact', 'verification-failed'].includes(item.category))) candidates.push({ type: 'mistake', status: 'review-required', proposal: `${finding.title}: ${finding.detail}`, reason: 'Repeated or well-understood evidence may justify a durable lesson after review.' });
   return bounded(candidates, 20);
 }
-function inferOutcome(explicit, record, current, completedDetails, currentFindings, scopePaths) {
+function inferOutcome(explicit, record, current, relatedActive, completedDetails, currentFindings, scopePaths) {
   if (explicit) {
     const normalized = String(explicit).trim().toLowerCase();
     if (!SESSION_OUTCOMES.has(normalized)) throw new Error(`Session outcome must be one of: ${[...SESSION_OUTCOMES].join(', ')}.`);
     return normalized;
   }
   if (currentFindings.some((item) => item.severity === 'critical' || item.category === 'session-blocker')) return 'blocked';
-  if ((current.activeChanges || []).length || currentFindings.some((item) => ['verification-missing', 'verification-incomplete'].includes(item.category)) || (current.repository?.available && current.repository.projectClean === false && scopePaths.length)) return 'partial';
+  if (relatedActive.length || currentFindings.some((item) => ['verification-missing', 'verification-incomplete'].includes(item.category)) || (current.repository?.available && current.repository.projectClean === false && scopePaths.length)) return 'partial';
   if (completedDetails.length && completedDetails.every((item) => item.completion?.outcome === 'succeeded')) return 'succeeded';
   if (!scopePaths.length && record.observations.some((item) => item.notes?.length || item.decisions?.length || item.questions?.length || item.accomplished?.length)) return 'investigated';
   return 'unknown';
 }
 function summaryText(outcome, scopePaths, completedDetails, openFindings, recommendations) {
-  const blocking = openFindings.filter((item) => ['critical', 'high'].includes(item.severity)).length;
+  const blocking = openFindings.filter((item) => ['critical', 'high'].includes(item.severity) && item.sessionRelevance !== 'concurrent-unattributed').length;
   const next = recommendations[0]?.action || 'No evidence-based follow-up is currently required; the project is ready for a new user-prioritized goal.';
-  return `Session outcome: ${outcome}. ${scopePaths.length} project path(s) were associated with the session and ${completedDetails.length} change record(s) completed during it. ${blocking} high/critical open project finding(s) remain. Next: ${next}`;
+  return `Session outcome: ${outcome}. ${scopePaths.length} project path(s) were associated with the session and ${completedDetails.length} related change record(s) completed during it. ${blocking} high/critical relevant open finding(s) remain. Next: ${next}`;
 }
 async function persistDetectedFindings(root, sessionId, detected) {
   const registry = await readFindingsRegistry(root);
@@ -470,6 +533,8 @@ async function persistDetectedFindings(root, sessionId, detected) {
       existing.detail = item.detail;
       existing.severity = item.severity;
       existing.confidence = item.confidence;
+      existing.evidenceType = item.evidenceType;
+      existing.sessionRelevance = item.sessionRelevance;
       current.push(existing);
     } else {
       existing = { schemaVersion: 1, id: crypto.randomUUID(), state: 'open', ...item, firstSeen: timestamp, lastSeen: timestamp, occurrences: 1, sessions: [sessionId] };
@@ -488,55 +553,100 @@ async function persistDetectedFindings(root, sessionId, detected) {
   await writeFindingsRegistry(root, registry);
   return current;
 }
-async function loadOpenFindings(root) { const registry = await readFindingsRegistry(root); return registry.findings.filter((item) => item.state === 'open').sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen))).slice(0, 100); }
+async function loadOpenFindings(root) {
+  const registry = await readFindingsRegistry(root);
+  return registry.findings.filter((item) => item.state === 'open')
+    .sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen))).slice(0, 100);
+}
 function mergeLiveFindings(open, detected) {
   const map = new Map(open.map((item) => [item.key, item]));
   for (const item of detected) map.set(item.key, { ...(map.get(item.key) || {}), ...item });
   return [...map.values()].sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || a.title.localeCompare(b.title));
 }
-function buildHandoff(record, current, scopePaths, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome) {
+function relationSummary(item) {
+  return {
+    id: item.change.id, goal: item.change.goal, status: item.change.status,
+    relation: item.relation, evidenceType: item.evidenceType,
+    sharedTerms: item.sharedTerms || [], overlapPaths: item.overlapPaths || [],
+  };
+}
+function buildHandoff(record, current, scopePaths, association, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome) {
   const observations = record.observations;
   const fallback = { priority: 'P3', action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.', reason: 'CMI found no unresolved evidence requiring a more specific action.', evidenceType: 'observed', evidence: [], confidence: 'high' };
-  const projectChanges = current.repository?.projectChanges || [];
   return {
     schemaVersion: 1, sessionId: record.id, generatedAt: nowIso(), objective: record.goal, outcome,
-    repository: current.repository?.available ? { branch: current.repository.branch, head: current.repository.head, clean: current.repository.projectClean, changes: bounded(projectChanges, 40), cmiInternalChangesOmitted: current.repository.cmiInternalChangesOmitted || 0 } : { available: false, reason: current.repository?.reason || 'Git baseline unavailable.' },
+    repository: current.repository?.available ? {
+      branch: current.repository.branch, head: current.repository.head, clean: current.repository.projectClean,
+      changes: bounded(current.repository.projectChanges || [], 40), cmiInternalChangesOmitted: current.repository.cmiInternalChangesOmitted || 0,
+    } : { available: false, reason: current.repository?.reason || 'Git baseline unavailable.' },
     sessionScope: bounded(scopePaths, 80),
     accomplished: bounded(observations.flatMap((item) => item.accomplished || []), 30),
     decisions: bounded(observations.flatMap((item) => item.decisions || []), 20),
     openQuestions: bounded(observations.flatMap((item) => item.questions || []), 20),
     completedChanges: bounded(completedDetails.map((item) => ({ id: item.id, goal: item.goal, outcome: item.completion?.outcome, verifications: bounded(item.completion?.verifications || [], 12) })), 20),
-    activeChanges: bounded(current.activeChanges || [], 20),
-    openFindings: bounded(openFindings.map(findingSummary), 20),
-    planningSignals: bounded(planningSignals || [], 8),
-    nextActions: bounded(recommendations, 10), nextAction: recommendations[0] || fallback, guardrails, knowledgeCandidates,
-    agentInstruction: 'Continue from this handoff instead of reconstructing project state from scratch. Re-check current evidence, address P0/P1 actions before unrelated work unless the user changes priority, treat planning items as review candidates, obey guardrails, and do not turn advisory candidates into durable truth without review.',
+    activeChanges: bounded(association.relatedActive.map(relationSummary), 20),
+    concurrentChanges: {
+      active: bounded(association.concurrentActive.map(relationSummary), 20),
+      completed: bounded(association.concurrentCompleted.map(relationSummary), 20),
+      policy: association.policy,
+    },
+    openFindings: bounded(openFindings.map(findingSummary), 20), planningSignals: bounded(planningSignals || [], 8),
+    nextActions: bounded(recommendations, 10), nextAction: recommendations[0] || fallback,
+    guardrails, knowledgeCandidates,
+    agentInstruction: 'Continue from this handoff instead of reconstructing project state from scratch. Re-check current evidence, address P0/P1 relevant actions before unrelated work unless the user changes priority, do not let concurrent/unattributed changes hijack this session, treat planning items as review candidates, obey guardrails, and do not turn advisory candidates into durable truth without review.',
   };
 }
 
 async function buildAssessment(root, record) {
-  const [current, staleReport, intelligence, completedSummaries, existingOpen] = await Promise.all([captureState(root), checkStaleMemory(root), captureContext(root, record.goal), listChangeRecords(root, { status: 'completed', limit: 100 }), loadOpenFindings(root)]);
-  const completedWindow = completedSince(completedSummaries.records, record.createdAt);
-  const completedDetails = await loadCompletedDetails(root, completedWindow);
+  const [current, staleReport, intelligence, completedSummaries, existingOpen] = await Promise.all([
+    captureState(root), checkStaleMemory(root), captureContext(root, record.goal),
+    listChangeRecords(root, { status: 'completed', limit: 100 }), loadOpenFindings(root),
+  ]);
+  const completedCandidates = await loadCompletedDetails(root, completedSince(completedSummaries.records, record.createdAt));
   const startPaths = new Set(baselinePaths(record.start.repository));
   const currentPaths = baselinePaths(current.repository);
   const newDirtyPaths = currentPaths.filter((item) => !startPaths.has(item));
   const committedPaths = await committedPathsSince(root, record.start.repository?.fullHead, current.repository?.fullHead);
   const observedPaths = record.observations.flatMap((item) => item.files || []);
   const scopePaths = bounded(unique([...newDirtyPaths, ...committedPaths, ...observedPaths]), MAX_PATHS);
-  const detected = detectFindings({ record, current, completedDetails, scopePaths, staleReport });
+  const association = associateSessionChanges({
+    sessionGoal: record.goal,
+    startActiveChanges: record.start.activeChanges || [],
+    currentActiveChanges: current.activeChanges || [],
+    completedDetails: completedCandidates,
+    scopePaths,
+  });
+  const completedDetails = association.relatedCompleted.map((item) => item.change);
+  const detected = detectFindings({
+    record, current, relatedActive: association.relatedActive, concurrentActive: association.concurrentActive,
+    completedDetails, scopePaths, staleReport,
+  });
   const findings = mergeLiveFindings(existingOpen, detected);
   const planningSignals = intelligence.planning?.signals || [];
   const recommendations = buildRecommendations(findings, intelligence.history, completedDetails, planningSignals);
   const guardrails = buildGuardrails(findings, recommendations);
-  return { schemaVersion: 1, generatedAt: nowIso(), session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt }, current, scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths] }, completedChanges: completedDetails, detectedFindings: detected, findings, recommendations, guardrails, intelligence };
+  return {
+    schemaVersion: 1, generatedAt: nowIso(),
+    session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt },
+    current,
+    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths] },
+    association: {
+      relatedActive: association.relatedActive.map(relationSummary),
+      concurrentActive: association.concurrentActive.map(relationSummary),
+      relatedCompleted: association.relatedCompleted.map(relationSummary),
+      concurrentCompleted: association.concurrentCompleted.map(relationSummary),
+      policy: association.policy,
+    },
+    completedChanges: completedDetails, detectedFindings: detected, findings, recommendations, guardrails, intelligence,
+  };
 }
-export async function assessSession(root, selector = 'latest') { return buildAssessment(root, await resolveSession(root, selector, { status: 'active' })); }
+export async function assessSession(root, selector = 'latest') {
+  return buildAssessment(root, await resolveSession(root, selector, { status: 'active' }));
+}
 
 export async function closeSession(root, selector, options = {}) {
   return withMutationLock(root, async () => {
     let record = await resolveSession(root, selector || 'latest', { status: 'active' });
-    if (record.status !== 'active') throw new Error('Only active sessions can be closed.');
     const finalObservation = normalizeObservation(options);
     if (hasObservationSignal(finalObservation)) {
       record.observations.push(finalObservation);
@@ -551,12 +661,27 @@ export async function closeSession(root, selector, options = {}) {
     const planningSignals = assessment.intelligence.planning?.signals || [];
     const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges, planningSignals);
     const guardrails = buildGuardrails(openFindings, recommendations);
-    const outcome = inferOutcome(options.outcome, record, assessment.current, assessment.completedChanges, currentFindings, assessment.scope.paths);
+    const relatedActive = assessment.association.relatedActive;
+    const outcome = inferOutcome(options.outcome, record, assessment.current, relatedActive, assessment.completedChanges, currentFindings, assessment.scope.paths);
     const knowledgeCandidates = buildKnowledgeCandidates(record, currentFindings);
-    const handoff = buildHandoff(record, assessment.current, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome);
+    const associationForHandoff = {
+      relatedActive: assessment.association.relatedActive.map((item) => ({ ...item, change: { id: item.id, goal: item.goal, status: item.status } })),
+      concurrentActive: assessment.association.concurrentActive.map((item) => ({ ...item, change: { id: item.id, goal: item.goal, status: item.status } })),
+      concurrentCompleted: assessment.association.concurrentCompleted.map((item) => ({ ...item, change: { id: item.id, goal: item.goal, status: item.status } })),
+      policy: assessment.association.policy,
+    };
+    const handoff = buildHandoff(record, assessment.current, assessment.scope.paths, associationForHandoff, assessment.completedChanges, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome);
     const closedAt = nowIso();
-    record.status = 'closed'; record.updatedAt = closedAt; record.revision = (record.revision || 1) + 1;
-    record.close = { closedAt, outcome, summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations), scope: assessment.scope, current: assessment.current, findings: currentFindings, openFindings, recommendations, guardrails, knowledgeCandidates, handoff, policy: 'Findings and next actions are evidence-linked advisory output. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.' };
+    record.status = 'closed';
+    record.updatedAt = closedAt;
+    record.revision = (record.revision || 1) + 1;
+    record.close = {
+      closedAt, outcome,
+      summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations),
+      scope: assessment.scope, current: assessment.current, association: assessment.association,
+      findings: currentFindings, openFindings, recommendations, guardrails, knowledgeCandidates, handoff,
+      policy: 'Findings and next actions are evidence-linked advisory output. Session/change association is conservative; concurrent/unattributed changes do not block the session by default. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.',
+    };
     await writeSession(root, record);
     return record;
   });
@@ -567,7 +692,12 @@ export async function listSessions(root, options = {}) {
   const status = options.status ? String(options.status).trim().toLowerCase() : null;
   if (status && !['active', 'closed'].includes(status)) throw new Error('Session status must be active or closed.');
   const limit = Math.max(1, Math.min(100, Number(options.limit) || 20));
-  return { schemaVersion: 1, records: records.filter((item) => !status || item.status === status).slice(0, limit).map((item) => ({ id: item.id, status: item.status, goal: item.goal, createdAt: item.createdAt, updatedAt: item.updatedAt, outcome: item.close?.outcome || null, nextAction: item.close?.handoff?.nextAction || null })), invalidRecords, truncated };
+  return {
+    schemaVersion: 1,
+    records: records.filter((item) => !status || item.status === status).slice(0, limit)
+      .map((item) => ({ id: item.id, status: item.status, goal: item.goal, createdAt: item.createdAt, updatedAt: item.updatedAt, outcome: item.close?.outcome || null, nextAction: item.close?.handoff?.nextAction || null })),
+    invalidRecords, truncated,
+  };
 }
 export async function getSessionHandoff(root, selector = 'latest') {
   const record = selector === 'latest' || !selector ? await resolveSession(root, 'latest', { status: 'closed' }) : await resolveSession(root, selector);
@@ -587,12 +717,14 @@ export function formatSessionAssessment(result) {
   const findings = result.findings.map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
   const actions = result.recommendations.map((item) => `- ${item.priority} ${item.action}`).join('\n') || '- No evidence-based follow-up required.';
   const guardrails = result.guardrails.map((item) => `- ${item.rule}`).join('\n') || '- Preserve evidence distinctions.';
-  return `# Session status\n\nGoal: ${result.session.goal}\nScope observed: ${result.scope.paths.length} path(s)\n\n## Current findings\n${findings}\n\n## What to do next\n${actions}\n\n## Guardrails\n${guardrails}`;
+  return `# Session status\n\nGoal: ${result.session.goal}\nScope observed: ${result.scope.paths.length} path(s)\nRelated active changes: ${result.association.relatedActive.length} · concurrent/unattributed active changes: ${result.association.concurrentActive.length}\n\n## Current findings\n${findings}\n\n## What to do next\n${actions}\n\n## Guardrails\n${guardrails}`;
 }
 export function formatHandoff(handoff) {
   const findings = handoff.openFindings.map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
   const actions = handoff.nextActions.map((item) => `- ${item.priority} ${item.action}`).join('\n') || `- ${handoff.nextAction.priority} ${handoff.nextAction.action}`;
   const guardrails = (handoff.guardrails || []).map((item) => `- ${item.rule}`).join('\n') || '- Preserve evidence distinctions.';
-  return `# CMI handoff\n\nObjective: ${handoff.objective}\nOutcome: ${handoff.outcome}\nBranch: ${handoff.repository.branch || 'unknown'}\nHEAD: ${handoff.repository.head || 'unknown'}\nSession scope: ${handoff.sessionScope.length} path(s)\n\n## Open findings\n${findings}\n\n## Next actions\n${actions}\n\n## Guardrails\n${guardrails}\n\n${handoff.agentInstruction}`;
+  return `# CMI handoff\n\nObjective: ${handoff.objective}\nOutcome: ${handoff.outcome}\nBranch: ${handoff.repository.branch || 'unknown'}\nHEAD: ${handoff.repository.head || 'unknown'}\nSession scope: ${handoff.sessionScope.length} path(s)\nRelated active changes: ${handoff.activeChanges.length} · concurrent active changes: ${handoff.concurrentChanges?.active?.length || 0}\n\n## Open findings\n${findings}\n\n## Next actions\n${actions}\n\n## Guardrails\n${guardrails}\n\n${handoff.agentInstruction}`;
 }
-export function formatFindingList(result) { return result.findings.length ? result.findings.map((item) => `- ${item.id.slice(0, 8)} [${item.state}/${item.severity}] ${item.title} · seen ${item.occurrences} time(s)`).join('\n') : 'No matching project findings.'; }
+export function formatFindingList(result) {
+  return result.findings.length ? result.findings.map((item) => `- ${item.id.slice(0, 8)} [${item.state}/${item.severity}] ${item.title} · seen ${item.occurrences} time(s)`).join('\n') : 'No matching project findings.';
+}
