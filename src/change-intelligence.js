@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -12,6 +13,7 @@ const MEMORY_DIR = '.codex-memory';
 const CHANGE_DIR = 'changes';
 const MAX_RECORDS_READ = 500;
 const MAX_RECORD_BYTES = 1_000_000;
+const RECORD_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_PATHS = 160;
 const MAX_TEXT_ITEMS = 20;
 const MAX_TEXT_LENGTH = 500;
@@ -97,15 +99,42 @@ async function writeRecord(root, record) {
   }
 }
 
+async function readBoundedHandle(handle) {
+  const chunks = [];
+  let position = 0;
+  while (position <= MAX_RECORD_BYTES) {
+    const length = Math.min(RECORD_READ_CHUNK_BYTES, MAX_RECORD_BYTES + 1 - position);
+    const buffer = Buffer.allocUnsafe(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, position);
+    if (!bytesRead) break;
+    chunks.push(buffer.subarray(0, bytesRead));
+    position += bytesRead;
+  }
+  if (position > MAX_RECORD_BYTES) return null;
+  return Buffer.concat(chunks, position).toString('utf8');
+}
+
 async function safeReadRecord(filePath) {
+  let handle;
   try {
-    const stat = await fs.lstat(filePath);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_RECORD_BYTES) return null;
-    const parsed = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+    handle = await fs.open(filePath, fsConstants.O_RDONLY | noFollow);
+    const openedStat = await handle.stat();
+    if (!openedStat.isFile() || openedStat.size > MAX_RECORD_BYTES) return null;
+    if (!noFollow) {
+      const pathStat = await fs.lstat(filePath);
+      if (!pathStat.isFile() || pathStat.isSymbolicLink()) return null;
+      if (pathStat.dev !== openedStat.dev || pathStat.ino !== openedStat.ino) return null;
+    }
+    const text = await readBoundedHandle(handle);
+    if (text === null) return null;
+    const parsed = JSON.parse(text);
     if (!parsed || parsed.schemaVersion !== 1 || typeof parsed.id !== 'string') return null;
     return parsed;
   } catch {
     return null;
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 
