@@ -1,0 +1,54 @@
+name: CMI v0.8 self field validation
+
+on:
+  push:
+    branches:
+      - validation/cmi-v08-self-field-20260807
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Run self-host field validation
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { scanProject, status } from './src/core.js';
+          import { startSession, closeSession } from './src/session-intelligence.js';
+
+          const root = process.cwd();
+          await scanProject(root);
+          const project = await status(root);
+          const session = await startSession(root, 'Review CMI v0.8 release readiness and determine the strongest evidence-based next action.');
+          const closed = await closeSession(root, session.id, {
+            notes: ['Read-only self-host field validation on the CMI repository.'],
+            accomplished: ['Scanned the repository and evaluated session continuation intelligence.'],
+          });
+          console.log('CMI_FIELD_VALIDATION=' + JSON.stringify({
+            repository: process.env.GITHUB_REPOSITORY,
+            projectHealthy: project.healthy,
+            graphCurrent: project.graphHealth?.current ?? null,
+            outcome: closed.close.outcome,
+            projectClean: closed.close.handoff.repository?.clean ?? null,
+            sessionScopeCount: closed.close.handoff.sessionScope?.length ?? 0,
+            openFindingCount: closed.close.handoff.openFindings?.length ?? 0,
+            recommendationCount: closed.close.handoff.nextActions?.length ?? 0,
+            nextAction: closed.close.handoff.nextAction,
+            planningSignals: (closed.close.handoff.planningSignals || []).slice(0, 5),
+            guardrails: (closed.close.handoff.guardrails || []).slice(0, 6).map((item) => item.id),
+          }));
+          NODE
