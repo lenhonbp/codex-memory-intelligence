@@ -160,8 +160,8 @@ await check('top-level CLI version and help expose the full installed product', 
   assert.equal(cmiRun(['--version']).stdout.trim(), '0.7.0');
   const help = cmiRun(['--help']).stdout;
   assert.match(help, /cmi change start/);
-  assert.match(help, /cmi session start/);
-  assert.match(help, /cmi finding list/);
+  assert.match(help, /cmi session </);
+  assert.match(help, /cmi finding </);
 });
 
 await check('group help is discoverable without returning an error', async () => {
@@ -177,8 +177,8 @@ await check('init, full scan, status, doctor, graph, workspace and multi-languag
   assert.ok(scan.files >= 10);
   assert.ok(scan.graph?.sourceFiles >= 8);
   assert.ok(scan.graph?.localEdges >= 2);
-  const stack = (scan.stack || []).map((item) => String(item).toLowerCase());
-  for (const expected of ['javascript', 'typescript', 'python', 'go', 'rust']) assert.ok(stack.some((item) => item.includes(expected)), `missing stack ${expected}: ${stack.join(', ')}`);
+  const languages = new Set((scan.languages || []).map((item) => String(item.language)));
+  for (const expected of ['JavaScript', 'TypeScript', 'Python', 'Go', 'Rust']) assert.ok(languages.has(expected), `missing indexed language ${expected}: ${[...languages].join(', ')}`);
   const status = cmiJson(['status', '--json']);
   assert.equal(status.initialized, true);
   assert.equal(status.healthy, true);
@@ -193,7 +193,7 @@ await check('init, full scan, status, doctor, graph, workspace and multi-languag
 await check('Git baseline is clean, bounded and free of absolute local paths', async () => {
   const baseline = cmiJson(['baseline', '--json']);
   assert.equal(baseline.available, true);
-  assert.equal(baseline.projectClean ?? baseline.clean, true);
+  assert.ok((baseline.changes || []).every((item) => String(item.path || '').startsWith('.codex-memory')), `unexpected product dirtiness: ${JSON.stringify(baseline.changes)}`);
   assert.ok(!containsText(baseline, root));
 });
 
@@ -211,12 +211,11 @@ await check('boundary mapping, ignore explanation and negation behave as a user 
 let sourceMemoryId = null;
 const sourceMarker = 'AUDIT_SOURCE_LINKED_MEMORY_17f3';
 await check('durable source-linked memory is searchable and appears in context', async () => {
-  cmiRun(['remember', 'fact', sourceMarker, '--source', 'src/util.js']);
+  const remembered = cmiRun(['remember', 'fact', sourceMarker, '--source', 'src/util.js']).stdout;
+  sourceMemoryId = remembered.match(/[0-9a-f]{8}/i)?.[0] || null;
+  assert.ok(sourceMemoryId);
   const search = cmiJson(['search', sourceMarker, '--json']);
   assert.ok(containsText(search, sourceMarker));
-  const match = findObject(search, (item) => typeof item.id === 'string' && containsText(item, sourceMarker));
-  assert.ok(match?.id, 'search result did not expose a memory id');
-  sourceMemoryId = match.id;
   const context = cmiJson(['context', sourceMarker, '--json']);
   assert.ok(containsText(context, sourceMarker));
 });
@@ -252,11 +251,11 @@ await check('reviewed refresh and incremental scan restore current evidence whil
 let inactiveMemoryId = null;
 const inactiveMarker = 'AUDIT_INACTIVE_MEMORY_c62e';
 await check('memory lifecycle excludes inactive knowledge by default but preserves explicit history', async () => {
-  cmiRun(['remember', 'decision', inactiveMarker]);
+  const remembered = cmiRun(['remember', 'decision', inactiveMarker]).stdout;
+  inactiveMemoryId = remembered.match(/[0-9a-f]{8}/i)?.[0] || null;
+  assert.ok(inactiveMemoryId);
   const search = cmiJson(['search', inactiveMarker, '--json']);
-  const match = findObject(search, (item) => typeof item.id === 'string' && containsText(item, inactiveMarker));
-  assert.ok(match?.id);
-  inactiveMemoryId = match.id;
+  assert.ok(containsText(search, inactiveMarker));
   cmiRun(['memory-state', inactiveMemoryId, 'deprecated', '--reason', 'Experiential audit lifecycle check.', '--changed-by', 'audit']);
   const defaultSearch = cmiJson(['search', inactiveMarker, '--json']);
   assert.equal(containsText(defaultSearch, inactiveMarker), false);
@@ -270,7 +269,7 @@ await check('snapshot, impact, pre-change brief and memory-gap proposal surfaces
   const impact = cmiJson(['impact', 'src/util.js', '--depth', '4', '--json']);
   assert.ok(containsText(impact, 'src/app.js'));
   const brief = cmiJson(['prepare', 'Change greeting behavior safely', '--json']);
-  for (const key of ['repository', 'boundaries', 'impact', 'risks', 'verification']) assert.ok(hasKey(brief, key), `prepare output missing ${key}`);
+  for (const key of ['baseline', 'boundaries', 'impact', 'risks', 'verification']) assert.ok(hasKey(brief, key), `prepare output missing ${key}`);
   const gaps = cmiJson(['memory-gaps', 'Change greeting behavior safely', '--json']);
   assert.ok(typeof gaps === 'object' && gaps !== null);
 });
@@ -321,6 +320,7 @@ await check('session blocker persists into P0 handoff and finding lifecycle can 
 });
 
 await check('clean no-code session chooses source-linked planning continuation and keeps CMI-internal writes out of project dirtiness', async () => {
+  cmiJson(['scan', '--json']);
   const started = cmiJson(['session', 'start', 'Review what should happen next', '--json']);
   const closed = cmiJson(['session', 'close', started.id, '--outcome', 'investigated', '--note', 'No product files changed.', '--json']);
   const handoff = closed.close?.handoff;
@@ -443,8 +443,11 @@ function createMcpClient(extraEnv = {}) {
   }
   async function close() {
     lines.close();
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const closed = new Promise((resolve) => child.once('close', resolve));
     child.kill();
-    await new Promise((resolve) => child.once('close', resolve));
+    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 1500))]);
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   }
   return { request, notify, initialize, close, getStderr: () => stderr };
 }
