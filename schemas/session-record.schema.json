@@ -36,7 +36,7 @@
         { "type": "null" },
         {
           "type": "object",
-          "required": ["closedAt", "outcome", "summary", "scope", "current", "findings", "recommendations", "knowledgeCandidates", "handoff", "policy"],
+          "required": ["closedAt", "outcome", "summary", "scope", "current", "findings", "openFindings", "recommendations", "guardrails", "knowledgeCandidates", "handoff", "policy"],
           "properties": {
             "closedAt": { "type": "string", "format": "date-time" },
             "outcome": { "enum": ["succeeded", "partial", "blocked", "investigated", "abandoned", "unknown"] },
@@ -44,9 +44,11 @@
             "scope": { "type": "object" },
             "current": { "type": "object" },
             "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+            "openFindings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
             "recommendations": { "type": "array", "items": { "$ref": "#/$defs/recommendation" } },
-            "knowledgeCandidates": { "type": "array" },
-            "handoff": { "type": "object" },
+            "guardrails": { "type": "array", "items": { "$ref": "#/$defs/guardrail" } },
+            "knowledgeCandidates": { "type": "array", "maxItems": 20 },
+            "handoff": { "$ref": "#/$defs/handoff" },
             "policy": { "type": "string" }
           },
           "additionalProperties": true
@@ -67,7 +69,10 @@
         "title": { "type": "string" },
         "detail": { "type": "string" },
         "confidence": { "enum": ["high", "medium", "low"] },
-        "evidenceType": { "enum": ["observed", "reviewed", "historical-correlation", "inferred"] }
+        "evidenceType": { "enum": ["observed", "reviewed", "historical-correlation", "inferred"] },
+        "evidence": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+        "relatedFiles": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+        "occurrences": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": true
     },
@@ -80,8 +85,44 @@
         "action": { "type": "string" },
         "reason": { "type": "string" },
         "evidenceType": { "enum": ["observed", "reviewed", "historical-correlation", "inferred"] },
-        "evidence": { "type": "array", "items": { "type": "string" } },
-        "confidence": { "enum": ["high", "medium", "low"] }
+        "evidence": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+        "confidence": { "enum": ["high", "medium", "low"] },
+        "relatedFindingIds": { "type": "array", "items": { "type": "string" }, "maxItems": 50 }
+      },
+      "additionalProperties": true
+    },
+    "guardrail": {
+      "type": "object",
+      "required": ["id", "rule", "reason"],
+      "properties": {
+        "id": { "type": "string" },
+        "rule": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "handoff": {
+      "type": "object",
+      "required": ["schemaVersion", "sessionId", "generatedAt", "objective", "outcome", "repository", "sessionScope", "accomplished", "decisions", "openQuestions", "completedChanges", "activeChanges", "openFindings", "nextActions", "nextAction", "guardrails", "knowledgeCandidates", "agentInstruction"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "sessionId": { "type": "string" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "objective": { "type": "string" },
+        "outcome": { "enum": ["succeeded", "partial", "blocked", "investigated", "abandoned", "unknown"] },
+        "repository": { "type": "object" },
+        "sessionScope": { "type": "array", "items": { "type": "string" }, "maxItems": 80 },
+        "accomplished": { "type": "array", "items": { "type": "string" }, "maxItems": 30 },
+        "decisions": { "type": "array", "items": { "type": "string" }, "maxItems": 20 },
+        "openQuestions": { "type": "array", "items": { "type": "string" }, "maxItems": 20 },
+        "completedChanges": { "type": "array", "maxItems": 20 },
+        "activeChanges": { "type": "array", "maxItems": 20 },
+        "openFindings": { "type": "array", "items": { "$ref": "#/$defs/finding" }, "maxItems": 20 },
+        "nextActions": { "type": "array", "items": { "$ref": "#/$defs/recommendation" }, "maxItems": 10 },
+        "nextAction": { "$ref": "#/$defs/recommendation" },
+        "guardrails": { "type": "array", "items": { "$ref": "#/$defs/guardrail" }, "maxItems": 12 },
+        "knowledgeCandidates": { "type": "array", "maxItems": 20 },
+        "agentInstruction": { "type": "string" }
       },
       "additionalProperties": true
     }
