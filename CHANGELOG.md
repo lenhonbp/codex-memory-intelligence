@@ -16,7 +16,7 @@ All notable changes are documented here.
 - Runtime structural validation, per-record write locking, revision metadata, and stale-lock reclamation for durable change records.
 - Verification provenance classes (`reported`, `observed-command`) with bounded command metadata supported consistently by runtime, JSON Schema, and MCP input Schema.
 - Sample-sensitive historical co-change support/confidence, explicit `historical-correlation` evidence type, verification pass/evidence rates, and expected-vs-actual path precision/recall/F1 calibration.
-- Regression coverage for stale retrieval policy semantics, stale graph health, memory lifecycle, ambiguous ID prefixes, concurrent memory mutation serialization, verification provenance, record validation, and calibrated behavioral confidence.
+- Regression coverage for stale retrieval policy semantics, stale graph health, memory lifecycle, ambiguous ID prefixes, concurrent memory mutation serialization, verification provenance, record validation, calibrated behavioral confidence, Git renames, and detached HEAD baselines.
 
 ### Changed
 
@@ -26,6 +26,7 @@ All notable changes are documented here.
 - Bulk refresh skips intentionally inactive knowledge, and refreshing a single inactive entry requires explicit reactivation first.
 - Co-change confidence no longer maps directly from occurrence count; tiny samples cannot receive high confidence merely because support is 100%.
 - Change-history calibration now reports path precision, recall, F1, sample count, and sample-sensitive confidence while retaining compatibility aliases for v0.7 metrics.
+- Git worktree parsing now uses NUL-delimited porcelain output so rename/copy destination paths and original paths remain distinct instead of becoming `old -> new` pseudo-paths.
 - MCP documentation and prompts now distinguish lifecycle state, stale-evidence policy, historical correlation, and supplied command-result provenance from independently verified truth.
 
 ## [0.7.0] - 2026-08-07
