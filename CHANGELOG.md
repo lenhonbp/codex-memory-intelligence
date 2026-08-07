@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-07
+
 ### Added
 
 - Bounded local Git baseline reporting without absolute-path disclosure.
@@ -13,11 +15,14 @@ All notable changes are documented here.
 - CLI commands: `baseline`, `boundaries`, `memory-gaps`, and `prepare`.
 - MCP tools and resources for repository baseline, boundary maps, memory-gap proposals, and pre-change briefs.
 - Versioned JSON Schema for pre-change brief output.
+- Cross-platform tests for Git-root and nested-project baseline paths, including non-Git projects.
 
 ### Changed
 
 - The `prepare_project_change` MCP prompt now directs agents to use the structured pre-change brief and treat all inferred knowledge as advisory.
 - Architecture and security documentation now distinguish observed project evidence from inferred advisory output.
+- Git project paths are derived using Git-native relative prefixes for consistent behavior across macOS, Windows, and Linux.
+- Only reviewed memory entries with CMI metadata count as durable task-relevant memory; template text and agent guidance are not mistaken for reviewed project facts.
 
 ## [0.5.0] - 2026-08-06
 
