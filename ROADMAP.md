@@ -39,9 +39,13 @@ The v0.8 foundation strengthens evidence quality before expanding intelligence s
 - [x] Label retrieval evidence and support conservative `demote`, `include`, and `exclude` stale policies.
 - [x] Detect stale/missing graph nodes from stored fingerprints before returning graph context.
 - [x] Surface graph drift through context health, `status`, and `doctor`.
+- [x] Add reviewed memory lifecycle states (`active`, `deprecated`, `rejected`, `superseded`) with reason/reviewer audit metadata and active-replacement validation for supersession.
+- [x] Exclude inactive knowledge from trusted retrieval by default while preserving explicit historical inspection.
+- [x] Reject ambiguous memory-ID prefixes for reviewed mutations instead of mutating multiple entries.
 - [x] Runtime-validate durable change records on write and read instead of relying on a documentation-only JSON Schema.
 - [x] Add atomic per-record write locking and revision metadata for local concurrent-writer safety.
 - [x] Distinguish reported verification claims from supplied observed-command metadata without executing commands inside CMI.
+- [x] Keep CLI, MCP schemas, and runtime verification provenance aligned.
 - [x] Calibrate file/boundary co-change confidence using local sample size and support rather than raw occurrence count alone.
 - [x] Expose historical correlation as an explicit evidence type rather than causal dependency.
 - [x] Track verification pass rates and observed-command evidence rates across relevant completed changes.
@@ -64,7 +68,7 @@ These items require real evidence from multiple repositories or longer-lived his
 - [ ] Optional compiler/language-server adapters behind capability detection.
 - [ ] More precise package-level Go and Rust dependency models.
 - [ ] MCP compatibility matrix for Codex, Claude Desktop, VS Code, Cursor, and other clients.
-- [ ] Structured memory editing, rejection, supersession, contradiction, and deprecation workflows without weakening human review.
+- [ ] Structured in-place memory editing and contradiction-detection workflows without weakening human review.
 - [ ] Calibrated confidence evaluation for boundary and task-topic inference across unrelated project types.
 
 ## v1.0 criteria
