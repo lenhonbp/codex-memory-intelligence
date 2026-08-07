@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { resolveProjectFile } from './paths.js';
+import { withMemoryWriteLock } from './memory-lock.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md'];
 const META_PATTERN = /<!--\s*cmi-meta:(\{.*?\})\s*-->/;
@@ -120,67 +121,73 @@ export async function checkStaleMemory(root) {
   return { generatedAt: new Date().toISOString(), projectHash: index?.hash || null, staleAfterDays, counts, entries: results };
 }
 export async function refreshMemory(root, selector = 'all', options = {}) {
-  const directory = path.join(root, '.codex-memory');
-  const index = await readJson(path.join(directory, 'project-index.json'));
-  let updated = 0;
-  const reviewedBy = boundedText(options.reviewedBy, 'human', 100) || 'human';
-  const reviewReason = boundedText(options.reason, 'Reviewed against the current project.', 500) || 'Reviewed against the current project.';
-  const target = selector === 'all' ? null : await uniqueTrackedEntry(root, selector);
-  if (target && lifecycleOf(target.metadata).state !== 'active') throw new Error(`Cannot refresh ${lifecycleOf(target.metadata).state} memory. Reactivate it explicitly first.`);
-  for (const file of MEMORY_FILES) {
-    const filePath = path.join(directory, file);
-    let content;
-    try { content = await fs.readFile(filePath, 'utf8'); } catch { continue; }
-    const entries = parseEntries(content, file).reverse();
-    let next = content;
-    for (const entry of entries) {
-      const meta = entry.metadata;
-      if (target && meta?.id !== target.metadata.id) continue;
-      if (!target && meta && lifecycleOf(meta).state !== 'active') continue;
-      const refreshed = { ...(meta || { id: crypto.randomUUID(), type: ({ 'memory.md': 'fact', 'decisions.md': 'decision', 'mistakes.md': 'mistake' })[file], createdAt: entry.heading, sources: [] }), sourceHashes: await sourceFingerprints(root, meta?.sources || []), projectHash: index?.hash || meta?.projectHash || null, reviewedAt: new Date().toISOString(), reviewedBy, reviewReason };
-      const section = next.slice(entry.start, entry.end);
-      const marker = `<!-- cmi-meta:${JSON.stringify(refreshed)} -->`;
-      const replacement = meta ? section.replace(META_PATTERN, marker) : section.replace(/^##[^\n]*\n?/, (heading) => `${heading}\n${marker}\n`);
-      next = `${next.slice(0, entry.start)}${replacement}${next.slice(entry.end)}`;
-      updated += 1;
+  return withMemoryWriteLock(root, async () => {
+    const directory = path.join(root, '.codex-memory');
+    const index = await readJson(path.join(directory, 'project-index.json'));
+    let updated = 0;
+    const reviewedBy = boundedText(options.reviewedBy, 'human', 100) || 'human';
+    const reviewReason = boundedText(options.reason, 'Reviewed against the current project.', 500) || 'Reviewed against the current project.';
+    const target = selector === 'all' ? null : await uniqueTrackedEntry(root, selector);
+    if (target && lifecycleOf(target.metadata).state !== 'active') throw new Error(`Cannot refresh ${lifecycleOf(target.metadata).state} memory. Reactivate it explicitly first.`);
+    for (const file of MEMORY_FILES) {
+      const filePath = path.join(directory, file);
+      let content;
+      try { content = await fs.readFile(filePath, 'utf8'); } catch { continue; }
+      const entries = parseEntries(content, file).reverse();
+      let next = content;
+      for (const entry of entries) {
+        const meta = entry.metadata;
+        if (target && meta?.id !== target.metadata.id) continue;
+        if (!target && meta && lifecycleOf(meta).state !== 'active') continue;
+        const baseMetadata = meta || { id: crypto.randomUUID(), type: ({ 'memory.md': 'fact', 'decisions.md': 'decision', 'mistakes.md': 'mistake' })[file], createdAt: entry.heading, sources: [] };
+        const refreshed = { ...baseMetadata, schemaVersion: 1, lifecycle: baseMetadata.lifecycle || { state: 'active' }, sourceHashes: await sourceFingerprints(root, baseMetadata.sources || []), projectHash: index?.hash || baseMetadata.projectHash || null, reviewedAt: new Date().toISOString(), reviewedBy, reviewReason };
+        const section = next.slice(entry.start, entry.end);
+        const marker = `<!-- cmi-meta:${JSON.stringify(refreshed)} -->`;
+        const replacement = meta ? section.replace(META_PATTERN, marker) : section.replace(/^##[^\n]*\n?/, (heading) => `${heading}\n${marker}\n`);
+        next = `${next.slice(0, entry.start)}${replacement}${next.slice(entry.end)}`;
+        updated += 1;
+      }
+      if (next !== content) {
+        const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+        await fs.writeFile(temporary, next, 'utf8');
+        try { await fs.rename(temporary, filePath); }
+        catch (error) { await fs.rm(temporary, { force: true }).catch(() => {}); throw error; }
+      }
     }
-    if (next !== content) {
-      const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-      await fs.writeFile(temporary, next, 'utf8');
-      try { await fs.rename(temporary, filePath); }
-      catch (error) { await fs.rm(temporary, { force: true }).catch(() => {}); throw error; }
-    }
-  }
-  if (selector !== 'all' && updated === 0) throw new Error(`No memory entry matches: ${selector}`);
-  return { selector: target?.metadata?.id || selector, updated, reviewedBy, reviewReason };
+    if (selector !== 'all' && updated === 0) throw new Error(`No memory entry matches: ${selector}`);
+    return { selector: target?.metadata?.id || selector, updated, reviewedBy, reviewReason };
+  });
 }
 export async function setMemoryLifecycle(root, selector, state, options = {}) {
-  const normalizedState = String(state || '').trim().toLowerCase();
-  if (!LIFECYCLE_STATES.has(normalizedState)) throw new Error(`Memory lifecycle state must be one of: ${[...LIFECYCLE_STATES].join(', ')}.`);
-  const reason = boundedText(options.reason, '', 500);
-  if (!reason) throw new Error('Memory lifecycle changes require a review reason.');
-  const changedBy = boundedText(options.changedBy, 'human', 100) || 'human';
-  const target = await uniqueTrackedEntry(root, selector);
-  let supersededBy = null;
-  if (normalizedState === 'superseded') {
-    if (!options.supersededBy) throw new Error('Superseded memory requires a replacement memory ID.');
-    const replacement = await uniqueTrackedEntry(root, options.supersededBy);
-    if (replacement.metadata.id === target.metadata.id) throw new Error('Memory cannot supersede itself.');
-    if (lifecycleOf(replacement.metadata).state !== 'active') throw new Error('Replacement memory must be active.');
-    supersededBy = replacement.metadata.id;
-  }
-  const changedAt = new Date().toISOString();
-  const metadata = await replaceMetadata(root, target, async (meta) => ({
-    ...meta,
-    lifecycle: {
-      state: normalizedState,
-      changedAt,
-      changedBy,
-      reason,
-      ...(supersededBy ? { supersededBy } : {}),
-    },
-  }));
-  return { id: metadata.id, state: normalizedState, changedAt, changedBy, reason, supersededBy };
+  return withMemoryWriteLock(root, async () => {
+    const normalizedState = String(state || '').trim().toLowerCase();
+    if (!LIFECYCLE_STATES.has(normalizedState)) throw new Error(`Memory lifecycle state must be one of: ${[...LIFECYCLE_STATES].join(', ')}.`);
+    const reason = boundedText(options.reason, '', 500);
+    if (!reason) throw new Error('Memory lifecycle changes require a review reason.');
+    const changedBy = boundedText(options.changedBy, 'human', 100) || 'human';
+    const target = await uniqueTrackedEntry(root, selector);
+    let supersededBy = null;
+    if (normalizedState === 'superseded') {
+      if (!options.supersededBy) throw new Error('Superseded memory requires a replacement memory ID.');
+      const replacement = await uniqueTrackedEntry(root, options.supersededBy);
+      if (replacement.metadata.id === target.metadata.id) throw new Error('Memory cannot supersede itself.');
+      if (lifecycleOf(replacement.metadata).state !== 'active') throw new Error('Replacement memory must be active.');
+      supersededBy = replacement.metadata.id;
+    }
+    const changedAt = new Date().toISOString();
+    const metadata = await replaceMetadata(root, target, async (meta) => ({
+      ...meta,
+      schemaVersion: 1,
+      lifecycle: {
+        state: normalizedState,
+        changedAt,
+        changedBy,
+        reason,
+        ...(supersededBy ? { supersededBy } : {}),
+      },
+    }));
+    return { id: metadata.id, state: normalizedState, changedAt, changedBy, reason, supersededBy };
+  });
 }
 export function formatStaleReport(report) {
   const header = `# Memory health\n\n- Fresh: ${report.counts.fresh}\n- Stale: ${report.counts.stale}\n- Review: ${report.counts.review}\n- Untracked: ${report.counts.untracked}\n- Inactive: ${report.counts.inactive || 0}`;
