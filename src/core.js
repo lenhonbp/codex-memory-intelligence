@@ -6,10 +6,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { buildProjectGraph, loadProjectGraph } from './graph.js';
 import { checkStaleMemory, sourceFingerprints } from './stale.js';
-import { loadMemory } from './search.js';
 import { resolveProjectFile } from './paths.js';
 import { createIgnoreMatcher, explainIgnore as explainIgnoreRule } from './ignore.js';
 import { detectWorkspaces, formatWorkspaces } from './workspaces.js';
+import { loadMemory } from './search.js';
+import { withMemoryWriteLock } from './memory-lock.js';
 import { VERSION } from './version.js';
 
 const exec = promisify(execFile);
@@ -230,8 +231,8 @@ export async function remember(root, type, text, options = {}) {
   let index = null;
   try { index = JSON.parse(await fs.readFile(path.join(root, MEMORY_DIR, 'project-index.json'), 'utf8')); } catch {}
   const createdAt = new Date().toISOString();
-  const metadata = { id: crypto.randomUUID(), type, createdAt, sources, sourceHashes: await sourceFingerprints(root, sources), projectHash: index?.hash || null };
-  await fs.appendFile(path.join(root, MEMORY_DIR, fileName), `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`, 'utf8');
+  const metadata = { schemaVersion: 1, id: crypto.randomUUID(), type, createdAt, sources, sourceHashes: await sourceFingerprints(root, sources), projectHash: index?.hash || null, lifecycle: { state: 'active' } };
+  await withMemoryWriteLock(root, () => fs.appendFile(path.join(root, MEMORY_DIR, fileName), `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`, 'utf8'));
   return metadata;
 }
 
