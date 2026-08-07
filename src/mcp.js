@@ -17,6 +17,17 @@ import {
   formatMemorySuggestions,
   formatChangeBrief,
 } from './advisor.js';
+import {
+  startChangeRecord,
+  observeChangeRecord,
+  completeChangeRecord,
+  getChangeRecord,
+  listChangeRecords,
+  buildChangeInsights,
+  formatChangeRecord,
+  formatChangeInsights,
+  formatChangeList,
+} from './change-intelligence.js';
 import { VERSION, MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSIONS } from './version.js';
 
 const root = path.resolve(process.env.CMI_PROJECT_ROOT || process.cwd());
@@ -28,7 +39,7 @@ let negotiatedProtocol = MCP_PROTOCOL_VERSION;
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function sendError(id, code, message, data) { send({ jsonrpc: '2.0', id: id ?? null, error: { code, message, ...(data === undefined ? {} : { data }) } }); }
 function textResult(text, structuredContent) { return { content: [{ type: 'text', text }], ...(structuredContent ? { structuredContent } : {}) }; }
-function writable() { if (!writeEnabled) throw new Error('MCP durable-memory tools are disabled. Generate config with cmi mcp-config --write to enable them.'); }
+function writable() { if (!writeEnabled) throw new Error('MCP durable project writes are disabled. Generate config with cmi mcp-config --write to enable reviewed memory and change-record writes.'); }
 function validRequest(message) { return message && typeof message === 'object' && !Array.isArray(message) && message.jsonrpc === '2.0' && typeof message.method === 'string'; }
 
 async function callTool(name, args = {}) {
@@ -55,6 +66,39 @@ async function callTool(name, args = {}) {
   if (name === 'prepare_change_brief') {
     const result = await prepareChangeBrief(root, args.query || '', { limit: args.limit || 12, depth: args.depth || 3, workspace: args.workspace });
     return textResult(formatChangeBrief(result), result);
+  }
+  if (name === 'get_change_insights') {
+    const result = await buildChangeInsights(root, args.query || '', { limit: args.limit || 6 });
+    return textResult(formatChangeInsights(result), result);
+  }
+  if (name === 'get_change_record') {
+    const result = await getChangeRecord(root, args.id || '');
+    return textResult(formatChangeRecord(result), result);
+  }
+  if (name === 'list_change_records') {
+    const result = await listChangeRecords(root, { status: args.status, limit: args.limit || 20 });
+    return textResult(formatChangeList(result), result);
+  }
+  if (name === 'start_change_record') {
+    writable();
+    const result = await startChangeRecord(root, args.goal || '', { limit: args.limit || 12, depth: args.depth || 3, workspace: args.workspace });
+    return textResult(formatChangeRecord(result), result);
+  }
+  if (name === 'observe_change_record') {
+    writable();
+    const result = await observeChangeRecord(root, args.id || '', { files: args.files || [] });
+    return textResult(`Observed ${result.observedChangedFiles.length} changed path(s) with ${result.comparison.missedByPrediction.length} prediction gap(s).`, result);
+  }
+  if (name === 'complete_change_record') {
+    writable();
+    const result = await completeChangeRecord(root, args.id || '', {
+      outcome: args.outcome || 'unknown',
+      files: args.files || [],
+      verifications: args.verifications || [],
+      unexpectedImpact: args.unexpectedImpact || [],
+      notes: args.notes || [],
+    });
+    return textResult(formatChangeRecord(result), result);
   }
   if (name === 'remember_project_knowledge') {
     writable();
@@ -110,6 +154,9 @@ const readTools = [
   { name: 'map_project_boundaries', title: 'Map project boundaries', description: 'Infer advisory architecture boundaries and cross-boundary connections from workspaces, paths, and the import graph. Every boundary includes confidence and provenance.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'suggest_project_memory', title: 'Suggest project memory gaps', description: 'Identify missing task-relevant facts, decisions, and lessons as review-only proposals. This tool never writes durable memory.', inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'prepare_change_brief', title: 'Prepare change brief', description: 'Build a professional pre-change brief combining Git baseline, ranked context, inferred boundaries, impact, memory gaps, risks, verification, confidence, and provenance.', inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 }, depth: { type: 'integer', minimum: 1, maximum: 8 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_change_insights', title: 'Get historical change intelligence', description: 'Retrieve relevant completed change records, file and boundary co-change evidence, verification patterns, and changed-path coverage calibration. Historical correlation is never presented as causality.', inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 20 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_change_record', title: 'Get change record', description: 'Read one durable change record by ID or unique prefix.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'list_change_records', title: 'List change records', description: 'List bounded summaries of active or completed project change records.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['active', 'completed'] }, limit: { type: 'integer', minimum: 1, maximum: 100 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'scan_project_intelligence', title: 'Scan project intelligence', description: 'Refresh repository structure, workspaces, import graph, and symbol intelligence. Uses incremental reuse unless full is true.', inputSchema: { type: 'object', properties: { full: { type: 'boolean' } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_project_memory_status', title: 'Get project status', description: 'Inspect memory, graph, index, workspaces, staleness, and snapshot status.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'list_project_workspaces', title: 'List project workspaces', description: 'List detected npm, pnpm, Cargo, and Go workspaces.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
@@ -119,6 +166,9 @@ const readTools = [
   { name: 'check_stale_memory', title: 'Check stale memory', description: 'Detect project knowledge that is stale, needs review, or predates metadata tracking.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
 ];
 const writeTools = [
+  { name: 'start_change_record', title: 'Start change intelligence record', description: 'Start a durable BEFORE record from the current pre-change brief and relevant historical evidence. Requires explicit MCP write opt-in.', inputSchema: { type: 'object', required: ['goal'], properties: { goal: { type: 'string', maxLength: 500 }, limit: { type: 'integer', minimum: 1, maximum: 30 }, depth: { type: 'integer', minimum: 1, maximum: 8 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: 'observe_change_record', title: 'Observe change progress', description: 'Capture DURING evidence from Git plus optional explicit project-relative file paths without storing diffs or source contents.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' }, files: { type: 'array', items: { type: 'string' }, maxItems: 160 } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: 'complete_change_record', title: 'Complete change intelligence record', description: 'Capture AFTER evidence, outcome, verification claims, unexpected impact, prediction gaps, and review-only learning candidates.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' }, outcome: { type: 'string', enum: ['succeeded', 'failed', 'partial', 'abandoned', 'unknown'] }, files: { type: 'array', items: { type: 'string' }, maxItems: 160 }, verifications: { type: 'array', maxItems: 20, items: { type: 'object', required: ['name', 'status'], properties: { name: { type: 'string', maxLength: 500 }, status: { type: 'string', enum: ['passed', 'failed', 'skipped', 'unknown'] }, evidence: { type: 'string', maxLength: 500 } } } }, unexpectedImpact: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 500 } }, notes: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 500 } } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
   { name: 'remember_project_knowledge', title: 'Remember project knowledge', description: 'Persist a durable fact, architecture decision, or lesson, optionally linked to source files.', inputSchema: { type: 'object', required: ['type','text'], properties: { type: { type: 'string', enum: ['fact','decision','mistake'] }, text: { type: 'string' }, sources: { type: 'array', items: { type: 'string' }, maxItems: 20 } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
   { name: 'refresh_project_memory', title: 'Refresh reviewed memory', description: 'Mark one explicitly reviewed memory entry as current. Bulk refresh requires a separate server opt-in.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'Memory ID prefix; use all only when bulk refresh is enabled.' }, reviewedBy: { type: 'string' }, reason: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } },
 ];
@@ -133,6 +183,7 @@ const resources = [
   { uri: 'cmi://project/graph-summary', name: 'Graph summary', title: 'Project Graph Summary', description: 'Compact graph metrics and high-impact files.', mimeType: 'application/json' },
   { uri: 'cmi://project/baseline', name: 'Repository baseline', title: 'Repository Baseline', description: 'Bounded Git baseline without absolute local paths.', mimeType: 'application/json' },
   { uri: 'cmi://project/boundaries', name: 'Inferred project boundaries', title: 'Inferred Project Boundaries', description: 'Advisory boundary map with confidence and provenance.', mimeType: 'application/json' },
+  { uri: 'cmi://project/change-history', name: 'Change history', title: 'Project Change History', description: 'Bounded summaries of durable BEFORE/DURING/AFTER change records.', mimeType: 'application/json' },
 ];
 
 async function readResource(uri) {
@@ -161,11 +212,15 @@ async function readResource(uri) {
   if (uri === 'cmi://project/boundaries') {
     return { uri, mimeType: 'application/json', text: JSON.stringify(await mapProjectBoundaries(root), null, 2) };
   }
+  if (uri === 'cmi://project/change-history') {
+    return { uri, mimeType: 'application/json', text: JSON.stringify(await listChangeRecords(root, { limit: 50 }), null, 2) };
+  }
   throw new Error(`Unknown resource: ${uri}`);
 }
 
 const prompts = [
-  { name: 'prepare_project_change', title: 'Prepare a project change', description: 'Build a disciplined pre-change workflow using the structured CMI change brief before editing.', arguments: [{ name: 'target', description: 'File, symbol, feature, or change goal.', required: true }, { name: 'workspace', description: 'Optional workspace name or path.', required: false }] },
+  { name: 'prepare_project_change', title: 'Prepare a project change', description: 'Build a disciplined pre-change workflow using CMI context, historical change intelligence, and the structured change brief before editing.', arguments: [{ name: 'target', description: 'File, symbol, feature, or change goal.', required: true }, { name: 'workspace', description: 'Optional workspace name or path.', required: false }] },
+  { name: 'run_change_intelligence_loop', title: 'Run the change intelligence loop', description: 'Guide a BEFORE → DURING → AFTER workflow that records evidence and prediction gaps. Durable record writes require MCP write opt-in.', arguments: [{ name: 'target', description: 'Change goal.', required: true }, { name: 'workspace', description: 'Optional workspace name or path.', required: false }] },
   { name: 'review_stale_memory', title: 'Review stale project memory', description: 'Guide a human-reviewed stale-memory audit.', arguments: [] },
 ];
 
@@ -174,7 +229,13 @@ function promptResult(name, args = {}) {
     const target = String(args.target || '').trim();
     if (!target) throw new Error('Prompt argument target is required.');
     const workspace = args.workspace ? ` Scope retrieval to workspace "${args.workspace}".` : '';
-    return { description: `Prepare a safe change for ${target}.`, messages: [{ role: 'user', content: { type: 'text', text: `Use the CMI prepare_change_brief tool for ${target}.${workspace} Review its Git baseline, durable memory, inferred boundaries, impact, risks, verification plan, confidence, and provenance. Resolve material unknowns before editing. Treat all inferred boundaries and memory suggestions as advisory rather than facts. Propose a minimal plan before changing files, then rescan and verify after implementation. Do not store new memory until the change is reviewed.` } }] };
+    return { description: `Prepare a safe change for ${target}.`, messages: [{ role: 'user', content: { type: 'text', text: `Use get_change_insights for ${target} to inspect relevant completed changes and historical co-change evidence, then use prepare_change_brief for ${target}.${workspace} Review Git baseline, durable memory, inferred boundaries, impact, risks, verification, confidence, provenance, and historical limitations. Historical co-change is correlation only. Resolve material unknowns before editing and propose a minimal plan. Do not store new memory until evidence is reviewed.` } }] };
+  }
+  if (name === 'run_change_intelligence_loop') {
+    const target = String(args.target || '').trim();
+    if (!target) throw new Error('Prompt argument target is required.');
+    const workspace = args.workspace ? ` Use workspace "${args.workspace}" when starting the record.` : '';
+    return { description: `Track evidence for ${target}.`, messages: [{ role: 'user', content: { type: 'text', text: `Run CMI's change intelligence loop for ${target}.${workspace} BEFORE: inspect get_change_insights, then call start_change_record and review its predicted scope, historical evidence, risks, and verification plan. DURING: implement the smallest justified change and call observe_change_record after meaningful edits; provide explicit project-relative files only when Git cannot attribute them. AFTER: rescan project intelligence, run the project's real verification commands yourself, then call complete_change_record with outcome and verification statuses. Review prediction gaps and learning candidates, but never convert them into project memory automatically. Treat changed paths as observed evidence, not proof of complete runtime impact or causality.` } }] };
   }
   if (name === 'review_stale_memory') {
     return { description: 'Review stale project knowledge before refreshing it.', messages: [{ role: 'user', content: { type: 'text', text: 'Run the stale-memory check. For each stale or review item, inspect its linked sources and current architecture. Explain whether it remains valid, needs rewriting, or should be removed. Refresh only entries that were explicitly reviewed, recording reviewer identity and reason.' } }] };
@@ -190,7 +251,7 @@ async function handle(message) {
     lifecycle = 'initializing';
     const requested = String(params?.protocolVersion || '');
     negotiatedProtocol = MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSION;
-    send({ jsonrpc: '2.0', id, result: { protocolVersion: negotiatedProtocol, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: 'codex-memory-intelligence', title: 'Codex Memory Intelligence', version: VERSION }, instructions: `Local-first project intelligence with incremental scanning, workspace-aware retrieval, and evidence-labeled pre-change briefs. Inferred boundaries and memory suggestions are advisory. Durable-memory mutations are ${writeEnabled ? 'enabled' : 'disabled by default'}.` } });
+    send({ jsonrpc: '2.0', id, result: { protocolVersion: negotiatedProtocol, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: 'codex-memory-intelligence', title: 'Codex Memory Intelligence', version: VERSION }, instructions: `Local-first project intelligence with incremental scanning, workspace-aware retrieval, evidence-labeled pre-change briefs, and historical change intelligence. Inferred boundaries, co-change patterns, and learning candidates are advisory. Durable project writes are ${writeEnabled ? 'enabled' : 'disabled by default'}.` } });
     return;
   }
   if (method === 'notifications/initialized') { if (lifecycle === 'initializing') lifecycle = 'ready'; return; }

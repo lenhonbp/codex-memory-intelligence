@@ -71,7 +71,7 @@ async function initialize(server, version = '2025-11-25') {
   return initialized;
 }
 
-test('CLI exposes incremental, workspace, advisory, ignore, and version workflows', async () => {
+test('CLI exposes incremental, workspace, advisory, change-intelligence, ignore, and version workflows', async () => {
   const root = await fixture();
   let result = await run(process.execPath, [cli, '--version'], { cwd: root });
   assert.equal(result.stdout.trim(), VERSION);
@@ -88,6 +88,16 @@ test('CLI exposes incremental, workspace, advisory, ignore, and version workflow
   assert.equal(JSON.parse(result.stdout).ready, true);
   result = await run(process.execPath, [cli, 'memory-gaps', 'change migrate flow', '--json'], { cwd: root });
   assert.ok(JSON.parse(result.stdout).suggestions.every((item) => item.status === 'proposal'));
+  result = await run(process.execPath, [cli, 'change', 'start', 'change migrate flow', '--json'], { cwd: root });
+  assert.equal(result.code, 0);
+  const record = JSON.parse(result.stdout);
+  assert.equal(record.status, 'active');
+  result = await run(process.execPath, [cli, 'change', 'observe', record.id, '--file', 'src/db.js', '--json'], { cwd: root });
+  assert.ok(JSON.parse(result.stdout).observedChangedFiles.includes('src/db.js'));
+  result = await run(process.execPath, [cli, 'change', 'complete', record.id, '--outcome', 'succeeded', '--file', 'src/db.js', '--verify', 'npm test=passed', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).completion.outcome, 'succeeded');
+  result = await run(process.execPath, [cli, 'change', 'history', 'migrate', '--json'], { cwd: root });
+  assert.equal(JSON.parse(result.stdout).matches.length, 1);
   result = await run(process.execPath, [cli, 'explain-ignore', 'node_modules', '--directory', '--json'], { cwd: root });
   assert.equal(JSON.parse(result.stdout).ignored, true);
 });
@@ -109,15 +119,20 @@ test('MCP negotiates stable versions and exposes tools, resources, and prompts',
   assert.ok(tools.result.tools.some((tool) => tool.name === 'map_project_boundaries'));
   assert.ok(tools.result.tools.some((tool) => tool.name === 'suggest_project_memory'));
   assert.ok(tools.result.tools.some((tool) => tool.name === 'prepare_change_brief'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'get_change_insights'));
+  assert.ok(tools.result.tools.some((tool) => tool.name === 'list_change_records'));
+  assert.ok(!tools.result.tools.some((tool) => tool.name === 'start_change_record'));
   assert.ok(!tools.result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
   server.send({ jsonrpc: '2.0', id: 3, method: 'resources/list', params: {} });
   const resources = await server.waitFor((message) => message.id === 3);
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/architecture'));
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/baseline'));
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/boundaries'));
+  assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/change-history'));
   server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/list', params: {} });
   const prompts = await server.waitFor((message) => message.id === 4);
   assert.ok(prompts.result.prompts.some((prompt) => prompt.name === 'prepare_project_change'));
+  assert.ok(prompts.result.prompts.some((prompt) => prompt.name === 'run_change_intelligence_loop'));
   server.send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'scan_project_intelligence', arguments: {} } });
   assert.equal((await server.waitFor((message) => message.id === 5)).result.structuredContent.graph.parsedFiles, 2);
   server.send({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'cmi://project/architecture' } });
@@ -126,10 +141,12 @@ test('MCP negotiates stable versions and exposes tools, resources, and prompts',
   const brief = await server.waitFor((message) => message.id === 7);
   assert.equal(brief.result.structuredContent.ready, true);
   assert.ok(Array.isArray(brief.result.structuredContent.risks));
+  server.send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'get_change_insights', arguments: { query: 'migrate' } } });
+  assert.equal((await server.waitFor((message) => message.id === 8)).result.structuredContent.corpus.completedRecords, 0);
   server.child.stdin.end();
 });
 
-test('MCP reports parse errors, negotiates fallback, and supports opt-in writes', async () => {
+test('MCP reports parse errors, negotiates fallback, and supports opt-in durable writes', async () => {
   const root = await fixture();
   const server = startMcp(root, { CMI_WRITE_ENABLED: '1' });
   server.send('{bad json');
@@ -137,10 +154,26 @@ test('MCP reports parse errors, negotiates fallback, and supports opt-in writes'
   const initialized = await initialize(server, '2099-01-01');
   assert.equal(initialized.result.protocolVersion, '2025-11-25');
   server.send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
-  assert.ok((await server.waitFor((message) => message.id === 2)).result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
+  const tools = (await server.waitFor((message) => message.id === 2)).result.tools;
+  assert.ok(tools.some((tool) => tool.name === 'remember_project_knowledge'));
+  assert.ok(tools.some((tool) => tool.name === 'start_change_record'));
+  assert.ok(tools.some((tool) => tool.name === 'observe_change_record'));
+  assert.ok(tools.some((tool) => tool.name === 'complete_change_record'));
   server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'remember_project_knowledge', arguments: { type: 'fact', text: 'MCP writes are explicitly enabled.' } } });
   assert.equal((await server.waitFor((message) => message.id === 3)).result.isError, undefined);
   server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/get', params: { name: 'prepare_project_change', arguments: { target: 'migrate' } } });
-  assert.match((await server.waitFor((message) => message.id === 4)).result.messages[0].content.text, /prepare_change_brief/i);
+  assert.match((await server.waitFor((message) => message.id === 4)).result.messages[0].content.text, /get_change_insights/i);
+  server.send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'scan_project_intelligence', arguments: {} } });
+  await server.waitFor((message) => message.id === 5);
+  server.send({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'start_change_record', arguments: { goal: 'change migrate flow' } } });
+  const started = await server.waitFor((message) => message.id === 6);
+  const changeId = started.result.structuredContent.id;
+  assert.equal(started.result.structuredContent.status, 'active');
+  server.send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'observe_change_record', arguments: { id: changeId, files: ['src/db.js'] } } });
+  assert.ok((await server.waitFor((message) => message.id === 7)).result.structuredContent.observedChangedFiles.includes('src/db.js'));
+  server.send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'complete_change_record', arguments: { id: changeId, outcome: 'succeeded', files: ['src/db.js'], verifications: [{ name: 'npm test', status: 'passed' }] } } });
+  assert.equal((await server.waitFor((message) => message.id === 8)).result.structuredContent.status, 'completed');
+  server.send({ jsonrpc: '2.0', id: 9, method: 'prompts/get', params: { name: 'run_change_intelligence_loop', arguments: { target: 'migrate' } } });
+  assert.match((await server.waitFor((message) => message.id === 9)).result.messages[0].content.text, /BEFORE.*DURING.*AFTER/i);
   server.child.stdin.end();
 });
