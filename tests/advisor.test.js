@@ -51,6 +51,14 @@ test('repository baseline is bounded and does not expose absolute paths', async 
   assert.equal(baseline.projectPath, '.');
   assert.ok(baseline.head);
   assert.ok(!JSON.stringify(baseline).includes(root));
+
+  const nested = path.join(root, 'packages', 'client');
+  await fs.mkdir(nested, { recursive: true });
+  const nestedBaseline = await getRepositoryBaseline(nested);
+  assert.equal(nestedBaseline.available, true);
+  assert.equal(nestedBaseline.projectPath, 'packages/client');
+  assert.ok(!JSON.stringify(nestedBaseline).includes(root));
+
   await fs.appendFile(path.join(root, 'src', 'api', 'checkout.js'), '\nexport const version = 2;\n');
   baseline = await getRepositoryBaseline(root);
   assert.equal(baseline.clean, false);
