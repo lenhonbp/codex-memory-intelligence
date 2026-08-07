@@ -138,3 +138,53 @@ test('non-Git projects remain usable through explicit observed paths', async () 
   const loaded = await getChangeRecord(root, record.id.slice(0, 8));
   assert.equal(loaded.id, record.id);
 });
+
+test('change history rejects oversized record files before parsing them', async () => {
+  const root = await fixture();
+  const record = await startChangeRecord(root, 'bounded history read');
+  const changes = path.join(root, '.codex-memory', 'changes');
+  const oversizedId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const oversized = JSON.stringify({
+    schemaVersion: 1,
+    id: oversizedId,
+    status: 'completed',
+    goal: 'x'.repeat(1_000_100),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  await fs.writeFile(path.join(changes, `${oversizedId}.json`), oversized, 'utf8');
+  const list = await listChangeRecords(root);
+  assert.ok(list.records.some((item) => item.id === record.id));
+  assert.ok(!list.records.some((item) => item.id === oversizedId));
+  assert.equal(list.invalidRecords, 1);
+});
+
+test('change history never follows symlinked record files outside the project', async (context) => {
+  const root = await fixture();
+  await startChangeRecord(root, 'safe history read');
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-change-outside-'));
+  const outsideId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const outsideRecord = {
+    schemaVersion: 1,
+    id: outsideId,
+    status: 'completed',
+    goal: 'outside record',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const outsidePath = path.join(outside, 'outside.json');
+  await fs.writeFile(outsidePath, `${JSON.stringify(outsideRecord)}\n`, 'utf8');
+  const linkedPath = path.join(root, '.codex-memory', 'changes', `${outsideId}.json`);
+  try {
+    await fs.symlink(outsidePath, linkedPath, 'file');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+      context.skip(`Symlink creation is unavailable on this runner (${error.code}).`);
+      return;
+    }
+    throw error;
+  }
+  const list = await listChangeRecords(root);
+  assert.ok(!list.records.some((item) => item.id === outsideId));
+  assert.equal(list.invalidRecords, 1);
+});
