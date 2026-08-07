@@ -65,6 +65,7 @@ function sessionPath(root, id) { return path.join(sessionsDirectory(root), `${id
 function sessionLockPath(root, id) { return path.join(sessionsDirectory(root), `${id}.lock`); }
 function findingsPath(root) { return path.join(root, MEMORY_DIR, FINDINGS_FILE); }
 function findingsLockPath(root) { return path.join(root, MEMORY_DIR, 'snapshots', 'findings.lock'); }
+function intelligenceLockPath(root) { return path.join(root, MEMORY_DIR, 'snapshots', 'session-intelligence.lock'); }
 
 async function ensureStorage(root) {
   await initProject(root);
@@ -92,6 +93,13 @@ async function acquireLock(target) {
 async function releaseLock(target, handle) {
   await handle?.close().catch(() => {});
   await fs.rm(target, { force: true }).catch(() => {});
+}
+async function withMutationLock(root, operation) {
+  await ensureStorage(root);
+  const target = intelligenceLockPath(root);
+  const lock = await acquireLock(target);
+  try { return await operation(); }
+  finally { await releaseLock(target, lock); }
 }
 async function atomicJsonWrite(target, value) {
   const temporary = `${target}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
@@ -176,45 +184,67 @@ async function writeFindingsRegistry(root, registry) {
   finally { await releaseLock(targetLock, lock); }
 }
 function findingSummary(item) {
-  return { id: item.id, key: item.key, state: item.state, category: item.category, severity: item.severity, title: item.title, firstSeen: item.firstSeen, lastSeen: item.lastSeen, occurrences: item.occurrences, confidence: item.confidence };
+  return {
+    id: item.id,
+    key: item.key,
+    state: item.state,
+    category: item.category,
+    severity: item.severity,
+    title: item.title,
+    detail: item.detail,
+    firstSeen: item.firstSeen,
+    lastSeen: item.lastSeen,
+    occurrences: item.occurrences,
+    confidence: item.confidence,
+    evidenceType: item.evidenceType,
+    evidence: bounded(item.evidence || [], 12),
+    relatedFiles: bounded(item.relatedFiles || [], 12),
+  };
+}
+function selectFinding(registry, selector) {
+  const raw = String(selector || '').trim().toLowerCase();
+  if (!raw) throw new Error('A finding ID or unique prefix is required.');
+  const matches = registry.findings.filter((item) => item.id.toLowerCase() === raw || item.id.toLowerCase().startsWith(raw));
+  if (!matches.length) throw new Error(`Finding not found: ${selector}`);
+  if (matches.length > 1) throw new Error(`Finding prefix is ambiguous: ${selector}`);
+  return matches[0];
 }
 export async function listFindings(root, options = {}) {
   const registry = await readFindingsRegistry(root);
   const state = options.state ? String(options.state).trim().toLowerCase() : null;
   if (state && !FINDING_STATES.has(state)) throw new Error(`Finding state must be one of: ${[...FINDING_STATES].join(', ')}.`);
   const limit = Math.max(1, Math.min(200, Number(options.limit) || 50));
-  const findings = registry.findings
+  const matching = registry.findings
     .filter((item) => !state || item.state === state)
-    .sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen)))
-    .slice(0, limit);
-  return { schemaVersion: 1, findings: findings.map(findingSummary), total: findings.length };
+    .sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen)));
+  return { schemaVersion: 1, findings: matching.slice(0, limit).map(findingSummary), total: matching.length };
 }
 export async function getFinding(root, selector) {
   const registry = await readFindingsRegistry(root);
-  const raw = String(selector || '').trim().toLowerCase();
-  const matches = registry.findings.filter((item) => item.id.toLowerCase() === raw || item.id.toLowerCase().startsWith(raw));
-  if (!matches.length) throw new Error(`Finding not found: ${selector}`);
-  if (matches.length > 1) throw new Error(`Finding prefix is ambiguous: ${selector}`);
-  return matches[0];
+  return selectFinding(registry, selector);
 }
 export async function setFindingState(root, selector, state, options = {}) {
-  const nextState = String(state || '').trim().toLowerCase();
-  if (!FINDING_STATES.has(nextState)) throw new Error(`Finding state must be one of: ${[...FINDING_STATES].join(', ')}.`);
-  const reason = cleanText(options.reason, 'Finding state reason');
-  const registry = await readFindingsRegistry(root);
-  const raw = String(selector || '').trim().toLowerCase();
-  const matches = registry.findings.filter((item) => item.id.toLowerCase() === raw || item.id.toLowerCase().startsWith(raw));
-  if (!matches.length) throw new Error(`Finding not found: ${selector}`);
-  if (matches.length > 1) throw new Error(`Finding prefix is ambiguous: ${selector}`);
-  const finding = matches[0];
-  finding.state = nextState;
-  finding.stateChangedAt = nowIso();
-  finding.stateChangedBy = cleanText(options.changedBy || 'reviewer', 'Finding reviewer');
-  finding.stateReason = reason;
-  if (nextState === 'superseded') finding.supersededBy = cleanText(options.supersededBy, 'Superseding finding ID');
-  else delete finding.supersededBy;
-  await writeFindingsRegistry(root, registry);
-  return finding;
+  return withMutationLock(root, async () => {
+    const nextState = String(state || '').trim().toLowerCase();
+    if (!FINDING_STATES.has(nextState)) throw new Error(`Finding state must be one of: ${[...FINDING_STATES].join(', ')}.`);
+    const reason = cleanText(options.reason, 'Finding state reason');
+    const registry = await readFindingsRegistry(root);
+    const finding = selectFinding(registry, selector);
+    let replacement = null;
+    if (nextState === 'superseded') {
+      if (!options.supersededBy) throw new Error('Superseded finding state requires a replacement finding ID.');
+      replacement = selectFinding(registry, options.supersededBy);
+      if (replacement.id === finding.id) throw new Error('A finding cannot supersede itself.');
+      if (!['open', 'accepted'].includes(replacement.state)) throw new Error('A superseding finding must be open or accepted.');
+    }
+    finding.state = nextState;
+    finding.stateChangedAt = nowIso();
+    finding.stateChangedBy = cleanText(options.changedBy || 'reviewer', 'Finding reviewer');
+    finding.stateReason = reason;
+    if (replacement) finding.supersededBy = replacement.id; else delete finding.supersededBy;
+    await writeFindingsRegistry(root, registry);
+    return finding;
+  });
 }
 
 async function runGit(root, args) {
@@ -275,26 +305,29 @@ function hasObservationSignal(observation) {
 }
 
 export async function startSession(root, goal, options = {}) {
-  await ensureStorage(root);
-  const normalizedGoal = cleanText(goal, 'Session goal');
-  const [start, intelligence] = await Promise.all([captureState(root), captureContext(root, normalizedGoal)]);
-  const now = nowIso();
-  const record = { schemaVersion: 1, id: crypto.randomUUID(), revision: 1, status: 'active', goal: normalizedGoal, createdAt: now, updatedAt: now, start: { ...start, intelligence }, observations: [], close: null };
-  const initial = normalizeObservation({ ...options, notes: [...(options.notes || []), ...(options.note ? [options.note] : [])] });
-  if (hasObservationSignal(initial)) record.observations.push(initial);
-  await writeSession(root, record);
-  return record;
+  return withMutationLock(root, async () => {
+    const normalizedGoal = cleanText(goal, 'Session goal');
+    const [start, intelligence] = await Promise.all([captureState(root), captureContext(root, normalizedGoal)]);
+    const now = nowIso();
+    const record = { schemaVersion: 1, id: crypto.randomUUID(), revision: 1, status: 'active', goal: normalizedGoal, createdAt: now, updatedAt: now, start: { ...start, intelligence }, observations: [], close: null };
+    const initial = normalizeObservation({ ...options, notes: [...(options.notes || []), ...(options.note ? [options.note] : [])] });
+    if (hasObservationSignal(initial)) record.observations.push(initial);
+    await writeSession(root, record);
+    return record;
+  });
 }
 export async function observeSession(root, selector, options = {}) {
-  const record = await resolveSession(root, selector || 'latest', { status: 'active' });
-  if (record.status !== 'active') throw new Error('Only active sessions can be observed.');
-  const observation = normalizeObservation(options);
-  const state = await captureState(root);
-  record.observations.push({ ...observation, state });
-  record.updatedAt = nowIso();
-  record.revision = (record.revision || 1) + 1;
-  await writeSession(root, record);
-  return record;
+  return withMutationLock(root, async () => {
+    const record = await resolveSession(root, selector || 'latest', { status: 'active' });
+    if (record.status !== 'active') throw new Error('Only active sessions can be observed.');
+    const observation = normalizeObservation(options);
+    const state = await captureState(root);
+    record.observations.push({ ...observation, state });
+    record.updatedAt = nowIso();
+    record.revision = (record.revision || 1) + 1;
+    await writeSession(root, record);
+    return record;
+  });
 }
 
 function completedSince(summaries, startedAt) {
@@ -333,6 +366,8 @@ function detectFindings({ record, current, completedDetails, scopePaths, staleRe
   const memoryReviewCount = (staleReport.counts?.review || 0) + (staleReport.counts?.untracked || 0);
   if (memoryReviewCount > 0) findings.push(makeFinding('memory-review', 'low', 'Project memory needs review', `${memoryReviewCount} memory entr${memoryReviewCount === 1 ? 'y needs' : 'ies need'} review or tracking.`, { target: 'memory', evidence: ['memory-health'] }));
   if ((current.invalidChangeRecords || 0) > 0) findings.push(makeFinding('invalid-change-records', 'high', 'Invalid durable change records were ignored', `${current.invalidChangeRecords} change record(s) failed runtime validation and were excluded from evidence.`, { target: 'change-history', evidence: ['runtime-validation'] }));
+  const preexisting = baselinePaths(record.start.repository);
+  if (preexisting.length) findings.push(makeFinding('preexisting-worktree', 'medium', 'Session attribution started from a dirty worktree', `${preexisting.length} project path(s) were already dirty when the session started. CMI cannot attribute later edits to those same paths from path status alone.`, { target: record.id, evidence: ['session-start-git-baseline'], relatedFiles: preexisting }));
   for (const active of current.activeChanges || []) findings.push(makeFinding('active-change', 'high', 'Change record remains active', `Change "${active.goal}" has not been completed or explicitly abandoned.`, { target: active.id, evidence: [`change:${active.id}`] }));
   for (const blocker of record.observations.flatMap((item) => item.blockers || [])) findings.push(makeFinding('session-blocker', 'high', 'Session blocker remains unresolved', blocker, { target: crypto.createHash('sha1').update(blocker).digest('hex').slice(0, 12), evidence: ['session-observation'] }));
   for (const question of record.observations.flatMap((item) => item.questions || [])) findings.push(makeFinding('open-question', 'low', 'Open project question remains', question, { target: crypto.createHash('sha1').update(question).digest('hex').slice(0, 12), evidence: ['session-observation'], confidence: 'medium' }));
@@ -355,7 +390,7 @@ function detectFindings({ record, current, completedDetails, scopePaths, staleRe
 function priorityFor(finding) {
   if (finding.category === 'verification-failed' || finding.category === 'session-blocker') return 'P0';
   if (['verification-missing', 'active-change', 'project-intelligence-missing', 'graph-drift', 'uncaptured-session-change', 'invalid-change-records'].includes(finding.category)) return 'P1';
-  if (['verification-incomplete', 'prediction-gap', 'unexpected-impact', 'stale-memory'].includes(finding.category)) return 'P2';
+  if (['verification-incomplete', 'prediction-gap', 'unexpected-impact', 'stale-memory', 'preexisting-worktree'].includes(finding.category)) return 'P2';
   return 'P3';
 }
 function actionFor(finding) {
@@ -369,6 +404,7 @@ function actionFor(finding) {
     'graph-drift': 'Run `cmi scan`, then refresh task context/impact before making further dependent changes.',
     'stale-memory': 'Run `cmi stale` and review stale entries; refresh, deprecate, reject, or supersede them based on current evidence.',
     'memory-review': 'Review untracked/review-state memory before relying on it as durable project knowledge.',
+    'preexisting-worktree': 'Separate, stash, commit, or explicitly annotate pre-existing dirty paths before relying on session-level change attribution.',
     'prediction-gap': `Review the missed changed paths (${finding.relatedFiles?.join(', ') || 'see evidence'}) and decide whether future scope/boundary expectations should be updated.`,
     'unexpected-impact': 'Investigate the unexpected impact and add a reviewed lesson only if the evidence supports it.',
     'uncaptured-session-change': 'Create/complete a CMI change record for the session scope so expected-vs-actual and verification evidence are not lost.',
@@ -417,6 +453,20 @@ function buildRecommendations(findings, history, completedDetails) {
     seen.add(key);
     return true;
   }).sort((a, b) => (PRIORITY_ORDER[b.priority] || 0) - (PRIORITY_ORDER[a.priority] || 0) || a.action.localeCompare(b.action)), 20);
+}
+function buildGuardrails(findings, recommendations) {
+  const categories = new Set(findings.map((item) => item.category));
+  const items = [];
+  if (categories.has('verification-failed')) items.push({ id: 'do-not-claim-verified', rule: 'Do not treat the current work as verified or expand dependent scope while a recorded verification is failing.', reason: 'Failed verification is blocking evidence.' });
+  if (categories.has('verification-missing') || categories.has('verification-incomplete')) items.push({ id: 'do-not-claim-complete', rule: 'Do not represent the affected change as fully validated while verification evidence is missing, skipped, or unknown.', reason: 'Completion claims exceed recorded verification evidence.' });
+  if (categories.has('graph-drift') || categories.has('project-intelligence-missing')) items.push({ id: 'do-not-trust-stale-graph', rule: 'Do not rely on graph/impact output as current evidence until project intelligence is refreshed.', reason: 'Graph evidence is unavailable or stale.' });
+  if (categories.has('stale-memory')) items.push({ id: 'do-not-promote-stale-memory', rule: 'Do not treat stale reviewed memory as current project truth without source review.', reason: 'Source-linked knowledge no longer matches current evidence.' });
+  if (categories.has('active-change')) items.push({ id: 'do-not-orphan-active-change', rule: 'Do not silently abandon an active Change Intelligence record when switching tasks.', reason: 'Expected-vs-actual and verification history would become incomplete.' });
+  if (categories.has('preexisting-worktree')) items.push({ id: 'do-not-overattribute-dirty-worktree', rule: 'Do not attribute all dirty paths to this session when the session started from a dirty worktree.', reason: 'Path status alone cannot separate pre-existing edits from later edits to the same path.' });
+  if (categories.has('prediction-gap')) items.push({ id: 'do-not-call-prediction-complete', rule: 'Do not treat pre-change predicted scope as complete impact evidence when observed paths escaped it.', reason: 'Expected-vs-actual evidence contains a prediction gap.' });
+  if (recommendations.some((item) => item.evidenceType === 'historical-correlation')) items.push({ id: 'do-not-treat-history-as-causal', rule: 'Do not treat historical verification or co-change correlation as a causal dependency or mandatory command.', reason: 'Historical patterns are correlation-only evidence.' });
+  items.push({ id: 'no-auto-command-or-truth', rule: 'Do not execute a project command or promote a knowledge candidate solely because CMI recommended it.', reason: 'CMI recommendations are advisory and durable knowledge remains review-controlled.' });
+  return bounded(items, 12);
 }
 function buildKnowledgeCandidates(record, findings) {
   const candidates = [];
@@ -486,7 +536,7 @@ function mergeLiveFindings(open, detected) {
   for (const item of detected) map.set(item.key, { ...(map.get(item.key) || {}), ...item });
   return [...map.values()].sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || a.title.localeCompare(b.title));
 }
-function buildHandoff(record, current, scopePaths, completedDetails, openFindings, recommendations, knowledgeCandidates, outcome) {
+function buildHandoff(record, current, scopePaths, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, outcome) {
   const observations = record.observations;
   const fallback = { priority: 'P3', action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.', reason: 'CMI found no unresolved evidence requiring a more specific action.', evidenceType: 'observed', evidence: [], confidence: 'high' };
   return {
@@ -505,8 +555,9 @@ function buildHandoff(record, current, scopePaths, completedDetails, openFinding
     openFindings: bounded(openFindings.map(findingSummary), 20),
     nextActions: bounded(recommendations, 10),
     nextAction: recommendations[0] || fallback,
+    guardrails,
     knowledgeCandidates,
-    agentInstruction: 'Continue from this handoff instead of reconstructing project state from scratch. Address P0/P1 actions before unrelated work, preserve evidence distinctions, and do not turn advisory candidates into durable truth without review.',
+    agentInstruction: 'Continue from this handoff instead of reconstructing project state from scratch. Re-check current evidence, address P0/P1 actions before unrelated work unless the user changes priority, obey guardrails, and do not turn advisory candidates into durable truth without review.',
   };
 }
 
@@ -529,16 +580,18 @@ async function buildAssessment(root, record) {
   const detected = detectFindings({ record, current, completedDetails, scopePaths, staleReport });
   const findings = mergeLiveFindings(existingOpen, detected);
   const recommendations = buildRecommendations(findings, intelligence.history, completedDetails);
+  const guardrails = buildGuardrails(findings, recommendations);
   return {
     schemaVersion: 1,
     generatedAt: nowIso(),
     session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt },
     current,
-    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths) },
+    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths] },
     completedChanges: completedDetails,
     detectedFindings: detected,
     findings,
     recommendations,
+    guardrails,
     intelligence,
   };
 }
@@ -548,42 +601,46 @@ export async function assessSession(root, selector = 'latest') {
 }
 
 export async function closeSession(root, selector, options = {}) {
-  let record = await resolveSession(root, selector || 'latest', { status: 'active' });
-  if (record.status !== 'active') throw new Error('Only active sessions can be closed.');
-  const finalObservation = normalizeObservation(options);
-  if (hasObservationSignal(finalObservation)) {
-    record.observations.push(finalObservation);
-    record.updatedAt = nowIso();
+  return withMutationLock(root, async () => {
+    let record = await resolveSession(root, selector || 'latest', { status: 'active' });
+    if (record.status !== 'active') throw new Error('Only active sessions can be closed.');
+    const finalObservation = normalizeObservation(options);
+    if (hasObservationSignal(finalObservation)) {
+      record.observations.push(finalObservation);
+      record.updatedAt = nowIso();
+      record.revision = (record.revision || 1) + 1;
+      await writeSession(root, record);
+      record = await resolveSession(root, record.id, { status: 'active' });
+    }
+    const assessment = await buildAssessment(root, record);
+    const currentFindings = await persistDetectedFindings(root, record.id, assessment.detectedFindings);
+    const openFindings = await loadOpenFindings(root);
+    const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges);
+    const guardrails = buildGuardrails(openFindings, recommendations);
+    const outcome = inferOutcome(options.outcome, record, assessment.current, assessment.completedChanges, currentFindings, assessment.scope.paths);
+    const knowledgeCandidates = buildKnowledgeCandidates(record, currentFindings);
+    const handoff = buildHandoff(record, assessment.current, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations, guardrails, knowledgeCandidates, outcome);
+    const closedAt = nowIso();
+    record.status = 'closed';
+    record.updatedAt = closedAt;
     record.revision = (record.revision || 1) + 1;
+    record.close = {
+      closedAt,
+      outcome,
+      summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations),
+      scope: assessment.scope,
+      current: assessment.current,
+      findings: currentFindings,
+      openFindings,
+      recommendations,
+      guardrails,
+      knowledgeCandidates,
+      handoff,
+      policy: 'Findings and next actions are evidence-linked advisory output. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.',
+    };
     await writeSession(root, record);
-    record = await resolveSession(root, record.id, { status: 'active' });
-  }
-  const assessment = await buildAssessment(root, record);
-  const currentFindings = await persistDetectedFindings(root, record.id, assessment.detectedFindings);
-  const openFindings = await loadOpenFindings(root);
-  const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges);
-  const outcome = inferOutcome(options.outcome, record, assessment.current, assessment.completedChanges, currentFindings, assessment.scope.paths);
-  const knowledgeCandidates = buildKnowledgeCandidates(record, currentFindings);
-  const handoff = buildHandoff(record, assessment.current, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations, knowledgeCandidates, outcome);
-  const closedAt = nowIso();
-  record.status = 'closed';
-  record.updatedAt = closedAt;
-  record.revision = (record.revision || 1) + 1;
-  record.close = {
-    closedAt,
-    outcome,
-    summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations),
-    scope: assessment.scope,
-    current: assessment.current,
-    findings: currentFindings,
-    openFindings,
-    recommendations,
-    knowledgeCandidates,
-    handoff,
-    policy: 'Findings and next actions are evidence-linked advisory output. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.',
-  };
-  await writeSession(root, record);
-  return record;
+    return record;
+  });
 }
 export async function getSession(root, selector = 'latest') { return resolveSession(root, selector); }
 export async function listSessions(root, options = {}) {
@@ -594,7 +651,9 @@ export async function listSessions(root, options = {}) {
   return { schemaVersion: 1, records: records.filter((item) => !status || item.status === status).slice(0, limit).map((item) => ({ id: item.id, status: item.status, goal: item.goal, createdAt: item.createdAt, updatedAt: item.updatedAt, outcome: item.close?.outcome || null, nextAction: item.close?.handoff?.nextAction || null })), invalidRecords, truncated };
 }
 export async function getSessionHandoff(root, selector = 'latest') {
-  const record = await resolveSession(root, selector);
+  const record = selector === 'latest' || !selector
+    ? await resolveSession(root, 'latest', { status: 'closed' })
+    : await resolveSession(root, selector);
   if (record.status !== 'closed' || !record.close?.handoff) throw new Error('Session handoff is available only after the session is closed.');
   return record.close.handoff;
 }
@@ -604,17 +663,20 @@ export function formatSessionReport(record) {
   const close = record.close;
   const findings = (close.openFindings || close.findings).map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
   const actions = close.recommendations.map((item) => `- ${item.priority} ${item.action}\n  Why: ${item.reason} · ${item.evidenceType} · confidence ${item.confidence}`).join('\n') || '- No evidence-based follow-up required.';
-  return `# Session outcome: ${close.outcome}\n\n${close.summary}\n\n## Problems / unresolved findings\n${findings}\n\n## Recommended next actions\n${actions}\n\n## Next action\n${close.handoff.nextAction.priority} ${close.handoff.nextAction.action}`;
+  const guardrails = (close.guardrails || []).map((item) => `- ${item.rule}\n  Why: ${item.reason}`).join('\n') || '- Preserve evidence distinctions and do not auto-promote advisory output.';
+  return `# Session outcome: ${close.outcome}\n\n${close.summary}\n\n## Problems / unresolved findings\n${findings}\n\n## Recommended next actions\n${actions}\n\n## Guardrails / do not assume\n${guardrails}\n\n## Next action\n${close.handoff.nextAction.priority} ${close.handoff.nextAction.action}`;
 }
 export function formatSessionAssessment(result) {
   const findings = result.findings.map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
   const actions = result.recommendations.map((item) => `- ${item.priority} ${item.action}`).join('\n') || '- No evidence-based follow-up required.';
-  return `# Session status\n\nGoal: ${result.session.goal}\nScope observed: ${result.scope.paths.length} path(s)\n\n## Current findings\n${findings}\n\n## What to do next\n${actions}`;
+  const guardrails = result.guardrails.map((item) => `- ${item.rule}`).join('\n') || '- Preserve evidence distinctions.';
+  return `# Session status\n\nGoal: ${result.session.goal}\nScope observed: ${result.scope.paths.length} path(s)\n\n## Current findings\n${findings}\n\n## What to do next\n${actions}\n\n## Guardrails\n${guardrails}`;
 }
 export function formatHandoff(handoff) {
-  const findings = handoff.openFindings.map((item) => `- [${item.severity}] ${item.title}`).join('\n') || '- None';
+  const findings = handoff.openFindings.map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
   const actions = handoff.nextActions.map((item) => `- ${item.priority} ${item.action}`).join('\n') || `- ${handoff.nextAction.priority} ${handoff.nextAction.action}`;
-  return `# CMI handoff\n\nObjective: ${handoff.objective}\nOutcome: ${handoff.outcome}\nBranch: ${handoff.repository.branch || 'unknown'}\nHEAD: ${handoff.repository.head || 'unknown'}\nSession scope: ${handoff.sessionScope.length} path(s)\n\n## Open findings\n${findings}\n\n## Next actions\n${actions}\n\n${handoff.agentInstruction}`;
+  const guardrails = (handoff.guardrails || []).map((item) => `- ${item.rule}`).join('\n') || '- Preserve evidence distinctions.';
+  return `# CMI handoff\n\nObjective: ${handoff.objective}\nOutcome: ${handoff.outcome}\nBranch: ${handoff.repository.branch || 'unknown'}\nHEAD: ${handoff.repository.head || 'unknown'}\nSession scope: ${handoff.sessionScope.length} path(s)\n\n## Open findings\n${findings}\n\n## Next actions\n${actions}\n\n## Guardrails\n${guardrails}\n\n${handoff.agentInstruction}`;
 }
 export function formatFindingList(result) {
   return result.findings.length ? result.findings.map((item) => `- ${item.id.slice(0, 8)} [${item.state}/${item.severity}] ${item.title} · seen ${item.occurrences} time(s)`).join('\n') : 'No matching project findings.';
