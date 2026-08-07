@@ -33,8 +33,8 @@ test('concurrent active change does not hijack a session with stronger goal evid
   assert.equal(authFinding.sessionRelevance, 'related');
   assert.equal(billingFinding.sessionRelevance, 'concurrent-unattributed');
 
-  const authAction = live.recommendations.find((item) => item.relatedFindingIds?.includes(authFinding.id));
-  const billingAction = live.recommendations.find((item) => item.relatedFindingIds?.includes(billingFinding.id));
+  const authAction = live.recommendations.find((item) => item.id === `finding-action:${authFinding.key}`);
+  const billingAction = live.recommendations.find((item) => item.id === `finding-action:${billingFinding.key}`);
   assert.equal(authAction.priority, 'P1');
   assert.equal(billingAction.priority, 'P3');
   assert.notEqual(live.recommendations[0].id, billingAction.id);
