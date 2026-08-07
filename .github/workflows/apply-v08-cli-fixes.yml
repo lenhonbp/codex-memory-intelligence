@@ -1,0 +1,53 @@
+name: Apply experiential fixes
+on:
+  push:
+    branches: [audit/v08-experiential-20260807]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Patch source
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/cli.js')
+          s = p.read_text()
+          needle = "  cmi change history [query] [--limit N] [--json]\\n  cmi remember <fact|decision|mistake> <text> [--source path ...]"
+          replacement = "  cmi change history [query] [--limit N] [--json]\\n  cmi session <start|observe|status|close|show|list|handoff> ...\\n  cmi finding <list|show|state> ...\\n  cmi remember <fact|decision|mistake> <text> [--source path ...]"
+          if needle not in s: raise SystemExit('top-level help insertion point missing')
+          s = s.replace(needle, replacement, 1)
+          s = s.replace('MCP durable project writes, including memory and change records, are disabled unless --write is explicitly requested.', 'MCP durable project writes, including memory, change, session, and finding records, are disabled unless --write is explicitly requested.', 1)
+          needle = "    const action = values.shift();\n    if (action === 'start') {"
+          replacement = "    const action = values.shift();\n    if (action === 'help' || hasFlag('--help') || hasFlag('-h')) {\n      console.log('Usage: cmi change <start|observe|complete|show|list|history> ...\\n\\nUse `cmi --help` for the full command surface.');\n    }\n    else if (action === 'start') {"
+          if needle not in s: raise SystemExit('change help insertion point missing')
+          s = s.replace(needle, replacement, 1)
+          needle = "const executable = fileURLToPath(new URL('./mcp.js', import.meta.url));"
+          if needle not in s: raise SystemExit('mcp-config entrypoint missing')
+          s = s.replace(needle, "const executable = fileURLToPath(new URL('./mcp-entry.js', import.meta.url));", 1)
+          p.write_text(s)
+
+          p = Path('src/cli-entry.js')
+          s = p.read_text()
+          needle = "function print(value, formatted) { console.log(json ? JSON.stringify(value, null, 2) : formatted); }\n\ntry {\n  if (command === 'session') {"
+          replacement = "function print(value, formatted) { console.log(json ? JSON.stringify(value, null, 2) : formatted); }\nfunction groupHelp(name) {\n  if (name === 'session') return 'Usage: cmi session <start|observe|status|close|show|list|handoff> ...\\n\\nTrack project work, persist findings, and produce an evidence-based handoff/next action.';\n  return 'Usage: cmi finding <list|show|state> ...\\n\\nInspect and explicitly review persistent project findings.';\n}\n\ntry {\n  if (hasFlag('--help') || hasFlag('-h') || args[0] === 'help') {\n    console.log(groupHelp(command));\n  } else if (command === 'session') {"
+          if needle not in s: raise SystemExit('session/finding help insertion point missing')
+          s = s.replace(needle, replacement, 1)
+          p.write_text(s)
+          PY
+          rm -f .github/workflows/apply-v08-cli-fixes.yml .github/workflows/apply-v08-experiential-product-fixes.yml
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'CMI audit automation'
+          git config user.email 'audit@users.noreply.github.com'
+          git add src/cli.js src/cli-entry.js .github/workflows
+          git diff --cached --check
+          git commit -m 'fix: repair v0.8 CLI discovery and MCP config'
+          git push origin HEAD:audit/v08-experiential-20260807
