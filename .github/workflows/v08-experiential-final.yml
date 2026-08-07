@@ -1,0 +1,43 @@
+name: CMI v0.8 experiential final
+on:
+  push:
+    branches: [audit/v08-experiential-20260807]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Pack candidate-equivalent package
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          tarball="$(npm pack --ignore-scripts --silent)"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          npm pack --ignore-scripts --dry-run
+      - name: Run primary installed-package experience
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 300s node scripts/experiential-audit.js "$PWD/${{ steps.pack.outputs.tarball }}"
+      - name: Run extended installed-package experience
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 300s node scripts/experiential-audit-extended.js "$PWD/${{ steps.pack.outputs.tarball }}"
+      - name: Run repository verification gates on fixed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify
+          npm run benchmark:smoke
+          npm run package:smoke
