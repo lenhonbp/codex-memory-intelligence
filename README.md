@@ -23,7 +23,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-v0.5 is a real-world public beta, published on npm as `codex-memory-intelligence`. It adds incremental scanning, `.cmiignore`, monorepo awareness, workspace-scoped retrieval, broader parser resolution, MCP resources/prompts, reproducible benchmarks, and release-metadata validation.
+v0.6 is a real-world public beta. It combines incremental project intelligence from v0.5 with evidence-labeled pre-change briefs, Git baseline awareness, inferred project boundaries, review-only memory-gap proposals, and verification guidance for connected coding agents.
 
 Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Every inferred boundary, risk, and memory-gap proposal is labeled as advisory and includes confidence or provenance. See [Architecture](docs/ARCHITECTURE.md), [Benchmarks](docs/BENCHMARKS.md), and [Roadmap](ROADMAP.md).
 
@@ -186,7 +186,7 @@ Review `.codex-memory/` before publishing it. Generated `project-index.json`, `p
 
 ## Parser scope
 
-CMI uses bounded, dependency-free static parsing for common JavaScript/TypeScript, Python, Go, Rust, and related files. v0.5 adds TypeScript `paths` aliases, Python absolute-package heuristics, Go module imports, and Rust `mod`/`crate::`/`self::`/`super::` resolution.
+CMI uses bounded, dependency-free static parsing for common JavaScript/TypeScript, Python, Go, Rust, and related files. Current coverage includes TypeScript `paths` aliases, Python absolute-package heuristics, Go module imports, and Rust `mod`/`crate::`/`self::`/`super::` resolution.
 
 Aliases inherited through complex `extends` chains, generated code, runtime imports, macros, reflection, build-system rewrites, and dependency injection may not resolve completely. Go package imports are represented by a deterministic source-file node rather than a compiler package graph.
 
