@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
-A local-first project memory, dependency intelligence, impact analysis, and evidence-driven change intelligence layer for Codex and other AI coding agents.
+A local-first project memory, dependency intelligence, impact analysis, evidence-driven change intelligence, and session-continuation layer for Codex and other AI coding agents.
 
-CMI helps an agent answer these questions before and after changing a project:
+CMI helps an agent answer these questions before, during, and after project work:
 
 1. **What has the team already learned or decided?**
 2. **Which files, symbols, workspaces, and inferred boundaries are connected to this change?**
@@ -17,6 +17,7 @@ CMI helps an agent answer these questions before and after changing a project:
 5. **Which reviewed project knowledge is missing?**
 6. **Which verification work should happen before the change is considered complete?**
 7. **What actually changed in similar work before, and what did earlier predictions miss?**
+8. **What happened in the current work session, what remains unresolved, and what should happen next?**
 
 Everything stays in a human-reviewable `.codex-memory/` directory. There is no cloud service, API key, database, telemetry, remote model, or network enrichment requirement.
 
@@ -26,11 +27,11 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 `v0.7.0` is the current published release line for the **Change Intelligence Loop**. It combines incremental project intelligence and evidence-labeled pre-change briefs with durable BEFORE → DURING → AFTER records that compare predicted scope with observed changed paths and derive bounded historical co-change and verification evidence. The npm badge above is the authoritative indicator of the version currently published to the registry.
 
-The development branch for the next release is hardening trust before expanding intelligence: stale-aware retrieval, graph freshness checks, reviewed memory lifecycle, runtime-validated change records, local writer serialization, verification provenance, and sample-sensitive behavioral calibration. These changes remain **unreleased** until the package version and release artifacts are intentionally advanced.
+The development branch for the next release is hardening trust and adding **Session Continuation Intelligence**: stale-aware retrieval, graph freshness checks, reviewed memory lifecycle, runtime-validated change records, local writer serialization, verification provenance, sample-sensitive behavioral calibration, persistent cross-session findings, prioritized next actions, and durable handoffs. These changes remain **unreleased** until the package version and release artifacts are intentionally advanced.
 
-See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for the storage contracts, evidence limits, and release status.
+See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
-Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Historical co-change is correlation, not causality. CMI never treats an observed changed path as proof of complete runtime impact, and it never turns learning candidates into durable project truth automatically.
+Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Historical co-change is correlation, not causality. CMI never treats an observed changed path as proof of complete runtime impact, never treats a recommendation as business truth, and never turns learning candidates into durable project truth automatically.
 
 ## Install
 
@@ -150,21 +151,59 @@ cmi change list --status completed
 cmi change history "payment retry"
 ```
 
-Completed records can provide:
-
-- relevant previous changes;
-- file pairs that repeatedly changed together;
-- inferred boundaries that repeatedly changed together;
-- verification names and outcomes observed in similar work;
-- expected-vs-actual changed-path calibration showing where pre-change scope predictions missed directly edited files.
-
-These are historical signals, not causal claims. CMI does not execute tests, builds, profilers, migrations, or project code on behalf of the change-intelligence layer. It records bounded evidence supplied by Git and by the human or connected agent.
+Completed records can provide relevant previous changes, repeated file/boundary co-change, verification history, and expected-vs-actual changed-path calibration. These are historical signals, not causal claims. CMI does not execute tests, builds, profilers, migrations, or project code on behalf of the change-intelligence layer.
 
 The unreleased v0.8 line distinguishes ordinary `reported` verification from supplied `observed-command` metadata. `observed-command` still means only that command-result metadata was provided through the interface; CMI does not independently execute or attest that command.
 
 Change records live in `.codex-memory/changes/` and are intentionally reviewable and commit-friendly. CMI-internal paths are excluded from product-change scope so the records do not observe themselves.
 
 See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md) for attribution rules, non-Git behavior, limitations, and the learning policy.
+
+## Session Continuation Intelligence
+
+The unreleased v0.8 development line adds a layer above individual code changes so CMI can answer:
+
+> **What happened, what is still unresolved, and what should happen next?**
+
+The intended operating model is:
+
+```text
+TRACK → UNDERSTAND → SURFACE → RECOMMEND → CONTINUE
+```
+
+A session can be implementation, debugging, audit, code review, verification, research, or a no-code investigation.
+
+```bash
+cmi session start "investigate authentication retries"
+cmi session observe latest --accomplished "Mapped retry flow" --question "Who owns retries?"
+cmi session status latest
+cmi session close latest --blocker "Worker retry ownership is unresolved"
+```
+
+`cmi session close` does not stop at a generic summary. It returns:
+
+- a conservative outcome (`succeeded`, `partial`, `blocked`, `investigated`, `abandoned`, or `unknown`);
+- problems and unresolved findings;
+- evidence-linked P0–P3 next actions;
+- one explicit highest-priority `nextAction`;
+- review-only knowledge candidates;
+- a bounded handoff for the next AI/user session.
+
+Persistent findings live in `.codex-memory/findings.json`, so an unresolved blocker or verification gap does not disappear when chat context ends:
+
+```bash
+cmi finding list --status open
+cmi finding show <id>
+cmi finding state <id> resolved --reason "Verified migration order" --changed-by reviewer
+```
+
+A later agent can continue without asking the user to reconstruct the project state:
+
+```bash
+cmi session handoff latest
+```
+
+CMI can auto-resolve deterministic health findings when their measured condition disappears, but explicit blockers/questions remain review-controlled. Historical verification suggestions are labeled correlation rather than fact. See [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md).
 
 ## Monorepos and workspaces
 
@@ -222,6 +261,16 @@ cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] 
 cmi change show <id> [--json]
 cmi change list [--status active|completed] [--limit N] [--json]
 cmi change history [query] [--limit N] [--json]
+cmi session start <goal> [--note text ...] [--json]
+cmi session observe <id|latest> [--file path ...] [--accomplished text ...] [--blocker text ...] [--decision text ...] [--question text ...] [--json]
+cmi session status <id|latest> [--json]
+cmi session close <id|latest> [--outcome succeeded|partial|blocked|investigated|abandoned|unknown] [--file path ...] [--accomplished text ...] [--blocker text ...] [--decision text ...] [--question text ...] [--json]
+cmi session show <id|latest> [--json]
+cmi session list [--status active|closed] [--limit N] [--json]
+cmi session handoff <id|latest> [--json]
+cmi finding list [--status open|resolved|accepted|dismissed|superseded] [--limit N] [--json]
+cmi finding show <id> [--json]
+cmi finding state <id> <open|resolved|accepted|dismissed|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
 cmi remember <fact|decision|mistake> <text> [--source path ...]
 cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
 cmi stale [path] [--fail-on stale|review|any] [--json]
@@ -241,15 +290,27 @@ Generate the safe default configuration:
 cmi mcp-config
 ```
 
-The default exposes read-only durable history and advisory intelligence, including `get_change_insights`, `get_change_record`, and `list_change_records`. Scanning remains available because it only refreshes generated project intelligence caches.
+The default exposes read-only durable history, project/session state, open findings, handoff data, and advisory intelligence. Scanning remains available because it only refreshes generated project intelligence caches.
 
-Enable durable project writes explicitly when you want a connected agent to create change records or reviewed durable memory:
+Enable durable project writes explicitly when you want a connected agent to create change records, reviewed durable memory, or session/finding records:
 
 ```bash
 cmi mcp-config --write
 ```
 
-The unreleased v0.8 interface adds reviewed memory lifecycle mutation and aligns MCP verification provenance with the durable runtime/schema contract. It does **not** authorize CMI to execute arbitrary project commands. Tests and other verification remain the responsibility of the agent/user environment.
+The session-aware MCP endpoint retains all existing CMI tools and additionally exposes work-session status/report/list/handoff/findings tools. With writes enabled it adds `start_work_session`, `observe_work_session`, `finalize_work_session`, and `set_project_finding_state`.
+
+It also exposes:
+
+- `cmi://project/session/latest`;
+- `cmi://project/session-handoff/latest`;
+- `cmi://project/findings`;
+- `close_project_session` prompt;
+- `continue_from_session_handoff` prompt.
+
+MCP initialization tells compliant agents to finalize substantial work and surface P0/P1 findings plus the highest-priority next action before ending, so the user does not have to ask what comes next. This is guidance, not a universal session-end hook: a client that ignores MCP instructions cannot be forced to call the finalizer.
+
+The interface does **not** authorize CMI to execute arbitrary project commands. Tests and other verification remain the responsibility of the agent/user environment.
 
 Bulk memory refresh requires a second opt-in:
 
@@ -257,7 +318,7 @@ Bulk memory refresh requires a second opt-in:
 cmi mcp-config --write --bulk-refresh
 ```
 
-The server also exposes `cmi://project/change-history` and the `run_change_intelligence_loop` prompt. See [MCP integration](docs/MCP.md).
+See [MCP integration](docs/MCP.md) and [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md).
 
 ## Security model
 
@@ -265,22 +326,22 @@ The server also exposes `cmi://project/change-history` and the `run_change_intel
 - Source-linked memory accepts regular files only and verifies real paths remain inside the project.
 - Built-in dependency and generated paths cannot be negated through `.cmiignore`.
 - Hidden paths are excluded by default except root `.github/` and `.cmiignore`.
-- Git baseline collection uses fixed bounded commands and does not expose absolute repository paths.
+- Git baseline collection uses fixed bounded commands and does not expose absolute local repository paths.
 - Stale/missing graph nodes are not returned as current graph evidence before a rescan.
 - Active stale/review memory is evidence-labeled and policy-controlled; inactive lifecycle states are excluded from normal retrieval.
 - Reviewed memory mutations reject ambiguous ID prefixes and preserve lifecycle audit metadata instead of silently deleting history.
 - Durable memory append/refresh/lifecycle mutations share a local write lock to reduce concurrent-writer loss.
-- CMI-internal paths are excluded from observed product-change scope.
-- Boundary, risk, memory-gap, co-change, and learning-candidate outputs are explicitly advisory rather than durable truth.
-- Historical co-change is correlation only and confidence is sample-sensitive.
-- Change intelligence does not execute verification commands or store source diffs automatically.
-- Change-history reads are bounded and reject symlinked record paths; supported platforms use fixed file handles and no-follow semantics where available.
+- CMI-internal paths are excluded from observed product/session scope.
+- Boundary, risk, memory-gap, co-change, finding recommendations, and learning-candidate outputs are advisory rather than durable truth.
+- Historical co-change and historical verification patterns are correlation only; confidence is evidence/sample-sensitive.
+- Change and session intelligence do not execute verification commands or store source diffs automatically.
+- Change/session-history reads are bounded; session/change records reject unsafe symlinked reads where supported.
+- User-supplied session/finding/change durable text is secret-pattern guarded, but CMI is not a complete secret scanner.
 - MCP durable project writes are disabled by default.
 - Bulk memory refresh requires a separate opt-in.
-- Obvious credentials and private keys are rejected from durable memory and user-supplied change-record text, but CMI is not a complete secret scanner.
-- Repository content, durable memory, and change records remain untrusted input for connected agents.
+- Repository content, durable memory, change records, session records, and findings remain untrusted input for connected agents.
 
-Review `.codex-memory/` before publishing it. Generated `project-index.json`, `project-graph.json`, and `snapshots/` are ignored by default; durable Markdown knowledge, configuration, and change records remain human-reviewable.
+Review `.codex-memory/` before publishing it. Generated `project-index.json`, `project-graph.json`, and `snapshots/` are ignored by default; durable Markdown knowledge, configuration, change records, session records, and findings remain human-reviewable.
 
 ## Parser scope
 
@@ -298,7 +359,7 @@ npm run package:smoke
 
 CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchmark smoke job checks incremental reuse and release metadata. CodeQL scans JavaScript and GitHub Actions workflows.
 
-Community documents: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Maintainers](MAINTAINERS.md), [Architecture](docs/ARCHITECTURE.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), and [Releasing](docs/RELEASING.md).
+Community documents: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Maintainers](MAINTAINERS.md), [Architecture](docs/ARCHITECTURE.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), and [Releasing](docs/RELEASING.md).
 
 ## License
 

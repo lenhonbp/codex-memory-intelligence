@@ -1,6 +1,6 @@
 # MCP integration
 
-CMI exposes local project intelligence over MCP stdio.
+CMI exposes local project, change, and session-continuation intelligence over MCP stdio.
 
 ## Configuration
 
@@ -10,9 +10,9 @@ Safe default:
 cmi mcp-config
 ```
 
-This keeps durable project writes disabled. Read-only durable history, memory search, graph intelligence, advisory pre-change analysis, and change-history queries remain available.
+This keeps durable project writes disabled. Read-only durable history, memory search, graph intelligence, advisory pre-change analysis, change history, session reports, handoffs, and persistent findings remain available.
 
-Enable durable project writes explicitly when a connected agent should create project memory, review memory lifecycle, or create BEFORE/DURING/AFTER change records:
+Enable durable project writes explicitly when a connected agent should create project memory, review memory/finding lifecycle, create BEFORE/DURING/AFTER change records, or track/finalize work sessions:
 
 ```bash
 cmi mcp-config --write
@@ -24,7 +24,7 @@ Bulk reviewed-memory refresh requires another opt-in:
 cmi mcp-config --write --bulk-refresh
 ```
 
-`--write` does not grant CMI permission to execute arbitrary project commands. The connected agent/user remains responsible for tests, builds, migrations, profilers, deployment tools, and other verification. CMI only stores the bounded evidence submitted to its interfaces.
+`--write` does not grant CMI permission to execute arbitrary project commands. The connected agent/user remains responsible for tests, builds, migrations, profilers, deployment tools, and other verification. CMI only stores bounded evidence submitted to its interfaces or directly observable repository metadata.
 
 ## Protocol compatibility
 
@@ -39,9 +39,11 @@ The server echoes a supported requested version and otherwise responds with `202
 
 The transport is newline-delimited UTF-8 JSON-RPC over stdin/stdout. Logs are written only to stderr.
 
+The installed `cmi-mcp` entrypoint is session-aware: it preserves the existing MCP server as the core protocol surface and augments it with continuation tools, resources, prompts, and server instructions.
+
 ## Read/default tools
 
-Read/default tools include:
+Existing read/default tools include:
 
 - `search_project_memory` — search active durable memory and indexed project context;
 - `build_project_context` — build a ranked task context pack;
@@ -60,52 +62,96 @@ Read/default tools include:
 - `analyze_project_impact` — reverse-dependency impact analysis;
 - `check_stale_memory` — active-memory stale/review audit plus inactive lifecycle inventory.
 
+Session-continuation read tools add:
+
+- `get_work_session_status` — assess the latest/selected active session now, including current findings and prioritized next actions;
+- `get_work_session_report` — read an active or closed durable session record;
+- `list_work_sessions` — list bounded session summaries and recorded next actions;
+- `get_session_handoff` — read a closed-session continuation pack;
+- `list_project_findings` — list findings that persist across session boundaries;
+- `get_project_finding` — inspect one persistent finding and its evidence/lifecycle.
+
 `search_project_memory` and `build_project_context` accept two evidence-policy controls:
 
 - `stalePolicy: demote | include | exclude` — `demote` is the default and keeps stale/review evidence visible but down-ranked; `include` reduces that penalty for explicit inspection; `exclude` keeps only current reviewed/observed evidence;
 - `includeInactive: true` — explicit historical-inspection mode for `deprecated`, `rejected`, or `superseded` memory. Inactive memory is excluded by default.
 
-`scan_project_intelligence` may update generated CMI caches, so it is not annotated as read-only even though it does not create reviewed durable memory or change-history evidence.
+`scan_project_intelligence` may update generated CMI caches, so it is not annotated as read-only even though it does not create reviewed durable memory/change/session evidence.
 
 ## Write-enabled tools
 
-When the server starts with `CMI_WRITE_ENABLED=1`, it additionally exposes:
+When the server starts with `CMI_WRITE_ENABLED=1`, existing write tools include:
 
-- `start_change_record` — persist the BEFORE evidence snapshot;
-- `observe_change_record` — append DURING observed paths and prediction comparison;
-- `complete_change_record` — persist AFTER outcome, verification evidence/provenance, unexpected impact, and review-only learning candidates;
-- `remember_project_knowledge` — persist an explicit reviewed fact, decision, or mistake;
-- `refresh_project_memory` — refresh one uniquely identified active memory entry after review;
-- `set_project_memory_state` — explicitly activate, deprecate, reject, or supersede one uniquely identified memory entry with reviewer/reason metadata.
+- `start_change_record`;
+- `observe_change_record`;
+- `complete_change_record`;
+- `remember_project_knowledge`;
+- `refresh_project_memory`;
+- `set_project_memory_state`.
 
-Memory-ID prefixes used for reviewed mutations must resolve uniquely. CMI rejects ambiguous prefixes rather than mutating multiple entries. Bulk refresh remains separately gated and skips inactive knowledge.
+Session-continuation write tools add:
 
-Supersession requires a distinct active replacement memory ID. The full replacement ID is recorded in the old entry's lifecycle metadata.
+- `start_work_session` — start durable tracking for implementation, debugging, audit, review, research, verification, or no-code investigation;
+- `observe_work_session` — record accomplishments, files, blockers, decisions, questions, and notes that repository evidence cannot infer reliably;
+- `finalize_work_session` — close the session and return outcome, current/open findings, prioritized next actions, knowledge candidates, and handoff;
+- `set_project_finding_state` — explicitly resolve, accept, dismiss, reopen, or supersede one persistent finding with a reason.
 
-Completed change records are immutable through the public change-record API. Additional work should start another record rather than rewriting completed history.
+Memory/finding ID prefixes used for reviewed mutations must resolve uniquely. CMI rejects ambiguous prefixes rather than mutating multiple entries.
+
+Completed change records are immutable through the public change-record API. Closed session records are durable outcome/history rather than an editable scratchpad; continued work should start another session/change record.
+
+## Close-session integration contract
+
+CMI's session-aware MCP `initialize` response explicitly tells the connected agent:
+
+- use session tracking for substantial work when durable writes are enabled;
+- before ending substantial work, call `finalize_work_session`;
+- surface unresolved P0/P1 findings to the user;
+- surface the highest-priority next action without waiting for the user to ask what to do next.
+
+The `close_project_session` prompt repeats that contract. `continue_from_session_handoff` tells the next agent to read the latest handoff, re-check current repository evidence, and address P0/P1 work before unrelated tasks unless the user changes priority.
+
+This is an **agent integration contract**, not a universal lifecycle hook. MCP cannot force an arbitrary client that ignores server instructions/prompts to call `finalize_work_session` before it disconnects.
 
 ## Verification provenance
 
 `complete_change_record.verifications[]` distinguishes two provenance classes:
 
-- `reported` — a human or agent reports a named status. This is the default when no stronger metadata is supplied;
+- `reported` — a human or agent reports a named status;
 - `observed-command` — the caller supplies bounded command-result metadata: `command`, integer `exitCode`, `observedAt`, and optional `outputDigest`.
 
 `observed-command` does **not** mean CMI executed or independently attested the command. It means command-result metadata was supplied through the interface. CMI still never runs arbitrary project verification commands itself.
 
-The MCP input schema enforces the required command metadata whenever `provenance` is `observed-command`, and the runtime validates the same durable record shape.
+The MCP input schema enforces required command metadata whenever `provenance` is `observed-command`, and runtime validation enforces the same durable record shape.
+
+## Session / finding evidence semantics
+
+Session intelligence combines:
+
+- current Git/project/memory health;
+- completed/active Change Intelligence records;
+- explicit session observations;
+- persistent unresolved findings;
+- relevant historical verification patterns.
+
+Recommendations carry priority, reason, evidence type, evidence references, and confidence. Known issue classes have deterministic priority ordering; historical suggestions remain explicitly `historical-correlation`.
+
+Persistent findings do not disappear when one AI session ends. Deterministic health findings may auto-resolve when the measured condition disappears; explicit blockers/questions remain review-controlled.
+
+No recommendation proves business priority or authorizes a project command to run automatically.
 
 ## Advisory and historical boundaries
 
-`map_project_boundaries`, `suggest_project_memory`, `prepare_change_brief`, and `get_change_insights` expose evidence-labeled intelligence. They do not declare architecture or causality.
+`map_project_boundaries`, `suggest_project_memory`, `prepare_change_brief`, `get_change_insights`, session findings, and next-action intelligence expose evidence-labeled output. They do not declare architecture, causality, production correctness, or business truth.
 
 The output distinguishes:
 
-- directly observed Git, reviewed memory, path, workspace, and graph evidence;
+- directly observed Git/path/project health;
+- reviewed durable memory;
+- explicit agent/human session observations;
 - deterministic inference;
 - historical correlation;
-- sample-sensitive confidence and support;
-- known completeness limits;
+- sample-sensitive confidence/support;
 - review proposals requiring explicit approval before durable project knowledge is written.
 
 In particular:
@@ -113,9 +159,12 @@ In particular:
 - a co-change edge means two paths/boundaries appeared in the same stored change records, not that one causes or depends on the other;
 - a changed path is direct edit evidence, not proof of complete runtime impact;
 - a verification `passed` value remains stored evidence with explicit provenance, not a command independently executed by CMI;
-- inactive memory is preserved as project history but is not trusted retrieval input unless explicitly requested.
+- inactive memory is preserved as project history but is not trusted retrieval input unless explicitly requested;
+- a P0/P1 recommendation indicates CMI's deterministic project-risk ordering, not organizational/business priority.
 
 ## Resources
+
+Existing resources:
 
 - `cmi://project/memory`
 - `cmi://project/decisions`
@@ -127,41 +176,59 @@ In particular:
 - `cmi://project/boundaries`
 - `cmi://project/change-history`
 
-The baseline resource does not expose absolute local repository paths. The change-history resource returns bounded summaries rather than source diffs. Raw memory resources remain reviewable Markdown and may contain inactive lifecycle history; ranked memory search excludes that inactive knowledge by default.
+Session-continuation resources:
+
+- `cmi://project/session/latest`
+- `cmi://project/session-handoff/latest`
+- `cmi://project/findings`
+
+The baseline resource does not expose absolute local repository paths. Change/session history is bounded and does not automatically store source diffs. Raw memory remains reviewable Markdown and may contain inactive lifecycle history; ranked memory search excludes inactive knowledge by default.
 
 ## Prompts
 
-- `prepare_project_change` guides an agent to inspect relevant completed change history, then build the structured pre-change brief and treat inferred/history-derived signals as advisory.
-- `run_change_intelligence_loop` guides an explicitly write-enabled agent through BEFORE → DURING → AFTER and tells it to run real project verification through its normal tools before recording results.
-- `review_stale_memory` guides an explicit human-reviewed health/lifecycle audit: refresh knowledge that remains valid, or explicitly deprecate/reject/supersede knowledge that no longer should drive future work.
+- `prepare_project_change` — inspect completed history and build a structured pre-change brief;
+- `run_change_intelligence_loop` — guide BEFORE → DURING → AFTER evidence recording;
+- `review_stale_memory` — guide explicit health/lifecycle review;
+- `close_project_session` — finalize substantial work and surface P0/P1 + highest-priority next action;
+- `continue_from_session_handoff` — resume from the latest durable continuation pack instead of reconstructing known state from scratch.
 
-Prompts do not bypass tool permissions. A prompt can recommend `start_change_record`, but that tool does not exist in a read-only server process.
+Prompts do not bypass tool permissions. A prompt can recommend a write tool, but write tools are absent when MCP write mode is disabled.
 
 ## Change-record trust model
 
-Change records live under `.codex-memory/changes/`. They are local durable evidence and are intentionally reviewable/commit-friendly.
+Change records live under `.codex-memory/changes/`. They are local durable evidence and intentionally reviewable/commit-friendly.
 
-CMI excludes `.codex-memory/` paths from observed product-change scope. This prevents the act of updating a record from becoming a false application-code change.
+CMI excludes `.codex-memory/` paths from observed product-change scope. This prevents record maintenance from becoming false application-code change evidence.
 
 For clean Git worktrees, new project changes can receive `strong` attribution. Pre-existing project changes produce `limited-preexisting-worktree` attribution. Non-Git projects use `explicit-files-only` attribution.
 
-See [Change Intelligence](CHANGE_INTELLIGENCE.md) for the complete lifecycle, metrics, limitations, and learning policy.
+See [Change Intelligence](CHANGE_INTELLIGENCE.md).
 
-## Durable-memory mutation boundary
+## Session-record / finding trust model
 
-Durable memory mutations share a local write lock so `remember`, reviewed refresh, and lifecycle mutation do not overwrite each other when multiple local writers operate concurrently. Writes remain local and bounded; stale locks are reclaimable after a short safety window.
+Session records live under `.codex-memory/sessions/`; findings live in `.codex-memory/findings.json`.
 
-New durable entries carry `schemaVersion: 1` and start with `lifecycle.state: active`. Existing metadata without a schema version remains readable for compatibility and is upgraded when explicitly refreshed or lifecycle-mutated.
+They are bounded, local, human-reviewable evidence. Explicit paths must be project-relative and cannot point into `.codex-memory/`. Supplied session text receives the same style of obvious-secret guard as other durable text, but CMI is not a complete secret scanner.
 
-Memory-gap suggestions and learning candidates never bypass the write boundary and never become durable project truth automatically.
+Session records do not prove that every meaningful action in an external agent environment was captured. CMI combines observable repository state with explicit session observations and says when evidence is incomplete.
+
+See [Session Continuation Intelligence](SESSION_INTELLIGENCE.md).
+
+## Durable mutation boundary
+
+Durable memory mutations share a local write lock so `remember`, reviewed refresh, and lifecycle mutation do not overwrite each other when multiple local writers operate concurrently. Change records and session/finding storage use their own local locking/atomic-write boundaries.
+
+New durable memory entries carry `schemaVersion: 1` and start with `lifecycle.state: active`. Existing metadata without a schema version remains readable for compatibility and is upgraded when explicitly refreshed or lifecycle-mutated.
+
+Memory-gap suggestions, session knowledge candidates, and change learning candidates never bypass the write boundary and never become durable project truth automatically.
 
 The safe intended flow is:
 
 ```text
 read evidence
 → agent/human reasoning
-→ explicit durable record or reviewed memory write
-→ later review/refresh/deprecate/reject/supersede when evidence changes
+→ explicit change/session/finding or reviewed-memory write
+→ later review/refresh/resolve/deprecate/reject/supersede when evidence changes
 ```
 
 Bulk memory refresh remains separately guarded even in a write-enabled process.

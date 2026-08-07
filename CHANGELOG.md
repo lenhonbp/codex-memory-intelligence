@@ -18,7 +18,16 @@ This section describes development-branch work only. The published package remai
 - Runtime structural validation, per-record write locking, revision metadata, and stale-lock reclamation for durable change records.
 - Verification provenance classes (`reported`, `observed-command`) with bounded command metadata supported consistently by runtime, JSON Schema, and MCP input Schema.
 - Sample-sensitive historical co-change support/confidence, explicit `historical-correlation` evidence type, verification pass/evidence rates, and expected-vs-actual path precision/recall/F1 calibration.
-- Regression coverage for stale retrieval policy semantics, stale graph health, memory lifecycle, ambiguous ID prefixes, concurrent memory mutation serialization, verification provenance, record validation, calibrated behavioral confidence, Git renames, and detached HEAD baselines.
+- Durable Session Continuation Intelligence for coding, debugging, audit, review, research, verification, and no-code investigation sessions.
+- `cmi session start`, `observe`, `status`, `close`, `show`, `list`, and `handoff` workflows with explicit outcome, unresolved findings, recommended next actions, and one highest-priority next action.
+- Persistent `.codex-memory/findings.json` project findings with `open`, `resolved`, `accepted`, `dismissed`, and `superseded` lifecycle states so unresolved issues survive AI-session boundaries.
+- Deterministic P0–P3 recommendation ordering for blockers, failed/incomplete verification, project-health gaps, active change records, prediction gaps, unexpected impact, open questions, and worktree/session-attribution gaps.
+- Bounded session handoffs containing objective, branch/HEAD/worktree state, observed scope, accomplishments, decisions, questions, completed/active changes, open findings, next actions, and review-only knowledge candidates.
+- Versioned `schemas/session-record.schema.json` storage contract for durable session/outcome intelligence.
+- Session-aware MCP tools for status/report/list/handoff/findings plus write-enabled start/observe/finalize/finding-review workflows while retaining the existing MCP surface.
+- MCP resources `cmi://project/session/latest`, `cmi://project/session-handoff/latest`, and `cmi://project/findings`.
+- MCP prompts `close_project_session` and `continue_from_session_handoff`, plus initialize instructions telling compliant agents to surface P0/P1 findings and the highest-priority next action before ending substantial work.
+- Regression coverage for stale retrieval policy semantics, stale graph health, memory lifecycle, ambiguous ID prefixes, concurrent memory mutation serialization, verification provenance, record validation, calibrated behavioral confidence, Git renames, detached HEAD baselines, no-code sessions, persistent blockers, finding auto-resolution, CLI close-session reporting, and MCP session continuation behavior.
 
 ### Changed
 
@@ -29,7 +38,18 @@ This section describes development-branch work only. The published package remai
 - Co-change confidence no longer maps directly from occurrence count; tiny samples cannot receive high confidence merely because support is 100%.
 - Change-history calibration now reports path precision, recall, F1, sample count, and sample-sensitive confidence while retaining compatibility aliases for v0.7 metrics.
 - Git worktree parsing now uses NUL-delimited porcelain output so rename/copy destination paths and original paths remain distinct instead of becoming `old -> new` pseudo-paths.
-- MCP documentation and prompts now distinguish lifecycle state, stale-evidence policy, historical correlation, and supplied command-result provenance from independently verified truth.
+- The installed `cmi` entrypoint now adds Session/Finding Intelligence commands while delegating all existing commands to the original CLI implementation.
+- The installed `cmi-mcp` entrypoint now exposes a unified existing + session-continuation MCP surface and preserves the existing server as the protocol core.
+- MCP documentation/prompts distinguish lifecycle state, stale-evidence policy, historical correlation, supplied command-result provenance, persistent findings, and next-action advice from independently verified truth.
+- Session close is designed to surface problems and evidence-based follow-up immediately instead of requiring the user to ask what should happen next.
+
+### Evidence limits
+
+- Session recommendations do not execute project commands and do not prove business priority.
+- Persistent findings can only cover conditions CMI can observe or that a human/agent explicitly records.
+- Historical verification suggestions remain correlation, not causal proof that a command is required.
+- MCP instructions encourage close-session finalization but cannot force arbitrary clients that ignore MCP guidance to invoke it before disconnecting.
+- Session and change learning candidates remain review-only and are never promoted to durable project truth automatically.
 
 ## [0.7.0] - 2026-08-07
 

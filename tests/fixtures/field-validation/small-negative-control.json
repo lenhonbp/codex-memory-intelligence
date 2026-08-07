@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "fieldDate": "2026-08-07",
+  "repositoryClass": "small-private-application-negative-control",
+  "privacy": "anonymized-structural-evidence-only",
+  "fieldCandidate": "bd58894cad72aca7c722abede0a727c04f0f0db3",
+  "projectHealthy": true,
+  "graphCurrent": true,
+  "projectClean": true,
+  "sessionScopeCount": 0,
+  "openFindingCount": 0,
+  "planningSignals": 0,
+  "recommendationCount": 0,
+  "nextActionKind": "generic-user-prioritized-goal-fallback",
+  "guardrails": [
+    "no-auto-command-or-truth"
+  ],
+  "expectedInterpretation": "Absence of bounded planning evidence must not cause CMI to invent a project task."
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "fieldDate": "2026-08-07",
+  "repositoryClass": "public-node-cli-self-host",
+  "privacy": "public-repository-structural-evidence",
+  "fieldCandidate": "bd58894cad72aca7c722abede0a727c04f0f0db3",
+  "projectHealthy": true,
+  "graphCurrent": true,
+  "projectClean": true,
+  "sessionScopeCount": 0,
+  "openFindingCount": 0,
+  "planningSignalsAtLeast": 5,
+  "recommendationCount": 3,
+  "nextActionKind": "source-linked-unchecked-roadmap-review-candidate",
+  "sourceClass": "root-roadmap-field-validation-section",
+  "confidence": "medium",
+  "guardrails": [
+    "do-not-treat-planning-as-command",
+    "no-auto-command-or-truth"
+  ],
+  "expectedInterpretation": "The real open roadmap can provide a concrete review candidate while remaining advisory and subordinate to stronger evidence."
+}
