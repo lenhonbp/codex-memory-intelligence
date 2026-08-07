@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
 const CHANGE_DIR = 'changes';
 const MAX_RECORDS_READ = 500;
+const MAX_RECORD_BYTES = 1_000_000;
 const MAX_PATHS = 160;
 const MAX_TEXT_ITEMS = 20;
 const MAX_TEXT_LENGTH = 500;
@@ -98,6 +99,8 @@ async function writeRecord(root, record) {
 
 async function safeReadRecord(filePath) {
   try {
+    const stat = await fs.lstat(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_RECORD_BYTES) return null;
     const parsed = JSON.parse(await fs.readFile(filePath, 'utf8'));
     if (!parsed || parsed.schemaVersion !== 1 || typeof parsed.id !== 'string') return null;
     return parsed;
@@ -109,15 +112,16 @@ async function safeReadRecord(filePath) {
 async function readRecords(root) {
   const directory = changesDirectory(root);
   const names = await fs.readdir(directory).catch(() => []);
+  const recordNames = names.filter((name) => /^[0-9a-f-]+\.json$/i.test(name));
   const records = [];
   let invalidRecords = 0;
-  for (const name of names.filter((name) => /^[0-9a-f-]+\.json$/i.test(name)).slice(0, MAX_RECORDS_READ)) {
+  for (const name of recordNames.slice(0, MAX_RECORDS_READ)) {
     const record = await safeReadRecord(path.join(directory, name));
     if (record) records.push(record);
     else invalidRecords += 1;
   }
   records.sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
-  return { records, invalidRecords, truncated: names.length > MAX_RECORDS_READ };
+  return { records, invalidRecords, truncated: recordNames.length > MAX_RECORDS_READ };
 }
 
 async function resolveRecord(root, selector) {
