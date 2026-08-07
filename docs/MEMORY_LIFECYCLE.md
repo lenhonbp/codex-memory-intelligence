@@ -106,11 +106,11 @@ Lifecycle filtering happens independently: inactive knowledge stays excluded unl
 
 ## Refresh semantics
 
-`cmi refresh-memory <id>` is for an **active entry that was actually reviewed against current evidence**.
+`cmi refresh-memory <id>` refreshes **source/project freshness evidence only**. It updates source/project fingerprints plus `sourceRefreshedAt`, `sourceRefreshedBy`, and `sourceRefreshReason`; it does not assert that the knowledge was semantically reviewed.
 
-Refreshing does not mean “make this true again.” It updates source/project fingerprints and review metadata after review.
+Semantic review is explicit. After a reviewer has checked the meaning of an active entry against current evidence, use `cmi memory-state <id> active --reason "..." --changed-by reviewer` to record `reviewedAt`, `reviewedBy`, and `reviewReason`.
 
-CMI refuses to refresh one inactive entry. Reactivate it explicitly first if review determines that it should again drive current work.
+CMI refuses to refresh one inactive entry. Reactivate it explicitly only when review determines that it should again drive current work.
 
 Bulk refresh:
 
@@ -122,9 +122,9 @@ is available in the CLI and separately gated in MCP. Bulk refresh skips intentio
 
 ## Concurrent local writers
 
-`remember`, reviewed refresh, and lifecycle mutation share one local project write lock. This prevents one writer from replacing a Markdown file using an older read while another writer is appending new durable knowledge.
+`remember`, source-fingerprint refresh, and lifecycle mutation share one local project write lease. This prevents one writer from replacing a Markdown file using an older read while another writer is appending new durable knowledge.
 
-The lock lives under the already ignored `.codex-memory/snapshots/` directory, is process-local metadata only, and is removed after the mutation. A lock older than the implementation's fixed short safety window can be reclaimed so a crashed writer does not permanently block the project.
+The lease lives under the already ignored `.codex-memory/snapshots/` directory, carries an owner ID, is heartbeat-refreshed while live, and is removed only by the matching owner. Stale reclamation rechecks owner identity so an old writer cannot delete a replacement lease.
 
 This is local concurrency protection, not a distributed lock and not a cloud synchronization protocol.
 
@@ -136,10 +136,11 @@ The intended flow is:
 
 ```text
 observed current project evidence
+→ refresh source fingerprints when needed
 → human or explicitly reviewed agent reasoning
-→ refresh active knowledge
+→ explicitly attest active semantic review
    OR deprecate / reject / supersede it
-→ future retrieval follows the reviewed state
+→ future retrieval follows freshness + reviewed lifecycle evidence
 ```
 
 This keeps project history distinct from project truth while avoiding silent deletion.

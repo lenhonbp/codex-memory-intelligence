@@ -6,7 +6,7 @@ import path from 'node:path';
 import { initProject, scanProject, remember, snapshot, status, doctor, explainIgnore } from '../src/core.js';
 import { searchMemory, tokenize } from '../src/search.js';
 import { loadProjectGraph, impactAnalysis } from '../src/graph.js';
-import { checkStaleMemory, refreshMemory } from '../src/stale.js';
+import { checkStaleMemory, refreshMemory, loadTrackedMemory, setMemoryLifecycle } from '../src/stale.js';
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-'));
@@ -133,11 +133,15 @@ test('stores source-linked memory and detects source changes', async () => {
   await fs.appendFile(path.join(root, 'src', 'db.js'), '\nexport const schemaVersion = 2;\n');
   health = await checkStaleMemory(root);
   assert.equal(health.counts.stale, 1);
-  const refreshed = await refreshMemory(root, metadata.id.slice(0, 8), { reviewedBy: 'tester', reason: 'Verified change.' });
+  const refreshed = await refreshMemory(root, metadata.id.slice(0, 8), { reviewedBy: 'tester', reason: 'Refresh source fingerprint only.' });
   assert.equal(refreshed.updated, 1);
+  assert.equal(refreshed.semanticReview, false);
   health = await checkStaleMemory(root);
-  assert.equal(health.entries[0].reviewedBy, 'tester');
+  assert.equal(health.entries[0].reviewedBy, null);
   assert.equal(health.counts.fresh, 1);
+  const tracked = (await loadTrackedMemory(root)).find((entry) => entry.metadata?.id === metadata.id);
+  assert.equal(tracked.metadata.sourceRefreshedBy, 'tester');
+  assert.equal(tracked.metadata.reviewedBy, undefined);
 });
 
 test('workspace-scoped search ranks only matching graph context', async () => {
@@ -161,6 +165,10 @@ test('legacy entries, status health, and secret guards remain compatible', async
   await fs.appendFile(path.join(root, '.codex-memory', 'memory.md'), '\n## 2026-01-01T00:00:00.000Z\n\nLegacy fact.\n');
   assert.equal((await status(root)).healthy, false);
   await refreshMemory(root, 'all');
+  assert.equal((await status(root)).healthy, false);
+  const legacy = (await loadTrackedMemory(root)).find((entry) => entry.text === 'Legacy fact.');
+  assert.ok(legacy?.metadata?.id);
+  await setMemoryLifecycle(root, legacy.metadata.id, 'active', { changedBy: 'tester', reason: 'Explicitly reviewed legacy fact.' });
   assert.equal((await status(root)).healthy, true);
 });
 

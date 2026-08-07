@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { loadProjectGraph, impactAnalysis } from './graph.js';
+import { loadProjectGraph, impactAnalysis, inspectProjectGraphHealth } from './graph.js';
 import { buildContextPack, searchMemory, tokenize } from './search.js';
 
 const execFileAsync = promisify(execFile);
@@ -210,7 +210,9 @@ export async function getRepositoryBaseline(root) {
 
 export async function mapProjectBoundaries(root) {
   const graph = await loadProjectGraph(root);
-  if (!graph) return { available: false, reason: 'Project graph is missing. Run cmi scan.', boundaries: [], connections: [] };
+  if (!graph) return { available: false, reason: 'Project graph is missing. Run cmi scan.', boundaries: [], connections: [], graphHealth: await inspectProjectGraphHealth(root, graph) };
+  const graphHealth = await inspectProjectGraphHealth(root, graph);
+  if (!graphHealth.current) return { available: false, reason: 'Project graph is stale. Run cmi scan before mapping boundaries.', boundaries: [], connections: [], graphHealth };
   const groups = new Map();
   const fileBoundary = new Map();
   const dependentCounts = new Map(Object.entries(graph.reverseDependents || {}).map(([file, dependents]) => [file, dependents.length]));
@@ -277,6 +279,7 @@ export async function mapProjectBoundaries(root) {
     boundaries,
     connections,
     fileBoundary: Object.fromEntries(fileBoundary),
+    graphHealth,
   };
 }
 
@@ -393,15 +396,11 @@ export async function prepareChangeBrief(root, query, options = {}) {
   const graph = await loadProjectGraph(root);
   const baseline = await getRepositoryBaseline(root);
   if (!graph) {
-    return {
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      query: normalizedQuery,
-      workspace: options.workspace || null,
-      ready: false,
-      baseline,
-      reason: 'Project graph is missing. Run cmi scan before preparing a change.',
-    };
+    return { schemaVersion: 1, generatedAt: new Date().toISOString(), query: normalizedQuery, workspace: options.workspace || null, ready: false, baseline, reason: 'Project graph is missing. Run cmi scan before preparing a change.', graphHealth: await inspectProjectGraphHealth(root, graph) };
+  }
+  const graphHealth = await inspectProjectGraphHealth(root, graph);
+  if (!graphHealth.current) {
+    return { schemaVersion: 1, generatedAt: new Date().toISOString(), query: normalizedQuery, workspace: options.workspace || null, ready: false, baseline, reason: 'Project graph is stale. Run cmi scan before preparing a change.', graphHealth };
   }
   const context = await buildContextPack(root, normalizedQuery, options.limit || 12, { workspace: options.workspace });
   const boundaryMap = await mapProjectBoundaries(root);
@@ -418,6 +417,7 @@ export async function prepareChangeBrief(root, query, options = {}) {
     query: normalizedQuery,
     workspace: options.workspace || null,
     ready: true,
+    graphHealth,
     baseline,
     context: {
       summary: context.summary,

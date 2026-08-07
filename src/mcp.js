@@ -139,10 +139,10 @@ async function callTool(name, args = {}) {
   if (name === 'refresh_project_memory') {
     writable();
     const selector = args.id || '';
-    if (!selector) throw new Error('A reviewed memory ID prefix is required.');
-    if (selector === 'all' && !bulkRefreshEnabled) throw new Error('Bulk refresh is disabled. Set CMI_ALLOW_BULK_REFRESH=1 only for an explicitly reviewed operation.');
-    const result = await refreshMemory(root, selector, { reviewedBy: args.reviewedBy || 'mcp-agent', reason: args.reason || 'Reviewed through MCP.' });
-    return textResult(`Refreshed ${result.updated} memory entries.`, result);
+    if (!selector) throw new Error('A memory ID prefix is required for source-fingerprint refresh.');
+    if (selector === 'all' && !bulkRefreshEnabled) throw new Error('Bulk refresh is disabled. Set CMI_ALLOW_BULK_REFRESH=1 only for an explicit source-fingerprint refresh operation.');
+    const result = await refreshMemory(root, selector, { refreshedBy: args.refreshedBy || args.reviewedBy || 'mcp-agent', reason: args.reason || 'Source fingerprints refreshed through MCP.' });
+    return textResult(`Refreshed source fingerprints for ${result.updated} memory entries; this does not attest semantic review.`, result);
   }
   if (name === 'set_project_memory_state') {
     writable();

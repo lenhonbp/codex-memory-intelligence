@@ -14,7 +14,7 @@ Include the affected version, operating system, reproduction steps, impact, and 
 
 CMI runs with the permissions of the local user and reads files inside the selected project. It does not create a security boundary against a compromised operating-system account, malicious repository, or overly privileged coding agent.
 
-Project traversal skips symbolic links, and source-linked memory resolves real paths before reading files. These controls reduce accidental project-boundary escapes but do not replace operating-system sandboxing.
+Project traversal skips symbolic links, source-linked memory resolves real paths before reading files, and durable `.codex-memory` storage rejects a symlinked storage root plus symlinked durable read targets. These controls reduce accidental project-boundary escapes but do not replace operating-system sandboxing.
 
 Repository baseline collection invokes Git with fixed argument arrays, bounded execution time, and bounded output. It does not interpolate project or user text into shell commands and does not return the absolute repository path. Changed file paths, branch names, commit subjects, and other Git metadata may still contain sensitive project information and should be reviewed before sharing logs.
 
@@ -26,7 +26,7 @@ Change Intelligence records live under `.codex-memory/changes/` and can contain 
 
 CMI intentionally does not store source diffs in change records by default and excludes `.codex-memory/` paths from observed product-change scope. Explicit observed-file inputs must remain project-relative and cannot point inside `.codex-memory/`.
 
-CMI rejects obvious credential patterns in user-supplied change goals, verification evidence, unexpected-impact text, and completion notes. This is a conservative guard, not a complete secret scanner. File names, commit subjects, branch names, or human-written notes can still disclose sensitive information.
+CMI applies best-effort accidental-secret detection to durable user/agent text, including common provider prefixes, JWT-like values, credential assignments, bearer values, embedded URL credentials, and selected high-entropy credential-shaped values. This is a conservative guard, not DLP, not a complete secret scanner, and not a security boundary. File names, commit subjects, branch names, or human-written notes can still disclose sensitive information.
 
 Historical co-change means only that items appeared together in stored completed records. It must not be interpreted as proof that one file causes, owns, calls, trusts, or requires another. Verification statuses are claims supplied by the connected human/agent; CMI does not execute or independently certify those commands.
 

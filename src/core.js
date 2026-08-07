@@ -7,6 +7,8 @@ import { promisify } from 'node:util';
 import { buildProjectGraph, loadProjectGraph } from './graph.js';
 import { checkStaleMemory, sourceFingerprints } from './stale.js';
 import { resolveProjectFile } from './paths.js';
+import { ensureSafeMemoryRoot, safeEnsureMemoryDir, safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile, safeAppendMemoryFile, safeListMemoryDir } from './storage.js';
+import { looksSensitive } from './sensitive.js';
 import { createIgnoreMatcher, explainIgnore as explainIgnoreRule } from './ignore.js';
 import { detectWorkspaces, formatWorkspaces } from './workspaces.js';
 import { loadMemory } from './search.js';
@@ -49,27 +51,27 @@ function normalizeConfig(current = {}) {
 }
 
 export async function initProject(root) {
-  const directory = path.join(root, MEMORY_DIR);
-  await ensureDir(path.join(directory, 'snapshots'));
-  await writeIfMissing(path.join(directory, 'memory.md'), '# Project Memory\n\nDurable facts, conventions, constraints, and operational knowledge.\n');
-  await writeIfMissing(path.join(directory, 'decisions.md'), '# Architecture Decisions\n\nRecord the context, decision, and consequences.\n');
-  await writeIfMissing(path.join(directory, 'mistakes.md'), '# Mistakes and Lessons\n\nRecord failures, root causes, fixes, and prevention rules.\n');
-  await writeIfMissing(path.join(directory, 'architecture.md'), '# Project Architecture\n\nRun `cmi scan` to refresh this file.\n');
-  await writeIfMissing(path.join(directory, 'agent-instructions.md'), '# Agent Instructions\n\n1. Search project memory before broad repository exploration.\n2. Check memory health before relying on old decisions.\n3. Read decisions before architectural changes.\n4. Run impact analysis before changing shared files or symbols.\n5. Read mistakes before risky operations or deployment.\n6. Store only durable knowledge, never secrets or temporary logs.\n7. Refresh project intelligence after structural changes.\n8. Use workspace-scoped search in monorepositories.\n9. Treat MCP durable-memory mutations as opt-in operations that require review.\n');
-  await writeIfMissing(path.join(directory, '.gitignore'), 'project-graph.json\nproject-index.json\nsnapshots/\n');
-  const configPath = path.join(directory, 'config.json');
-  let currentConfig = {};
-  try { currentConfig = JSON.parse(await fs.readFile(configPath, 'utf8')); } catch {}
+  const directory = await ensureSafeMemoryRoot(root, { create: true });
+  await safeEnsureMemoryDir(root, 'snapshots');
+  await safeWriteMemoryFile(root, 'memory.md', '# Project Memory\n\nDurable facts, conventions, constraints, and operational knowledge.\n', { ifMissing: true });
+  await safeWriteMemoryFile(root, 'decisions.md', '# Architecture Decisions\n\nRecord the context, decision, and consequences.\n', { ifMissing: true });
+  await safeWriteMemoryFile(root, 'mistakes.md', '# Mistakes and Lessons\n\nRecord failures, root causes, fixes, and prevention rules.\n', { ifMissing: true });
+  await safeWriteMemoryFile(root, 'architecture.md', '# Project Architecture\n\nRun `cmi scan` to refresh this file.\n', { ifMissing: true });
+  await safeWriteMemoryFile(root, 'agent-instructions.md', '# Agent Instructions\n\n1. Search project memory before broad repository exploration.\n2. Check memory health before relying on old decisions.\n3. Read decisions before architectural changes.\n4. Run impact analysis before changing shared files or symbols.\n5. Read mistakes before risky operations or deployment.\n6. Store only durable knowledge, never secrets or temporary logs.\n7. Refresh project intelligence after structural changes.\n8. Use workspace-scoped search in monorepositories.\n9. Treat MCP durable-memory mutations as opt-in operations that require review.\n', { ifMissing: true });
+  await safeWriteMemoryFile(root, '.gitignore', 'project-graph.json\nproject-index.json\nsnapshots/\n', { ifMissing: true });
+  const currentConfig = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
   const migratedConfig = normalizeConfig(currentConfig);
-  if (!(await exists(configPath)) || JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) {
-    await fs.writeFile(configPath, JSON.stringify(migratedConfig, null, 2) + '\n', 'utf8');
+  if (JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) {
+    await safeWriteMemoryFile(root, 'config.json', JSON.stringify(migratedConfig, null, 2) + '\n');
+  } else if (!(await safeReadMemoryFile(root, 'config.json', { optional: true }))) {
+    await safeWriteMemoryFile(root, 'config.json', JSON.stringify(migratedConfig, null, 2) + '\n');
   }
   return directory;
 }
 
 export async function readConfig(root) {
-  try { return normalizeConfig(JSON.parse(await fs.readFile(path.join(root, MEMORY_DIR, 'config.json'), 'utf8'))); }
-  catch { return normalizeConfig(); }
+  const current = await safeReadMemoryJson(root, 'config.json', { optional: true });
+  return normalizeConfig(current || {});
 }
 
 async function walk(root, config, matcher, current = root, output = [], stats = { ignored: 0, symlinks: 0, tooLarge: 0, unreadable: 0 }) {
@@ -198,16 +200,10 @@ export async function scanProject(root, options = {}) {
     durationMs: Number((performance.now() - started).toFixed(2)),
     hash,
   };
-  await fs.writeFile(path.join(root, MEMORY_DIR, 'architecture.md'), architectureMarkdown(manifest, graph, workspaceReport, directories, configFiles), 'utf8');
-  await fs.writeFile(path.join(root, MEMORY_DIR, 'project-index.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-  await fs.writeFile(path.join(root, MEMORY_DIR, 'project-graph.json'), JSON.stringify(graph, null, 2) + '\n', 'utf8');
+  await safeWriteMemoryFile(root, 'architecture.md', architectureMarkdown(manifest, graph, workspaceReport, directories, configFiles));
+  await safeWriteMemoryFile(root, 'project-index.json', JSON.stringify(manifest, null, 2) + '\n');
+  await safeWriteMemoryFile(root, 'project-graph.json', JSON.stringify(graph, null, 2) + '\n');
   return manifest;
-}
-
-function looksSensitive(text) {
-  return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)
-    || /\b(?:api[_ -]?key|password|secret|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S{6,}/i.test(text)
-    || /\b(?:sk|ghp|github_pat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/.test(text);
 }
 
 async function normalizeSources(root, sources) {
@@ -228,11 +224,10 @@ export async function remember(root, type, text, options = {}) {
   if (!clean) throw new Error('Memory text cannot be empty');
   if (looksSensitive(clean)) throw new Error('Memory appears to contain a secret. Store a reference, not the credential.');
   const sources = await normalizeSources(root, options.sources || []);
-  let index = null;
-  try { index = JSON.parse(await fs.readFile(path.join(root, MEMORY_DIR, 'project-index.json'), 'utf8')); } catch {}
+  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
   const createdAt = new Date().toISOString();
   const metadata = { schemaVersion: 1, id: crypto.randomUUID(), type, createdAt, sources, sourceHashes: await sourceFingerprints(root, sources), projectHash: index?.hash || null, lifecycle: { state: 'active' } };
-  await withMemoryWriteLock(root, () => fs.appendFile(path.join(root, MEMORY_DIR, fileName), `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`, 'utf8'));
+  await withMemoryWriteLock(root, () => safeAppendMemoryFile(root, fileName, `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`));
   return metadata;
 }
 
@@ -243,27 +238,33 @@ export async function snapshot(root, label = 'snapshot') {
   const data = { createdAt: new Date().toISOString(), label, branch: await git(root, ['branch','--show-current']), status: await git(root, ['status','--short']), diffStat: await git(root, ['diff','--stat']), stagedDiffStat: await git(root, ['diff','--cached','--stat']), head: await git(root, ['rev-parse','--short','HEAD']) };
   const safeLabel = label.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'snapshot';
   const fileName = `${Date.now()}-${safeLabel}.json`;
-  await fs.writeFile(path.join(root, MEMORY_DIR, 'snapshots', fileName), JSON.stringify(data, null, 2) + '\n', 'utf8');
+  await safeWriteMemoryFile(root, `snapshots/${fileName}`, JSON.stringify(data, null, 2) + '\n');
   return fileName;
 }
 
-async function countEntries(filePath) { try { return (await fs.readFile(filePath, 'utf8')).split('\n').filter((line) => /^## \d{4}-/.test(line)).length; } catch { return 0; } }
+async function countEntries(root, relative) {
+  try { return (await safeReadMemoryFile(root, relative)).split('\n').filter((line) => /^## \d{4}-/.test(line)).length; }
+  catch { return 0; }
+}
 
 export async function status(root) {
-  const directory = path.join(root, MEMORY_DIR);
-  if (!(await exists(directory))) return { initialized: false };
-  let index = null;
-  let graph = null;
-  try { index = JSON.parse(await fs.readFile(path.join(directory, 'project-index.json'), 'utf8')); } catch {}
-  try { graph = JSON.parse(await fs.readFile(path.join(directory, 'project-graph.json'), 'utf8')); } catch {}
-  const snapshots = await fs.readdir(path.join(directory, 'snapshots')).catch(() => []);
-  const entries = { facts: await countEntries(path.join(directory, 'memory.md')), decisions: await countEntries(path.join(directory, 'decisions.md')), mistakes: await countEntries(path.join(directory, 'mistakes.md')) };
+  let directory = null;
+  try { directory = await ensureSafeMemoryRoot(root, { create: false }); }
+  catch (error) {
+    return { initialized: true, healthy: false, storageHealth: { safe: false, reason: error.message }, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
+  }
+  if (!directory) return { initialized: false };
+  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true }).catch(() => null);
+  const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true }).catch(() => null);
+  const snapshots = await safeListMemoryDir(root, 'snapshots').catch(() => []);
+  const entries = { facts: await countEntries(root, 'memory.md'), decisions: await countEntries(root, 'decisions.md'), mistakes: await countEntries(root, 'mistakes.md') };
   const memoryHealth = await checkStaleMemory(root);
   const loaded = await loadMemory(root, { withHealth: true });
   const graphHealth = loaded.graphHealth;
   return {
     initialized: true,
-    healthy: Boolean(index && graph && graphHealth.current && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
+    healthy: Boolean(index && graph && graphHealth.healthy && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
+    storageHealth: { safe: true },
     index,
     graph: graph?.summary || null,
     graphHealth,
@@ -283,7 +284,11 @@ export async function doctor(root) {
   try { stat = await fs.stat(root); } catch {}
   add('project-root', stat?.isDirectory() ? 'pass' : 'fail', stat?.isDirectory() ? path.resolve(root) : 'Project root does not exist or is not a directory.');
   try { await fs.access(root, fsConstants.R_OK | fsConstants.W_OK); add('project-access', 'pass', 'Project root is readable and writable.'); } catch { add('project-access', 'fail', 'Project root must be readable and writable.'); }
-  const initialized = await exists(path.join(root, MEMORY_DIR));
+  let memoryRoot = null;
+  let storageError = null;
+  try { memoryRoot = await ensureSafeMemoryRoot(root, { create: false }); } catch (error) { storageError = error; }
+  const initialized = Boolean(memoryRoot);
+  add('storage-integrity', storageError ? 'fail' : initialized ? 'pass' : 'warn', storageError ? storageError.message : initialized ? '.codex-memory is a project-local non-symlink directory.' : 'Project memory is not initialized.');
   add('memory', initialized ? 'pass' : 'warn', initialized ? 'Project memory is initialized.' : 'Run cmi init to create project memory.');
   const gitVersion = await git(root, ['--version']);
   add('git', gitVersion ? 'pass' : 'warn', gitVersion || 'Git is unavailable; snapshots will contain limited metadata.');
@@ -293,7 +298,7 @@ export async function doctor(root) {
   if (initialized) {
     const projectStatus = await status(root);
     add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
-    add('graph-health', projectStatus.graphHealth?.current ? 'pass' : 'warn', projectStatus.graphHealth?.current ? 'Project graph fingerprints match current source files.' : `Project graph is stale or incomplete (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing). Run cmi scan.`);
+    add('graph-health', projectStatus.graphHealth?.healthy ? 'pass' : 'warn', projectStatus.graphHealth?.healthy ? 'Project graph is current and complete within configured coverage.' : `Project graph is degraded (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, truncated=${Boolean(projectStatus.graphHealth?.truncated)}). Run cmi scan or raise graph limits.`);
     const memoryCurrent = projectStatus.memoryHealth?.stale === 0 && projectStatus.memoryHealth?.review === 0 && projectStatus.memoryHealth?.untracked === 0;
     add('memory-health', memoryCurrent ? 'pass' : 'warn', memoryCurrent ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
     add('workspaces', 'pass', `${projectStatus.workspaces?.count || 0} configured workspace(s) detected.`);

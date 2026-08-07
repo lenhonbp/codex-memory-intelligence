@@ -7,6 +7,9 @@ import { promisify } from 'node:util';
 import { initProject } from './core.js';
 import { prepareChangeBrief, getRepositoryBaseline, mapProjectBoundaries } from './advisor.js';
 import { tokenize } from './search.js';
+import { looksSensitive } from './sensitive.js';
+import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
+import { safeEnsureMemoryDir } from './storage.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -29,11 +32,6 @@ function round(value) { return Number.isFinite(value) ? Number(value.toFixed(3))
 function isCmiInternalPath(value) {
   const normalized = slash(value).trim().replace(/^\.\//, '');
   return normalized === MEMORY_DIR || normalized.startsWith(`${MEMORY_DIR}/`);
-}
-function looksSensitive(text) {
-  return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)
-    || /\b(?:api[_ -]?key|password|secret|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S{6,}/i.test(text)
-    || /\b(?:sk|ghp|github_pat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/.test(text);
 }
 function cleanText(value, label) {
   const clean = String(value || '').trim();
@@ -126,33 +124,16 @@ export function validateChangeRecord(record) {
 
 async function ensureChangeDirectory(root) {
   await initProject(root);
-  await fs.mkdir(changesDirectory(root), { recursive: true });
+  await safeEnsureMemoryDir(root, CHANGE_DIR);
 }
 
 async function acquireRecordLock(root, id) {
   await ensureChangeDirectory(root);
-  const target = lockPath(root, id);
-  try {
-    const handle = await fs.open(target, 'wx');
-    await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
-    return handle;
-  } catch (error) {
-    if (error?.code !== 'EEXIST') throw error;
-    let stat = null;
-    try { stat = await fs.stat(target); } catch {}
-    if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-      await fs.rm(target, { force: true });
-      const handle = await fs.open(target, 'wx');
-      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString(), reclaimed: true }));
-      return handle;
-    }
-    throw new Error(`Change record is locked by another writer: ${id}`);
-  }
+  return acquireLeaseLock(lockPath(root, id), { staleMs: LOCK_STALE_MS, retries: 40, retryMs: 15 });
 }
 
-async function releaseRecordLock(root, id, handle) {
-  await handle?.close().catch(() => {});
-  await fs.rm(lockPath(root, id), { force: true }).catch(() => {});
+async function releaseRecordLock(root, id, lock) {
+  await releaseLeaseLock(lock);
 }
 
 async function writeRecord(root, record) {

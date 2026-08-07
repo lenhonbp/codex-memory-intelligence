@@ -11,6 +11,9 @@ import { checkStaleMemory } from './stale.js';
 import { listChangeRecords, getChangeRecord, buildChangeInsights } from './change-intelligence.js';
 import { getPlanningSignals } from './planning-intelligence.js';
 import { associateSessionChanges } from './session-change-association.js';
+import { looksSensitive } from './sensitive.js';
+import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
+import { safeEnsureMemoryDir } from './storage.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -39,11 +42,6 @@ function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function isCmiInternalPath(value) {
   const normalized = slash(value).trim().replace(/^\.\//, '');
   return normalized === MEMORY_DIR || normalized.startsWith(`${MEMORY_DIR}/`);
-}
-function looksSensitive(text) {
-  return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)
-    || /\b(?:api[_ -]?key|password|secret|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S{6,}/i.test(text)
-    || /\b(?:sk|ghp|github_pat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/.test(text);
 }
 function cleanText(value, label, optional = false) {
   const clean = String(value || '').trim();
@@ -74,32 +72,14 @@ function intelligenceLockPath(root) { return path.join(root, MEMORY_DIR, 'snapsh
 
 async function ensureStorage(root) {
   await initProject(root);
-  await fs.mkdir(sessionsDirectory(root), { recursive: true });
-  await fs.mkdir(path.join(root, MEMORY_DIR, 'snapshots'), { recursive: true });
+  await safeEnsureMemoryDir(root, SESSION_DIR);
+  await safeEnsureMemoryDir(root, 'snapshots');
 }
 async function acquireLock(target) {
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  for (let attempt = 0; attempt <= LOCK_RETRIES; attempt += 1) {
-    try {
-      const handle = await fs.open(target, 'wx');
-      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: nowIso() }));
-      return handle;
-    } catch (error) {
-      if (error?.code !== 'EEXIST') throw error;
-      const stat = await fs.stat(target).catch(() => null);
-      if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-        await fs.rm(target, { force: true }).catch(() => {});
-        continue;
-      }
-      if (attempt >= LOCK_RETRIES) throw new Error(`CMI intelligence record remained locked by another writer: ${path.basename(target)}`);
-      await sleep(Math.min(100, LOCK_RETRY_MS + attempt));
-    }
-  }
-  throw new Error(`Unable to acquire CMI intelligence lock: ${path.basename(target)}`);
+  return acquireLeaseLock(target, { staleMs: LOCK_STALE_MS, retries: LOCK_RETRIES, retryMs: LOCK_RETRY_MS });
 }
-async function releaseLock(target, handle) {
-  await handle?.close().catch(() => {});
-  await fs.rm(target, { force: true }).catch(() => {});
+async function releaseLock(target, lock) {
+  await releaseLeaseLock(lock);
 }
 async function withMutationLock(root, operation) {
   await ensureStorage(root);

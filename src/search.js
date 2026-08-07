@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { checkStaleMemory } from './stale.js';
+import { safeReadMemoryFile, safeReadMemoryJson } from './storage.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
 const STOP = new Set(['the','and','for','with','that','this','from','into','cua','cho','voi','nhung','mot','cac','trong','duoc']);
@@ -63,7 +64,7 @@ function fingerprintMatches(stat, fingerprint) {
 
 async function graphChunks(root) {
   try {
-    const graph = JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'project-graph.json'), 'utf8'));
+    const graph = await safeReadMemoryJson(root, 'project-graph.json');
     const chunks = [];
     let staleNodes = 0;
     let missingNodes = 0;
@@ -84,9 +85,12 @@ async function graphChunks(root) {
         kind: 'graph',
       });
     }
-    return { chunks, health: { available: true, totalNodes: (graph.nodes || []).length, freshNodes: chunks.length, staleNodes, missingNodes, current: staleNodes === 0 && missingNodes === 0 } };
+    const truncated = Boolean(graph.summary?.truncated);
+    const current = staleNodes === 0 && missingNodes === 0;
+    const complete = !truncated;
+    return { chunks, health: { available: true, totalNodes: (graph.nodes || []).length, freshNodes: chunks.length, staleNodes, missingNodes, truncated, current, complete, healthy: current && complete, state: !current ? 'stale' : !complete ? 'incomplete' : 'healthy' } };
   } catch {
-    return { chunks: [], health: { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, current: false } };
+    return { chunks: [], health: { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, truncated: false, current: false, complete: false, healthy: false, state: 'missing' } };
   }
 }
 
@@ -126,7 +130,7 @@ export async function loadMemory(root, options = {}) {
   const chunks = [];
   const health = await memoryHealthMap(root);
   for (const file of MEMORY_FILES) {
-    try { chunks.push(...sections(await fs.readFile(path.join(directory, file), 'utf8'), file).map((chunk) => annotateMemoryChunk(chunk, health))); } catch {}
+    try { chunks.push(...sections(await safeReadMemoryFile(root, file), file).map((chunk) => annotateMemoryChunk(chunk, health))); } catch {}
   }
   const graph = await graphChunks(root);
   chunks.push(...graph.chunks);
@@ -139,7 +143,7 @@ async function resolveWorkspaceScope(root, workspaceQuery) {
   const needle = normalize(workspaceQuery);
   let workspaces = [];
   try {
-    const index = JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'project-index.json'), 'utf8'));
+    const index = await safeReadMemoryJson(root, 'project-index.json');
     workspaces = index.workspaces?.workspaces || [];
   } catch {}
   const exact = workspaces.filter((workspace) => [workspace.id, workspace.name, workspace.path].some((value) => normalize(value || '') === needle));
