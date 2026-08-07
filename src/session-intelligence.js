@@ -9,6 +9,7 @@ import { getRepositoryBaseline } from './advisor.js';
 import { buildContextPack } from './search.js';
 import { checkStaleMemory } from './stale.js';
 import { listChangeRecords, getChangeRecord, buildChangeInsights } from './change-intelligence.js';
+import { getPlanningSignals } from './planning-intelligence.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -168,9 +169,7 @@ async function resolveSession(root, selector, options = {}) {
   if ((!selector || selector === 'latest') && options.allowLatest !== false) {
     const matches = options.status ? records.filter((item) => item.status === options.status) : records;
     if (!matches.length) throw new Error('No matching session record exists.');
-    if (options.status === 'active' && matches.length > 1 && options.allowAmbiguousLatest !== true) {
-      throw new Error('Multiple active sessions exist. Provide an explicit session ID or unique prefix instead of latest.');
-    }
+    if (options.status === 'active' && matches.length > 1 && options.allowAmbiguousLatest !== true) throw new Error('Multiple active sessions exist. Provide an explicit session ID or unique prefix instead of latest.');
     return matches[0];
   }
   const raw = String(selector || '').trim().toLowerCase();
@@ -192,22 +191,7 @@ async function writeFindingsRegistry(root, registry) {
   finally { await releaseLock(targetLock, lock); }
 }
 function findingSummary(item) {
-  return {
-    id: item.id,
-    key: item.key,
-    state: item.state,
-    category: item.category,
-    severity: item.severity,
-    title: item.title,
-    detail: item.detail,
-    firstSeen: item.firstSeen,
-    lastSeen: item.lastSeen,
-    occurrences: item.occurrences,
-    confidence: item.confidence,
-    evidenceType: item.evidenceType,
-    evidence: bounded(item.evidence || [], 12),
-    relatedFiles: bounded(item.relatedFiles || [], 12),
-  };
+  return { id: item.id, key: item.key, state: item.state, category: item.category, severity: item.severity, title: item.title, detail: item.detail, firstSeen: item.firstSeen, lastSeen: item.lastSeen, occurrences: item.occurrences, confidence: item.confidence, evidenceType: item.evidenceType, evidence: bounded(item.evidence || [], 12), relatedFiles: bounded(item.relatedFiles || [], 12) };
 }
 function selectFinding(registry, selector) {
   const raw = String(selector || '').trim().toLowerCase();
@@ -222,15 +206,10 @@ export async function listFindings(root, options = {}) {
   const state = options.state ? String(options.state).trim().toLowerCase() : null;
   if (state && !FINDING_STATES.has(state)) throw new Error(`Finding state must be one of: ${[...FINDING_STATES].join(', ')}.`);
   const limit = Math.max(1, Math.min(200, Number(options.limit) || 50));
-  const matching = registry.findings
-    .filter((item) => !state || item.state === state)
-    .sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen)));
+  const matching = registry.findings.filter((item) => !state || item.state === state).sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen)));
   return { schemaVersion: 1, findings: matching.slice(0, limit).map(findingSummary), total: matching.length };
 }
-export async function getFinding(root, selector) {
-  const registry = await readFindingsRegistry(root);
-  return selectFinding(registry, selector);
-}
+export async function getFinding(root, selector) { return selectFinding(await readFindingsRegistry(root), selector); }
 export async function setFindingState(root, selector, state, options = {}) {
   return withMutationLock(root, async () => {
     const nextState = String(state || '').trim().toLowerCase();
@@ -274,12 +253,7 @@ function sessionRepositoryBaseline(repository) {
     if (isCmiInternalPath(item.path)) cmiInternalChangesOmitted += 1;
     else projectChanges.push(item);
   }
-  return {
-    ...repository,
-    projectClean: projectChanges.length === 0,
-    projectChanges: bounded(projectChanges, 200),
-    cmiInternalChangesOmitted,
-  };
+  return { ...repository, projectClean: projectChanges.length === 0, projectChanges: bounded(projectChanges, 200), cmiInternalChangesOmitted };
 }
 function baselinePaths(baseline) {
   const changes = baseline?.projectChanges || baseline?.changes || [];
@@ -287,25 +261,13 @@ function baselinePaths(baseline) {
 }
 function summarizeHealth(project) { return { initialized: Boolean(project?.initialized), healthy: Boolean(project?.healthy), graph: project?.graphHealth || null, memory: project?.memoryHealth || null }; }
 async function captureState(root) {
-  const [rawRepository, project, active, completed] = await Promise.all([
-    getRepositoryBaseline(root),
-    getProjectStatus(root),
-    listChangeRecords(root, { status: 'active', limit: 100 }),
-    listChangeRecords(root, { status: 'completed', limit: 100 }),
-  ]);
-  const repository = sessionRepositoryBaseline(rawRepository);
-  return {
-    capturedAt: nowIso(),
-    repository,
-    project: summarizeHealth(project),
-    activeChanges: active.records,
-    completedChangeCount: completed.records.length,
-    invalidChangeRecords: Math.max(active.invalidRecords || 0, completed.invalidRecords || 0),
-  };
+  const [rawRepository, project, active, completed] = await Promise.all([getRepositoryBaseline(root), getProjectStatus(root), listChangeRecords(root, { status: 'active', limit: 100 }), listChangeRecords(root, { status: 'completed', limit: 100 })]);
+  return { capturedAt: nowIso(), repository: sessionRepositoryBaseline(rawRepository), project: summarizeHealth(project), activeChanges: active.records, completedChangeCount: completed.records.length, invalidChangeRecords: Math.max(active.invalidRecords || 0, completed.invalidRecords || 0) };
 }
 async function captureContext(root, goal) {
   let context = null;
   let history = null;
+  let planning = { schemaVersion: 1, signals: [], totalDetected: 0, truncated: false, policy: 'Planning evidence unavailable.' };
   try {
     const pack = await buildContextPack(root, goal, 8, { stalePolicy: 'demote' });
     context = { summary: pack.summary || null, recommendedFiles: bounded(pack.recommendedFiles || [], 20), affectedWorkspaces: bounded(pack.affectedWorkspaces || [], 20), evidenceHealth: pack.health || null };
@@ -314,22 +276,13 @@ async function captureContext(root, goal) {
     const result = await buildChangeInsights(root, goal, { limit: 8 });
     history = { corpus: result.corpus, verificationPatterns: bounded(result.behavioralEvidence?.verificationPatterns || [], 12), calibration: result.calibration, matches: bounded(result.matches || [], 8) };
   } catch {}
-  return { context, history };
+  try { planning = await getPlanningSignals(root, { limit: 8 }); } catch {}
+  return { context, history, planning };
 }
 function normalizeObservation(options = {}) {
-  return {
-    observedAt: nowIso(),
-    files: normalizePaths(options.files || []),
-    notes: cleanItems(options.notes || [], 'Session note'),
-    accomplished: cleanItems(options.accomplished || [], 'Accomplishment'),
-    blockers: cleanItems(options.blockers || [], 'Blocker'),
-    decisions: cleanItems(options.decisions || [], 'Decision'),
-    questions: cleanItems(options.questions || [], 'Open question'),
-  };
+  return { observedAt: nowIso(), files: normalizePaths(options.files || []), notes: cleanItems(options.notes || [], 'Session note'), accomplished: cleanItems(options.accomplished || [], 'Accomplishment'), blockers: cleanItems(options.blockers || [], 'Blocker'), decisions: cleanItems(options.decisions || [], 'Decision'), questions: cleanItems(options.questions || [], 'Open question') };
 }
-function hasObservationSignal(observation) {
-  return observation.files.length || observation.notes.length || observation.accomplished.length || observation.blockers.length || observation.decisions.length || observation.questions.length;
-}
+function hasObservationSignal(observation) { return observation.files.length || observation.notes.length || observation.accomplished.length || observation.blockers.length || observation.decisions.length || observation.questions.length; }
 
 export async function startSession(root, goal, options = {}) {
   return withMutationLock(root, async () => {
@@ -357,31 +310,15 @@ export async function observeSession(root, selector, options = {}) {
   });
 }
 
-function completedSince(summaries, startedAt) {
-  const threshold = Date.parse(startedAt);
-  return (summaries || []).filter((item) => item.completedAt && Date.parse(item.completedAt) >= threshold);
-}
+function completedSince(summaries, startedAt) { const threshold = Date.parse(startedAt); return (summaries || []).filter((item) => item.completedAt && Date.parse(item.completedAt) >= threshold); }
 async function loadCompletedDetails(root, summaries) {
   const records = [];
-  for (const item of summaries.slice(0, 40)) {
-    try { records.push(await getChangeRecord(root, item.id)); } catch {}
-  }
+  for (const item of summaries.slice(0, 40)) { try { records.push(await getChangeRecord(root, item.id)); } catch {} }
   return records;
 }
 function keyFor(category, target = '') { return `${category}:${String(target || '').trim().toLowerCase()}`; }
 function makeFinding(category, severity, title, detail, options = {}) {
-  return {
-    key: keyFor(category, options.target),
-    category,
-    severity,
-    title,
-    detail,
-    confidence: options.confidence || 'high',
-    evidenceType: options.evidenceType || 'observed',
-    evidence: bounded(options.evidence || [], 30),
-    relatedFiles: bounded(options.relatedFiles || [], 30),
-    autoResolvable: AUTO_RESOLVABLE.has(category),
-  };
+  return { key: keyFor(category, options.target), category, severity, title, detail, confidence: options.confidence || 'high', evidenceType: options.evidenceType || 'observed', evidence: bounded(options.evidence || [], 30), relatedFiles: bounded(options.relatedFiles || [], 30), autoResolvable: AUTO_RESOLVABLE.has(category) };
 }
 function verificationNames(records) { return new Set(records.flatMap((record) => record.completion?.verifications || []).map((item) => String(item.name || '').trim().toLowerCase())); }
 function detectFindings({ record, current, completedDetails, scopePaths, staleReport }) {
@@ -448,31 +385,27 @@ function historicalRecommendations(history, completedDetails) {
   for (const pattern of history.verificationPatterns) {
     const name = String(pattern.name || '').trim();
     if (!name || current.has(name.toLowerCase()) || pattern.total < 3) continue;
-    recommendations.push({
-      id: `historical-verification:${crypto.createHash('sha1').update(name.toLowerCase()).digest('hex').slice(0, 12)}`,
-      priority: pattern.confidence === 'high' ? 'P1' : 'P2',
-      action: `Consider running the historically repeated verification "${name}" for this work.`,
-      reason: `This verification appears in ${pattern.total} relevant completed change(s) with pass rate ${pattern.passRate ?? 'unknown'} and observed-command evidence rate ${pattern.observedEvidenceRate ?? 'unknown'}.`,
-      evidenceType: 'historical-correlation',
-      evidence: [`historical-verification:${name}`],
-      confidence: pattern.confidence || 'low',
-      relatedFindingIds: [],
-    });
+    recommendations.push({ id: `historical-verification:${crypto.createHash('sha1').update(name.toLowerCase()).digest('hex').slice(0, 12)}`, priority: pattern.confidence === 'high' ? 'P1' : 'P2', action: `Consider running the historically repeated verification "${name}" for this work.`, reason: `This verification appears in ${pattern.total} relevant completed change(s) with pass rate ${pattern.passRate ?? 'unknown'} and observed-command evidence rate ${pattern.observedEvidenceRate ?? 'unknown'}.`, evidenceType: 'historical-correlation', evidence: [`historical-verification:${name}`], confidence: pattern.confidence || 'low', relatedFindingIds: [] });
   }
   return recommendations;
 }
-function buildRecommendations(findings, history, completedDetails) {
-  const items = findings.map((finding) => ({
-    id: `finding-action:${finding.key}`,
-    priority: priorityFor(finding),
-    action: actionFor(finding),
-    reason: finding.detail,
-    evidenceType: finding.evidenceType,
-    evidence: finding.evidence || [],
-    confidence: finding.confidence || 'low',
-    relatedFindingIds: finding.id ? [finding.id] : [],
-  }));
+function planningRecommendations(signals) {
+  return bounded((signals || []).map((signal) => ({
+    id: signal.id,
+    priority: 'P3',
+    action: `Review whether the unchecked planning item "${signal.text}" should be the next project task.`,
+    reason: `Observed unchecked planning task in ${signal.path}:${signal.line}${signal.section ? ` under "${signal.section}"` : ''}.`,
+    evidenceType: 'observed',
+    evidenceSubtype: 'planning-task',
+    evidence: [`${signal.path}:${signal.line}`],
+    confidence: signal.confidence || 'medium',
+    relatedFindingIds: [],
+  })), 3);
+}
+function buildRecommendations(findings, history, completedDetails, planningSignals = []) {
+  const items = findings.map((finding) => ({ id: `finding-action:${finding.key}`, priority: priorityFor(finding), action: actionFor(finding), reason: finding.detail, evidenceType: finding.evidenceType, evidence: finding.evidence || [], confidence: finding.confidence || 'low', relatedFindingIds: finding.id ? [finding.id] : [] }));
   items.push(...historicalRecommendations(history, completedDetails));
+  items.push(...planningRecommendations(planningSignals));
   const seen = new Set();
   return bounded(items.filter((item) => {
     const key = `${item.priority}:${item.action.toLowerCase()}`;
@@ -492,6 +425,7 @@ function buildGuardrails(findings, recommendations) {
   if (categories.has('preexisting-worktree')) items.push({ id: 'do-not-overattribute-dirty-worktree', rule: 'Do not attribute all dirty paths to this session when the session started from a dirty worktree.', reason: 'Path status alone cannot separate pre-existing edits from later edits to the same path.' });
   if (categories.has('prediction-gap')) items.push({ id: 'do-not-call-prediction-complete', rule: 'Do not treat pre-change predicted scope as complete impact evidence when observed paths escaped it.', reason: 'Expected-vs-actual evidence contains a prediction gap.' });
   if (recommendations.some((item) => item.evidenceType === 'historical-correlation')) items.push({ id: 'do-not-treat-history-as-causal', rule: 'Do not treat historical verification or co-change correlation as a causal dependency or mandatory command.', reason: 'Historical patterns are correlation-only evidence.' });
+  if (recommendations.some((item) => item.evidenceSubtype === 'planning-task')) items.push({ id: 'do-not-treat-planning-as-command', rule: 'Do not treat an unchecked roadmap/TODO item as proven current business priority; review it after stronger unresolved evidence.', reason: 'Planning checkboxes are observed planning evidence, not execution authority.' });
   items.push({ id: 'no-auto-command-or-truth', rule: 'Do not execute a project command or promote a knowledge candidate solely because CMI recommended it.', reason: 'CMI recommendations are advisory and durable knowledge remains review-controlled.' });
   return bounded(items, 12);
 }
@@ -554,32 +488,19 @@ async function persistDetectedFindings(root, sessionId, detected) {
   await writeFindingsRegistry(root, registry);
   return current;
 }
-async function loadOpenFindings(root) {
-  const registry = await readFindingsRegistry(root);
-  return registry.findings.filter((item) => item.state === 'open').sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen))).slice(0, 100);
-}
+async function loadOpenFindings(root) { const registry = await readFindingsRegistry(root); return registry.findings.filter((item) => item.state === 'open').sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || String(b.lastSeen).localeCompare(String(a.lastSeen))).slice(0, 100); }
 function mergeLiveFindings(open, detected) {
   const map = new Map(open.map((item) => [item.key, item]));
   for (const item of detected) map.set(item.key, { ...(map.get(item.key) || {}), ...item });
   return [...map.values()].sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0) || a.title.localeCompare(b.title));
 }
-function buildHandoff(record, current, scopePaths, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, outcome) {
+function buildHandoff(record, current, scopePaths, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome) {
   const observations = record.observations;
   const fallback = { priority: 'P3', action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.', reason: 'CMI found no unresolved evidence requiring a more specific action.', evidenceType: 'observed', evidence: [], confidence: 'high' };
   const projectChanges = current.repository?.projectChanges || [];
   return {
-    schemaVersion: 1,
-    sessionId: record.id,
-    generatedAt: nowIso(),
-    objective: record.goal,
-    outcome,
-    repository: current.repository?.available ? {
-      branch: current.repository.branch,
-      head: current.repository.head,
-      clean: current.repository.projectClean,
-      changes: bounded(projectChanges, 40),
-      cmiInternalChangesOmitted: current.repository.cmiInternalChangesOmitted || 0,
-    } : { available: false, reason: current.repository?.reason || 'Git baseline unavailable.' },
+    schemaVersion: 1, sessionId: record.id, generatedAt: nowIso(), objective: record.goal, outcome,
+    repository: current.repository?.available ? { branch: current.repository.branch, head: current.repository.head, clean: current.repository.projectClean, changes: bounded(projectChanges, 40), cmiInternalChangesOmitted: current.repository.cmiInternalChangesOmitted || 0 } : { available: false, reason: current.repository?.reason || 'Git baseline unavailable.' },
     sessionScope: bounded(scopePaths, 80),
     accomplished: bounded(observations.flatMap((item) => item.accomplished || []), 30),
     decisions: bounded(observations.flatMap((item) => item.decisions || []), 20),
@@ -587,22 +508,14 @@ function buildHandoff(record, current, scopePaths, completedDetails, openFinding
     completedChanges: bounded(completedDetails.map((item) => ({ id: item.id, goal: item.goal, outcome: item.completion?.outcome, verifications: bounded(item.completion?.verifications || [], 12) })), 20),
     activeChanges: bounded(current.activeChanges || [], 20),
     openFindings: bounded(openFindings.map(findingSummary), 20),
-    nextActions: bounded(recommendations, 10),
-    nextAction: recommendations[0] || fallback,
-    guardrails,
-    knowledgeCandidates,
-    agentInstruction: 'Continue from this handoff instead of reconstructing project state from scratch. Re-check current evidence, address P0/P1 actions before unrelated work unless the user changes priority, obey guardrails, and do not turn advisory candidates into durable truth without review.',
+    planningSignals: bounded(planningSignals || [], 8),
+    nextActions: bounded(recommendations, 10), nextAction: recommendations[0] || fallback, guardrails, knowledgeCandidates,
+    agentInstruction: 'Continue from this handoff instead of reconstructing project state from scratch. Re-check current evidence, address P0/P1 actions before unrelated work unless the user changes priority, treat planning items as review candidates, obey guardrails, and do not turn advisory candidates into durable truth without review.',
   };
 }
 
 async function buildAssessment(root, record) {
-  const [current, staleReport, intelligence, completedSummaries, existingOpen] = await Promise.all([
-    captureState(root),
-    checkStaleMemory(root),
-    captureContext(root, record.goal),
-    listChangeRecords(root, { status: 'completed', limit: 100 }),
-    loadOpenFindings(root),
-  ]);
+  const [current, staleReport, intelligence, completedSummaries, existingOpen] = await Promise.all([captureState(root), checkStaleMemory(root), captureContext(root, record.goal), listChangeRecords(root, { status: 'completed', limit: 100 }), loadOpenFindings(root)]);
   const completedWindow = completedSince(completedSummaries.records, record.createdAt);
   const completedDetails = await loadCompletedDetails(root, completedWindow);
   const startPaths = new Set(baselinePaths(record.start.repository));
@@ -613,26 +526,12 @@ async function buildAssessment(root, record) {
   const scopePaths = bounded(unique([...newDirtyPaths, ...committedPaths, ...observedPaths]), MAX_PATHS);
   const detected = detectFindings({ record, current, completedDetails, scopePaths, staleReport });
   const findings = mergeLiveFindings(existingOpen, detected);
-  const recommendations = buildRecommendations(findings, intelligence.history, completedDetails);
+  const planningSignals = intelligence.planning?.signals || [];
+  const recommendations = buildRecommendations(findings, intelligence.history, completedDetails, planningSignals);
   const guardrails = buildGuardrails(findings, recommendations);
-  return {
-    schemaVersion: 1,
-    generatedAt: nowIso(),
-    session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt },
-    current,
-    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths] },
-    completedChanges: completedDetails,
-    detectedFindings: detected,
-    findings,
-    recommendations,
-    guardrails,
-    intelligence,
-  };
+  return { schemaVersion: 1, generatedAt: nowIso(), session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt }, current, scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths] }, completedChanges: completedDetails, detectedFindings: detected, findings, recommendations, guardrails, intelligence };
 }
-export async function assessSession(root, selector = 'latest') {
-  const record = await resolveSession(root, selector, { status: 'active' });
-  return buildAssessment(root, record);
-}
+export async function assessSession(root, selector = 'latest') { return buildAssessment(root, await resolveSession(root, selector, { status: 'active' })); }
 
 export async function closeSession(root, selector, options = {}) {
   return withMutationLock(root, async () => {
@@ -649,29 +548,15 @@ export async function closeSession(root, selector, options = {}) {
     const assessment = await buildAssessment(root, record);
     const currentFindings = await persistDetectedFindings(root, record.id, assessment.detectedFindings);
     const openFindings = await loadOpenFindings(root);
-    const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges);
+    const planningSignals = assessment.intelligence.planning?.signals || [];
+    const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges, planningSignals);
     const guardrails = buildGuardrails(openFindings, recommendations);
     const outcome = inferOutcome(options.outcome, record, assessment.current, assessment.completedChanges, currentFindings, assessment.scope.paths);
     const knowledgeCandidates = buildKnowledgeCandidates(record, currentFindings);
-    const handoff = buildHandoff(record, assessment.current, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations, guardrails, knowledgeCandidates, outcome);
+    const handoff = buildHandoff(record, assessment.current, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome);
     const closedAt = nowIso();
-    record.status = 'closed';
-    record.updatedAt = closedAt;
-    record.revision = (record.revision || 1) + 1;
-    record.close = {
-      closedAt,
-      outcome,
-      summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations),
-      scope: assessment.scope,
-      current: assessment.current,
-      findings: currentFindings,
-      openFindings,
-      recommendations,
-      guardrails,
-      knowledgeCandidates,
-      handoff,
-      policy: 'Findings and next actions are evidence-linked advisory output. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.',
-    };
+    record.status = 'closed'; record.updatedAt = closedAt; record.revision = (record.revision || 1) + 1;
+    record.close = { closedAt, outcome, summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations), scope: assessment.scope, current: assessment.current, findings: currentFindings, openFindings, recommendations, guardrails, knowledgeCandidates, handoff, policy: 'Findings and next actions are evidence-linked advisory output. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.' };
     await writeSession(root, record);
     return record;
   });
@@ -685,9 +570,7 @@ export async function listSessions(root, options = {}) {
   return { schemaVersion: 1, records: records.filter((item) => !status || item.status === status).slice(0, limit).map((item) => ({ id: item.id, status: item.status, goal: item.goal, createdAt: item.createdAt, updatedAt: item.updatedAt, outcome: item.close?.outcome || null, nextAction: item.close?.handoff?.nextAction || null })), invalidRecords, truncated };
 }
 export async function getSessionHandoff(root, selector = 'latest') {
-  const record = selector === 'latest' || !selector
-    ? await resolveSession(root, 'latest', { status: 'closed' })
-    : await resolveSession(root, selector);
+  const record = selector === 'latest' || !selector ? await resolveSession(root, 'latest', { status: 'closed' }) : await resolveSession(root, selector);
   if (record.status !== 'closed' || !record.close?.handoff) throw new Error('Session handoff is available only after the session is closed.');
   return record.close.handoff;
 }
@@ -696,7 +579,7 @@ export function formatSessionReport(record) {
   if (record.status === 'active') return `# Active CMI session\n\nGoal: ${record.goal}\nStarted: ${record.createdAt}\nObservations: ${record.observations.length}\n\nRun \`cmi session status ${record.id.slice(0, 8)}\` for live findings and recommendations.`;
   const close = record.close;
   const findings = (close.openFindings || close.findings).map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
-  const actions = close.recommendations.map((item) => `- ${item.priority} ${item.action}\n  Why: ${item.reason} · ${item.evidenceType} · confidence ${item.confidence}`).join('\n') || '- No evidence-based follow-up required.';
+  const actions = close.recommendations.map((item) => `- ${item.priority} ${item.action}\n  Why: ${item.reason} · ${item.evidenceType}${item.evidenceSubtype ? `/${item.evidenceSubtype}` : ''} · confidence ${item.confidence}`).join('\n') || '- No evidence-based follow-up required.';
   const guardrails = (close.guardrails || []).map((item) => `- ${item.rule}\n  Why: ${item.reason}`).join('\n') || '- Preserve evidence distinctions and do not auto-promote advisory output.';
   return `# Session outcome: ${close.outcome}\n\n${close.summary}\n\n## Problems / unresolved findings\n${findings}\n\n## Recommended next actions\n${actions}\n\n## Guardrails / do not assume\n${guardrails}\n\n## Next action\n${close.handoff.nextAction.priority} ${close.handoff.nextAction.action}`;
 }
@@ -712,6 +595,4 @@ export function formatHandoff(handoff) {
   const guardrails = (handoff.guardrails || []).map((item) => `- ${item.rule}`).join('\n') || '- Preserve evidence distinctions.';
   return `# CMI handoff\n\nObjective: ${handoff.objective}\nOutcome: ${handoff.outcome}\nBranch: ${handoff.repository.branch || 'unknown'}\nHEAD: ${handoff.repository.head || 'unknown'}\nSession scope: ${handoff.sessionScope.length} path(s)\n\n## Open findings\n${findings}\n\n## Next actions\n${actions}\n\n## Guardrails\n${guardrails}\n\n${handoff.agentInstruction}`;
 }
-export function formatFindingList(result) {
-  return result.findings.length ? result.findings.map((item) => `- ${item.id.slice(0, 8)} [${item.state}/${item.severity}] ${item.title} · seen ${item.occurrences} time(s)`).join('\n') : 'No matching project findings.';
-}
+export function formatFindingList(result) { return result.findings.length ? result.findings.map((item) => `- ${item.id.slice(0, 8)} [${item.state}/${item.severity}] ${item.title} · seen ${item.occurrences} time(s)`).join('\n') : 'No matching project findings.'; }
