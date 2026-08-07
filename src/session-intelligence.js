@@ -452,13 +452,20 @@ function historicalRecommendations(history, completedDetails) {
   return recommendations;
 }
 function planningRecommendations(signals) {
-  return bounded((signals || []).map((signal) => ({
-    id: signal.id, priority: 'P3',
-    action: `Review whether the unchecked planning item "${signal.text}" should be the next project task.`,
-    reason: `Observed unchecked planning task in ${signal.path}:${signal.line}${signal.section ? ` under "${signal.section}"` : ''}.`,
-    evidenceType: 'observed', evidenceSubtype: 'planning-task', evidence: [`${signal.path}:${signal.line}`],
-    confidence: signal.confidence || 'medium', relatedFindingIds: [],
-  })), 3);
+  return bounded((signals || []).map((signal) => {
+    const label = signal.type === 'unchecked-markdown-task'
+      ? 'unchecked planning task'
+      : signal.type === 'explicit-planning-marker'
+        ? 'explicit planning marker'
+        : 'planning item';
+    return {
+      id: signal.id, priority: 'P3',
+      action: `Review whether the ${label} "${signal.text}" should be the next project task.`,
+      reason: `Observed ${label} in ${signal.path}:${signal.line}${signal.section ? ` under "${signal.section}"` : ''}.`,
+      evidenceType: 'observed', evidenceSubtype: 'planning-task', evidence: [`${signal.path}:${signal.line}`],
+      confidence: signal.confidence || 'medium', relatedFindingIds: [],
+    };
+  }), 3);
 }
 function buildRecommendations(findings, history, completedDetails, planningSignals = []) {
   const items = findings.map((finding) => ({
@@ -488,7 +495,7 @@ function buildGuardrails(findings, recommendations) {
   if (categories.has('preexisting-worktree')) items.push({ id: 'do-not-overattribute-dirty-worktree', rule: 'Do not attribute all dirty paths to this session when the session started from a dirty worktree.', reason: 'Path status alone cannot separate pre-existing edits from later edits to the same path.' });
   if (categories.has('prediction-gap')) items.push({ id: 'do-not-call-prediction-complete', rule: 'Do not treat pre-change predicted scope as complete impact evidence when observed paths escaped it.', reason: 'Expected-vs-actual evidence contains a prediction gap.' });
   if (recommendations.some((item) => item.evidenceType === 'historical-correlation')) items.push({ id: 'do-not-treat-history-as-causal', rule: 'Do not treat historical verification or co-change correlation as a causal dependency or mandatory command.', reason: 'Historical patterns are correlation-only evidence.' });
-  if (recommendations.some((item) => item.evidenceSubtype === 'planning-task')) items.push({ id: 'do-not-treat-planning-as-command', rule: 'Do not treat an unchecked roadmap/TODO item as proven current business priority; review it after stronger unresolved evidence.', reason: 'Planning checkboxes are observed planning evidence, not execution authority.' });
+  if (recommendations.some((item) => item.evidenceSubtype === 'planning-task')) items.push({ id: 'do-not-treat-planning-as-command', rule: 'Do not treat planning text as proven current business priority; review it after stronger unresolved evidence.', reason: 'Planning files are observed planning evidence, not execution authority.' });
   items.push({ id: 'no-auto-command-or-truth', rule: 'Do not execute a project command or promote a knowledge candidate solely because CMI recommended it.', reason: 'CMI recommendations are advisory and durable knowledge remains review-controlled.' });
   return bounded(items, 12);
 }
