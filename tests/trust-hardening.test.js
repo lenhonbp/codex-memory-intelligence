@@ -6,27 +6,32 @@ import path from 'node:path';
 import { scanProject, remember, status, doctor } from '../src/core.js';
 import { loadMemory, searchMemory, buildContextPack } from '../src/search.js';
 
-test('stale durable memory is labeled and can be excluded from retrieval', async () => {
+test('stale durable memory is labeled, demoted by default, and can be explicitly included or excluded', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-trust-memory-'));
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
   const source = path.join(root, 'src', 'policy.js');
   await fs.writeFile(source, 'export const retryPolicy = "three-attempts";\n');
   await scanProject(root);
-  await remember(root, 'decision', 'Checkout retries use the three-attempts policy.', { sources: ['src/policy.js'] });
+  const metadata = await remember(root, 'decision', 'Checkout retries use the three-attempts policy.', { sources: ['src/policy.js'] });
 
   let results = await searchMemory(root, 'checkout retries', 10);
-  const fresh = results.find((item) => item.source === 'decisions.md');
+  const fresh = results.find((item) => item.metadata?.id === metadata.id);
   assert.equal(fresh.metadata.evidenceStatus, 'reviewed-current');
 
   await fs.writeFile(source, 'export const retryPolicy = "five-attempts";\n');
-  results = await searchMemory(root, 'checkout retries', 10, { stalePolicy: 'include' });
-  const stale = results.find((item) => item.source === 'decisions.md');
-  assert.equal(stale.metadata.evidenceStatus, 'stale');
-  assert.ok(stale.metadata.staleReasons.some((reason) => /source changed/i.test(reason)));
+  const demotedResults = await searchMemory(root, 'checkout retries', 10);
+  const demoted = demotedResults.find((item) => item.metadata?.id === metadata.id);
+  assert.equal(demoted.metadata.evidenceStatus, 'stale');
+  assert.ok(demoted.metadata.staleReasons.some((reason) => /source changed/i.test(reason)));
+
+  const includedResults = await searchMemory(root, 'checkout retries', 10, { stalePolicy: 'include' });
+  const included = includedResults.find((item) => item.metadata?.id === metadata.id);
+  assert.equal(included.metadata.evidenceStatus, 'stale');
+  assert.ok(included.score > demoted.score);
 
   const excluded = await searchMemory(root, 'checkout retries', 10, { stalePolicy: 'exclude' });
-  assert.ok(!excluded.some((item) => item.source === 'decisions.md' && item.metadata?.id === stale.metadata.id));
+  assert.ok(!excluded.some((item) => item.metadata?.id === metadata.id));
 });
 
 test('stale graph nodes are not returned as current graph evidence and health surfaces the drift', async () => {
