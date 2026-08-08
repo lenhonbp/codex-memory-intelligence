@@ -17,7 +17,8 @@ test('stale durable memory is labeled, demoted by default, and can be explicitly
 
   let results = await searchMemory(root, 'checkout retries', 10);
   const fresh = results.find((item) => item.metadata?.id === metadata.id);
-  assert.equal(fresh.metadata.evidenceStatus, 'reviewed-current');
+  assert.equal(fresh.metadata.evidenceStatus, 'fresh-source');
+  assert.equal(fresh.metadata.semanticReviewCurrent, false);
 
   await fs.writeFile(source, 'export const retryPolicy = "five-attempts";\n');
   const demotedResults = await searchMemory(root, 'checkout retries', 10);
