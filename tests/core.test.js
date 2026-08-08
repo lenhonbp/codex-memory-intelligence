@@ -32,8 +32,9 @@ test('initializes and builds stack, graph, and v0.5 metadata', async () => {
   assert.equal(scan.graph.parsedFiles, 3);
   assert.equal(scan.graph.reusedFiles, 0);
   const graph = await loadProjectGraph(root);
-  assert.equal(graph.schemaVersion, 3);
-  assert.equal(graph.parserVersion, 3);
+  assert.equal(graph.schemaVersion, 4);
+  assert.equal(graph.parserVersion, 4);
+  assert.equal(graph.freshness.version, 1);
   assert.equal(graph.reverseDependents['src/db.js'][0], 'src/service.js');
   const config = JSON.parse(await fs.readFile(path.join(root, '.codex-memory', 'config.json'), 'utf8'));
   assert.equal(config.version, 4);

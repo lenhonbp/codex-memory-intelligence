@@ -6,6 +6,32 @@ All notable changes are documented here.
 
 No unreleased changes yet.
 
+## [0.9.2] - 2026-08-08
+
+### Fixed
+
+- Enforced the default MCP read-only boundary by removing scan mutation from safe tool discovery and rejecting direct scan calls before generated CMI caches can be written unless write mode is explicitly enabled.
+- Made graph freshness cover the complete source candidate set plus resolver, workspace, scan, and ignore inputs so new files and configuration drift block impact analysis instead of returning stale confidence.
+- Separated source/project freshness from semantic memory review: source refresh now yields `fresh-source`, while `reviewed-current` requires explicit review provenance that remains current relative to source refresh.
+- Made unsafe, unreadable, symlinked, or oversized durable memory fail closed as blocked evidence rather than silently appearing empty; search and refresh cannot use blocked memory as trusted input.
+- Made an existing invalid, unsafe, or oversized findings registry fail closed with `CMI_FINDINGS_BLOCKED` so normal finding/session mutations cannot overwrite corrupted evidence.
+- Hardened CLI automation contracts: unknown options fail, JSON-mode errors remain machine-readable, and blocked impact exits non-zero while preserving structured output.
+- Aligned memory-review JSON Schema conditions with runtime provenance validation.
+- Reduced representative heuristic parser errors by ignoring JavaScript import-like text in comments/ordinary strings and resolving reviewed Python relative-import and Rust `crate::` cases.
+- Aligned `cmi doctor` with the Unified Evidence Health model so blocked graph, impact, durable-memory, or overall evidence states fail diagnostics instead of being reported as warning/pass states.
+
+### Added
+
+- Regression coverage for safe MCP direct-call bypass attempts, source-set and resolver drift, semantic-review separation, blocked durable memory, corrupt findings no-overwrite behavior, strict CLI contracts, graph/schema freshness, parser edge cases, and blocked doctor diagnostics.
+- `docs/INDEPENDENT_REVIEW_REMEDIATION.md` documenting the finding-by-finding remediation contract and the empirical gaps that remain intentionally open.
+- `docs/EMPIRICAL_VALIDATION.md` defining a paired controlled comparison protocol for plain Codex/Git/source search versus Codex + CMI without converting synthetic or caller-attested data into productivity claims.
+
+### Evidence limits
+
+- CMI remains heuristic/advisory rather than compiler-grade semantic analysis.
+- Evaluation repository/reviewer provenance remains caller-attested unless a stronger external assurance process is used.
+- This release improves trust boundaries and testable correctness; it does not claim that CMI productivity value is independently proven across real repositories.
+
 ## [0.9.1] - 2026-08-08
 
 - Added longitudinal evaluation outcomes for reconstruction effort, user follow-up need, historical-evidence usefulness, and verification-choice influence with explicit human/agent provenance and applicability checks.

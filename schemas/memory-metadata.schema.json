@@ -125,6 +125,22 @@
     },
     {
       "if": {
+        "anyOf": [
+          { "required": ["reviewedAt"] },
+          { "required": ["reviewedBy"] },
+          { "required": ["reviewReason"] }
+        ]
+      },
+      "then": {
+        "required": [
+          "reviewedAt",
+          "reviewedBy",
+          "reviewReason"
+        ]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "lifecycle": {
             "properties": {

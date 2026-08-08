@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { checkStaleMemory } from './stale.js';
+import { inspectProjectGraphHealth } from './graph.js';
 import { safeReadMemoryFile, safeReadMemoryJson, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { buildEvidenceHealth } from './evidence-health.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
+const DURABLE_MEMORY_FILES = new Set(['memory.md', 'decisions.md', 'mistakes.md']);
 const STOP = new Set(['the','and','for','with','that','this','from','into','cua','cho','voi','nhung','mot','cac','trong','duoc']);
 const META_PATTERN = /<!--\s*cmi-meta:(\{.*?\})\s*-->/;
 
@@ -66,14 +68,13 @@ function fingerprintMatches(stat, fingerprint) {
 async function graphChunks(root) {
   try {
     const graph = await safeReadMemoryJson(root, 'project-graph.json', { maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES });
+    const health = await inspectProjectGraphHealth(root, graph);
+    if (!health.current) return { chunks: [], health };
     const chunks = [];
-    let staleNodes = 0;
-    let missingNodes = 0;
     for (const node of graph.nodes || []) {
       let stat = null;
-      try { stat = await fs.stat(path.join(root, node.path)); } catch {}
-      if (!stat?.isFile()) { missingNodes += 1; continue; }
-      if (!fingerprintMatches(stat, node.fingerprint)) { staleNodes += 1; continue; }
+      try { stat = await fs.lstat(path.join(root, node.path)); } catch {}
+      if (!stat?.isFile() || stat.isSymbolicLink() || !fingerprintMatches(stat, node.fingerprint)) continue;
       const symbols = node.symbols.map((symbol) => `${symbol.name} (${symbol.kind}${symbol.exported ? ', exported' : ''})`).join(', ');
       const localImports = node.imports.filter((item) => item.resolved).map((item) => item.resolved).join(', ');
       const externalImports = node.imports.filter((item) => item.external).map((item) => item.specifier).join(', ');
@@ -82,43 +83,49 @@ async function graphChunks(root) {
         source: 'project-graph.json',
         title: `File ${node.path}`,
         text: `Language: ${node.language}\nWorkspace: ${node.workspace || 'unassigned'}\nSymbols: ${symbols || 'none'}\nLocal imports: ${localImports || 'none'}\nDependents: ${dependents || 'none'}\nExternal imports: ${externalImports || 'none'}`,
-        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [], evidenceStatus: 'observed', knowledgeState: 'active', graphGeneratedAt: graph.generatedAt || null },
+        metadata: { path: node.path, symbols: node.symbols, workspace: node.workspace, dependents: graph.reverseDependents[node.path] || [], evidenceStatus: health.complete ? 'observed' : 'observed-partial', knowledgeState: 'active', graphGeneratedAt: graph.generatedAt || null },
         kind: 'graph',
       });
     }
-    const truncated = Boolean(graph.summary?.truncated);
-    const current = staleNodes === 0 && missingNodes === 0;
-    const complete = !truncated;
-    return { chunks, health: { available: true, totalNodes: (graph.nodes || []).length, freshNodes: chunks.length, staleNodes, missingNodes, truncated, current, complete, healthy: current && complete, state: !current ? 'stale' : !complete ? 'incomplete' : 'healthy' } };
+    return { chunks, health: { ...health, freshNodes: chunks.length } };
   } catch {
     return { chunks: [], health: { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, truncated: false, current: false, complete: false, healthy: false, state: 'missing' } };
   }
 }
 
 async function memoryHealthMap(root) {
-  try {
-    const report = await checkStaleMemory(root);
-    const byId = new Map();
-    const byHeading = new Map();
-    for (const entry of report.entries || []) {
-      if (entry.id) byId.set(entry.id, entry);
-      byHeading.set(`${entry.file}\u0000${entry.heading}`, entry);
-    }
-    return { report, byId, byHeading };
-  } catch {
-    return { report: null, byId: new Map(), byHeading: new Map() };
+  const report = await checkStaleMemory(root);
+  const byId = new Map();
+  const byHeading = new Map();
+  for (const entry of report.entries || []) {
+    if (entry.id) byId.set(entry.id, entry);
+    if (entry.heading) byHeading.set(`${entry.file}\u0000${entry.heading}`, entry);
   }
+  return { report, byId, byHeading };
+}
+
+function hasCurrentSemanticReview(metadata, tracked) {
+  const reviewedAt = Date.parse(metadata?.reviewedAt || tracked?.reviewedAt || '');
+  const refreshedAt = Date.parse(metadata?.sourceRefreshedAt || tracked?.sourceRefreshedAt || '');
+  const reviewedBy = String(metadata?.reviewedBy || tracked?.reviewedBy || '').trim();
+  const reviewReason = String(metadata?.reviewReason || tracked?.reviewReason || '').trim();
+  if (!Number.isFinite(reviewedAt) || !reviewedBy || !reviewReason) return false;
+  return !Number.isFinite(refreshedAt) || reviewedAt >= refreshedAt;
 }
 
 function annotateMemoryChunk(chunk, health) {
   if (chunk.kind !== 'memory') return chunk;
   const tracked = (chunk.metadata?.id && health.byId.get(chunk.metadata.id)) || health.byHeading.get(`${chunk.source}\u0000${chunk.title}`) || null;
   const status = tracked?.status || (chunk.metadata ? 'unknown' : 'untracked');
+  const evidenceStatus = status === 'fresh'
+    ? (hasCurrentSemanticReview(chunk.metadata, tracked) ? 'reviewed-current' : 'fresh-source')
+    : status;
   return {
     ...chunk,
     metadata: {
       ...(chunk.metadata || {}),
-      evidenceStatus: status === 'fresh' ? 'reviewed-current' : status,
+      evidenceStatus,
+      semanticReviewCurrent: evidenceStatus === 'reviewed-current',
       knowledgeState: tracked?.lifecycleState || chunk.metadata?.lifecycle?.state || 'active',
       staleReasons: tracked?.reasons || [],
       lifecycle: tracked?.lifecycle || chunk.metadata?.lifecycle || null,
@@ -127,11 +134,16 @@ function annotateMemoryChunk(chunk, health) {
 }
 
 export async function loadMemory(root, options = {}) {
-  const directory = path.join(root, '.codex-memory');
   const chunks = [];
   const health = await memoryHealthMap(root);
+  const blockedFiles = new Set((health.report?.fileErrors || []).map((item) => item.file));
   for (const file of MEMORY_FILES) {
-    try { chunks.push(...sections(await safeReadMemoryFile(root, file), file).map((chunk) => annotateMemoryChunk(chunk, health))); } catch {}
+    if (blockedFiles.has(file)) continue;
+    try {
+      chunks.push(...sections(await safeReadMemoryFile(root, file), file).map((chunk) => annotateMemoryChunk(chunk, health)));
+    } catch (error) {
+      if (DURABLE_MEMORY_FILES.has(file)) throw error;
+    }
   }
   const graph = await graphChunks(root);
   chunks.push(...graph.chunks);
@@ -176,8 +188,8 @@ function workspaceMatches(chunk, scope) {
 function stalePolicyAllows(chunk, policy) {
   if (chunk.kind !== 'memory') return true;
   const status = chunk.metadata?.evidenceStatus;
-  if (policy === 'exclude') return status === 'reviewed-current' || status === 'observed';
-  return true;
+  if (policy === 'exclude') return ['reviewed-current', 'fresh-source', 'observed'].includes(status);
+  return status !== 'blocked';
 }
 
 function knowledgePolicyAllows(chunk, includeInactive) {
@@ -190,9 +202,11 @@ function evidenceAdjustment(chunk, stalePolicy, includeInactive) {
   if ((chunk.metadata?.knowledgeState || 'active') !== 'active') return includeInactive ? 0 : -10;
   const status = chunk.metadata?.evidenceStatus;
   if (status === 'reviewed-current') return 1;
+  if (status === 'fresh-source') return 0.25;
   if (status === 'review') return stalePolicy === 'include' ? -0.25 : -1;
   if (status === 'untracked' || status === 'unknown') return stalePolicy === 'include' ? -0.5 : -1.5;
   if (status === 'stale') return stalePolicy === 'include' ? -1 : -4;
+  if (status === 'blocked') return -100;
   return 0;
 }
 
@@ -201,6 +215,11 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
   if (!terms.length) return [];
   const workspaceScope = await resolveWorkspaceScope(root, options.workspace);
   const loaded = await loadMemory(root, { withHealth: true });
+  if ((loaded.memoryHealth?.counts?.blocked || 0) > 0) {
+    const error = new Error('Durable memory search is blocked because one or more required memory files could not be safely read. Run cmi stale --json and repair storage before relying on search results.');
+    error.code = 'CMI_MEMORY_BLOCKED';
+    throw error;
+  }
   const stalePolicy = ['include', 'exclude', 'demote'].includes(options.stalePolicy) ? options.stalePolicy : 'demote';
   const includeInactive = Boolean(options.includeInactive);
   const chunks = loaded.chunks.filter((chunk) => workspaceMatches(chunk, workspaceScope) && knowledgePolicyAllows(chunk, includeInactive) && stalePolicyAllows(chunk, stalePolicy));
@@ -252,11 +271,12 @@ export async function buildContextPack(root, query, limit = 8, options = {}) {
   const estimatedCharacters = results.reduce((sum, item) => sum + item.title.length + item.text.length, 0);
   const staleResults = results.filter((item) => item.metadata?.evidenceStatus === 'stale').length;
   const reviewResults = results.filter((item) => ['review', 'untracked', 'unknown'].includes(item.metadata?.evidenceStatus)).length;
+  const sourceCurrentResults = results.filter((item) => item.metadata?.evidenceStatus === 'fresh-source').length;
   const inactiveResults = results.filter((item) => (item.metadata?.knowledgeState || 'active') !== 'active').length;
   return {
     query,
     workspace: options.workspace || null,
-    evidencePolicy: { stalePolicy: options.stalePolicy || 'demote', includeInactive: Boolean(options.includeInactive), staleResults, reviewResults, inactiveResults },
+    evidencePolicy: { stalePolicy: options.stalePolicy || 'demote', includeInactive: Boolean(options.includeInactive), staleResults, reviewResults, sourceCurrentResults, inactiveResults },
     health: {
       memory: loaded.memoryHealth?.counts || null,
       graph: loaded.graphHealth,

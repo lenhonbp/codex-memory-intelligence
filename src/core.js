@@ -302,10 +302,13 @@ export async function doctor(root) {
   if (initialized) {
     const projectStatus = await status(root);
     add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
-    add('graph-health', projectStatus.graphHealth?.healthy ? 'pass' : 'warn', projectStatus.graphHealth?.healthy ? 'Project graph is current and complete within configured coverage.' : `Project graph is degraded (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, truncated=${Boolean(projectStatus.graphHealth?.truncated)}). Run cmi scan or raise graph limits.`);
-    add('evidence-health', projectStatus.evidenceHealth?.healthy ? 'pass' : 'warn', projectStatus.evidenceHealth?.healthy ? 'Current project evidence is healthy.' : `Evidence state is ${projectStatus.evidenceHealth?.state || 'unknown'}; inspect status --json before relying on degraded evidence.`);
-    const memoryCurrent = projectStatus.memoryHealth?.stale === 0 && projectStatus.memoryHealth?.review === 0 && projectStatus.memoryHealth?.untracked === 0;
-    add('memory-health', memoryCurrent ? 'pass' : 'warn', memoryCurrent ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
+    const graphBlocked = projectStatus.evidenceHealth?.capabilities?.impactAnalysis === 'blocked';
+    add('graph-health', projectStatus.graphHealth?.healthy ? 'pass' : graphBlocked ? 'fail' : 'warn', projectStatus.graphHealth?.healthy ? 'Project graph is current and complete within configured coverage.' : graphBlocked ? `Project graph is blocked (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, sourceSetChanged=${Boolean(projectStatus.graphHealth?.sourceSetChanged)}, resolverInputsChanged=${Boolean(projectStatus.graphHealth?.resolverInputsChanged)}). Run cmi scan before relying on graph/impact evidence.` : `Project graph is degraded (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, truncated=${Boolean(projectStatus.graphHealth?.truncated)}). Run cmi scan or raise graph limits.`);
+    const evidenceBlocked = projectStatus.evidenceHealth?.state === 'blocked' || projectStatus.evidenceHealth?.blocked === true;
+    add('evidence-health', projectStatus.evidenceHealth?.healthy ? 'pass' : evidenceBlocked ? 'fail' : 'warn', projectStatus.evidenceHealth?.healthy ? 'Current project evidence is healthy.' : `Evidence state is ${projectStatus.evidenceHealth?.state || 'unknown'}; inspect status --json before relying on degraded or blocked evidence.`);
+    const blockedMemory = Number(projectStatus.memoryHealth?.blocked || 0);
+    const memoryCurrent = blockedMemory === 0 && projectStatus.memoryHealth?.stale === 0 && projectStatus.memoryHealth?.review === 0 && projectStatus.memoryHealth?.untracked === 0;
+    add('memory-health', blockedMemory > 0 ? 'fail' : memoryCurrent ? 'pass' : 'warn', blockedMemory > 0 ? `${blockedMemory} durable memory source(s) are blocked and cannot be trusted. Repair or restore the affected memory file before retrieval or mutation.` : memoryCurrent ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
     add('workspaces', 'pass', `${projectStatus.workspaces?.count || 0} configured workspace(s) detected.`);
   }
   return { version: VERSION, healthy: checks.every((check) => check.status !== 'fail'), checks };

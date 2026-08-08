@@ -17,7 +17,8 @@ test('stale durable memory is labeled, demoted by default, and can be explicitly
 
   let results = await searchMemory(root, 'checkout retries', 10);
   const fresh = results.find((item) => item.metadata?.id === metadata.id);
-  assert.equal(fresh.metadata.evidenceStatus, 'reviewed-current');
+  assert.equal(fresh.metadata.evidenceStatus, 'fresh-source');
+  assert.equal(fresh.metadata.semanticReviewCurrent, false);
 
   await fs.writeFile(source, 'export const retryPolicy = "five-attempts";\n');
   const demotedResults = await searchMemory(root, 'checkout retries', 10);
@@ -57,10 +58,12 @@ test('stale graph nodes are not returned as current graph evidence and health su
   assert.equal(projectStatus.healthy, false);
   assert.equal(projectStatus.graphHealth.current, false);
   assert.equal(projectStatus.graphHealth.staleNodes, 1);
+  assert.equal(projectStatus.evidenceHealth.capabilities.impactAnalysis, 'blocked');
 
   const diagnostic = await doctor(root);
-  assert.equal(diagnostic.healthy, true);
-  assert.ok(diagnostic.checks.some((check) => check.name === 'graph-health' && check.status === 'warn'));
+  assert.equal(diagnostic.healthy, false);
+  assert.ok(diagnostic.checks.some((check) => check.name === 'graph-health' && check.status === 'fail'));
+  assert.ok(diagnostic.checks.some((check) => check.name === 'evidence-health' && check.status === 'fail'));
 
   const context = await buildContextPack(root, 'service', 10);
   assert.equal(context.health.graph.current, false);

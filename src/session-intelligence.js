@@ -97,20 +97,44 @@ async function atomicJsonWrite(target, value) {
     await fs.rename(temporary, target);
   }
 }
-async function safeReadJson(target, validator) {
+function durableReadError(target, options = {}, cause = null) {
+  const label = options.label || path.basename(target);
+  const error = new Error(`${label} exists but could not be safely read or validated. Repair or recover it before continuing.`);
+  error.code = options.code || 'CMI_DURABLE_RECORD_INVALID';
+  if (cause?.code) error.causeCode = cause.code;
+  return error;
+}
+async function safeReadJson(target, validator, options = {}) {
   let handle;
   try {
     const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
     handle = await fs.open(target, fsConstants.O_RDONLY | noFollow);
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size > MAX_RECORD_BYTES) return null;
+    if (!opened.isFile() || opened.size > MAX_RECORD_BYTES) {
+      if (options.strict) throw durableReadError(target, options);
+      return null;
+    }
     if (!noFollow) {
       const stat = await fs.lstat(target);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.dev !== opened.dev || stat.ino !== opened.ino) return null;
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.dev !== opened.dev || stat.ino !== opened.ino) {
+        if (options.strict) throw durableReadError(target, options);
+        return null;
+      }
     }
     const value = JSON.parse(await handle.readFile('utf8'));
-    return validator(value) ? value : null;
-  } catch { return null; }
+    if (!validator(value)) {
+      if (options.strict) throw durableReadError(target, options);
+      return null;
+    }
+    return value;
+  } catch (error) {
+    if (error?.code === 'ENOENT' && options.optional) return null;
+    if (options.strict) {
+      if (error?.code === options.code) throw error;
+      throw durableReadError(target, options, error);
+    }
+    return null;
+  }
   finally { await handle?.close().catch(() => {}); }
 }
 
@@ -154,7 +178,13 @@ async function resolveSession(root, selector, options = {}) {
 
 async function readFindingsRegistry(root) {
   await ensureStorage(root);
-  return await safeReadJson(findingsPath(root), validateFindingRegistry) || { schemaVersion: 1, updatedAt: nowIso(), findings: [] };
+  const registry = await safeReadJson(findingsPath(root), validateFindingRegistry, {
+    optional: true,
+    strict: true,
+    code: 'CMI_FINDINGS_BLOCKED',
+    label: 'Findings registry',
+  });
+  return registry || { schemaVersion: 1, updatedAt: nowIso(), findings: [] };
 }
 async function writeFindingsRegistry(root, registry) {
   const validation = validateFindingRegistryContract(registry);

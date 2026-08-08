@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { resolveProjectFile, slash } from './paths.js';
 import { workspaceForPath } from './workspaces.js';
+import { createIgnoreMatcher } from './ignore.js';
 import { safeReadMemoryJson, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 
 const SOURCE_EXTENSIONS = new Set([
@@ -10,7 +12,18 @@ const SOURCE_EXTENSIONS = new Set([
   '.vue', '.svelte',
 ]);
 const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx'];
-const PARSER_VERSION = 3;
+const PARSER_VERSION = 4;
+const FRESHNESS_VERSION = 1;
+const RESOLVER_INPUT = /(^|\/)(?:tsconfig(?:\.[^/]+)?|jsconfig)\.json$|(^|\/)go\.mod$|(^|\/)Cargo\.toml$/;
+const WORKSPACE_INPUT = /(^|\/)(?:package\.json|pnpm-workspace\.yaml|go\.work|go\.mod|Cargo\.toml)$/;
+const DEFAULT_SCAN_CONFIG = {
+  maxFileBytes: 1_000_000,
+  maxSourceBytes: 512_000,
+  maxGraphFiles: 5_000,
+  includeHidden: false,
+  workspaceDetection: true,
+  ignorePatterns: [],
+};
 
 function sourceLanguage(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -18,18 +31,54 @@ function sourceLanguage(filePath) {
   return ({ '.py':'Python','.go':'Go','.rs':'Rust','.java':'Java','.kt':'Kotlin','.php':'PHP','.rb':'Ruby','.swift':'Swift','.vue':'Vue','.svelte':'Svelte' })[ext] || 'Other';
 }
 
+function javascriptCodeMask(content) {
+  const mask = new Uint8Array(content.length);
+  let state = 'code';
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    if (state === 'code') {
+      if (char === '/' && next === '/') { state = 'line-comment'; index += 1; continue; }
+      if (char === '/' && next === '*') { state = 'block-comment'; index += 1; continue; }
+      if (char === "'") { state = 'single'; continue; }
+      if (char === '"') { state = 'double'; continue; }
+      if (char === '`') { state = 'template'; continue; }
+      mask[index] = 1;
+      continue;
+    }
+    if (state === 'line-comment') {
+      if (char === '\n') { state = 'code'; mask[index] = 1; }
+      continue;
+    }
+    if (state === 'block-comment') {
+      if (char === '*' && next === '/') { state = 'code'; index += 1; }
+      continue;
+    }
+    if (char === '\\') { index += 1; continue; }
+    if ((state === 'single' && char === "'") || (state === 'double' && char === '"') || (state === 'template' && char === '`')) state = 'code';
+  }
+  return mask;
+}
+
 function parseJavaScriptImports(content) {
   const imports = [];
+  const codeMask = javascriptCodeMask(content);
   const pattern = /(?:\bimport\s+(?:[^'";]*?\s+from\s+)?|\bexport\s+[^'";]*?\s+from\s+|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
-  for (const match of content.matchAll(pattern)) imports.push(match[1]);
+  for (const match of content.matchAll(pattern)) if (codeMask[match.index]) imports.push(match[1]);
   return imports;
 }
 
 function parsePythonImports(content) {
   const imports = [];
   for (const line of content.split('\n')) {
-    let match = line.match(/^\s*from\s+([.\w]+)\s+import\s+/);
-    if (match) imports.push(match[1]);
+    let match = line.match(/^\s*from\s+([.\w]+)\s+import\s+(.+)/);
+    if (match) {
+      const module = match[1];
+      if (/^\.+$/.test(module)) {
+        const names = match[2].replace(/[()]/g, '').split(',').map((value) => value.trim().split(/\s+as\s+/)[0]).filter((value) => /^[A-Za-z_]\w*$/.test(value));
+        for (const name of names) imports.push(`${module}${name}`);
+      } else imports.push(module);
+    }
     match = line.match(/^\s*import\s+([\w.]+)/);
     if (match) imports.push(match[1]);
   }
@@ -179,9 +228,12 @@ function resolveRustImport(fromFile, specifier, sourcePaths, crateRoots) {
   else if (specifier.startsWith('super::')) { baseDirectory = path.posix.dirname(directory); rest = specifier.slice('super::'.length); }
   else return null;
   const segments = rest.split('::').filter(Boolean);
-  if (!segments.length) return null;
-  const base = path.posix.join(baseDirectory, ...segments);
-  return resolveFromCandidates([`${base}.rs`, `${base}/mod.rs`], sourcePaths);
+  for (let length = segments.length; length >= 1; length -= 1) {
+    const base = path.posix.join(baseDirectory, ...segments.slice(0, length));
+    const resolved = resolveFromCandidates([`${base}.rs`, `${base}/mod.rs`], sourcePaths);
+    if (resolved) return resolved;
+  }
+  return null;
 }
 
 function isLocalSyntax(filePath, specifier, resolvers) {
@@ -234,6 +286,86 @@ function resolveImport(fromFile, specifier, sourcePaths, resolvers) {
   return null;
 }
 
+function normalizedScanConfig(config = {}) {
+  return {
+    maxFileBytes: Number(config.maxFileBytes) || DEFAULT_SCAN_CONFIG.maxFileBytes,
+    maxSourceBytes: Number(config.maxSourceBytes) || DEFAULT_SCAN_CONFIG.maxSourceBytes,
+    maxGraphFiles: Number(config.maxGraphFiles) || DEFAULT_SCAN_CONFIG.maxGraphFiles,
+    includeHidden: Boolean(config.includeHidden),
+    workspaceDetection: config.workspaceDetection !== false,
+    ignorePatterns: Array.isArray(config.ignorePatterns) ? config.ignorePatterns.map(String) : [],
+  };
+}
+
+function hashValue(value) {
+  return crypto.createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
+}
+
+function hashRecords(records, includeFingerprint = true) {
+  const lines = [...records]
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((record) => includeFingerprint ? `${record.path}:${record.fingerprint || ''}` : record.path);
+  return hashValue(lines.join('\n'));
+}
+
+async function ignoreFileFingerprint(root) {
+  try {
+    const stat = await fs.lstat(path.join(root, '.cmiignore'));
+    if (!stat.isFile() || stat.isSymbolicLink()) return 'unsafe';
+    return `${stat.size}:${Math.trunc(stat.mtimeMs)}:${Math.trunc(stat.ctimeMs)}`;
+  } catch (error) {
+    return error?.code === 'ENOENT' ? null : 'unreadable';
+  }
+}
+
+async function buildFreshnessDescriptor(root, fileRecords, config = {}) {
+  const normalized = normalizedScanConfig(config);
+  const sourceCandidates = fileRecords.filter((file) => SOURCE_EXTENSIONS.has(path.extname(file.path).toLowerCase()) && file.size <= normalized.maxSourceBytes);
+  const resolverInputs = fileRecords.filter((file) => RESOLVER_INPUT.test(file.path));
+  const workspaceInputs = fileRecords.filter((file) => WORKSPACE_INPUT.test(file.path));
+  return {
+    version: FRESHNESS_VERSION,
+    sourceSetCount: sourceCandidates.length,
+    sourceSetHash: hashRecords(sourceCandidates, false),
+    resolverInputsHash: hashRecords(resolverInputs, true),
+    workspaceInputsHash: hashRecords(workspaceInputs, true),
+    scanConfigHash: hashValue(normalized),
+    ignoreFileFingerprint: await ignoreFileFingerprint(root),
+  };
+}
+
+async function discoverGraphFileRecords(root, config = {}) {
+  const normalized = normalizedScanConfig(config);
+  const matcher = await createIgnoreMatcher(root, normalized);
+  const records = [];
+  let unreadable = 0;
+  let unsafeSymlinks = 0;
+  async function visit(current) {
+    let entries;
+    try { entries = await fs.readdir(current, { withFileTypes: true }); }
+    catch { unreadable += 1; return; }
+    for (const entry of entries) {
+      const absolute = path.join(current, entry.name);
+      const relative = slash(path.relative(root, absolute));
+      if (matcher.shouldIgnore(relative, entry.isDirectory())) continue;
+      if (entry.isSymbolicLink()) { unsafeSymlinks += 1; continue; }
+      let stat;
+      try { stat = await fs.lstat(absolute); }
+      catch { unreadable += 1; continue; }
+      if (stat.isSymbolicLink()) { unsafeSymlinks += 1; continue; }
+      if (stat.isDirectory()) await visit(absolute);
+      else if (stat.isFile() && stat.size <= normalized.maxFileBytes) records.push({
+        path: relative,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        fingerprint: `${stat.size}:${Math.trunc(stat.mtimeMs)}:${Math.trunc(stat.ctimeMs)}`,
+      });
+    }
+  }
+  await visit(root);
+  return { records, unreadable, unsafeSymlinks };
+}
+
 export async function buildProjectGraph(root, fileRecords, config = {}, options = {}) {
   const started = performance.now();
   const maxGraphFiles = Number(config.maxGraphFiles) || 5_000;
@@ -243,6 +375,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const sourcePaths = new Set(sources.map((file) => file.path));
   const previous = options.previousGraph?.parserVersion === PARSER_VERSION ? new Map(options.previousGraph.nodes.map((node) => [node.path, node])) : new Map();
   const resolvers = await loadResolvers(root, fileRecords);
+  const freshness = await buildFreshnessDescriptor(root, fileRecords, config);
   const nodes = [];
   let skippedUnsafeFiles = 0;
   let parsedFiles = 0;
@@ -293,9 +426,10 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const removedFiles = [...previous.keys()].filter((filePath) => !sourcePaths.has(filePath)).length;
   const durationMs = Number((performance.now() - started).toFixed(2));
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     parserVersion: PARSER_VERSION,
     generatedAt: new Date().toISOString(),
+    freshness,
     summary: {
       sourceFiles: nodes.length,
       localEdges,
@@ -342,19 +476,56 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
     if (!graphFingerprintMatches(stat, node.fingerprint)) { staleNodes += 1; continue; }
     freshNodes += 1;
   }
+
+  let currentFreshness = null;
+  let discoveryUnreadable = 0;
+  let freshnessError = null;
+  try {
+    const config = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
+    const discovery = await discoverGraphFileRecords(root, config);
+    discoveryUnreadable = discovery.unreadable;
+    currentFreshness = await buildFreshnessDescriptor(root, discovery.records, config);
+  } catch (error) {
+    freshnessError = error?.code || 'CMI_GRAPH_FRESHNESS_FAILED';
+  }
+  const storedFreshness = graph.freshness?.version === FRESHNESS_VERSION ? graph.freshness : null;
+  const freshnessUnknown = !storedFreshness || !currentFreshness || Boolean(freshnessError);
+  const sourceSetChanged = Boolean(storedFreshness && currentFreshness && (storedFreshness.sourceSetHash !== currentFreshness.sourceSetHash || storedFreshness.sourceSetCount !== currentFreshness.sourceSetCount));
+  const resolverInputsChanged = Boolean(storedFreshness && currentFreshness && storedFreshness.resolverInputsHash !== currentFreshness.resolverInputsHash);
+  const workspaceInputsChanged = Boolean(storedFreshness && currentFreshness && storedFreshness.workspaceInputsHash !== currentFreshness.workspaceInputsHash);
+  const scanConfigChanged = Boolean(storedFreshness && currentFreshness && (storedFreshness.scanConfigHash !== currentFreshness.scanConfigHash || storedFreshness.ignoreFileFingerprint !== currentFreshness.ignoreFileFingerprint));
+  const discoveryChanged = freshnessUnknown || sourceSetChanged || resolverInputsChanged || workspaceInputsChanged || scanConfigChanged || discoveryUnreadable > 0;
   const truncated = Boolean(graph.summary?.truncated);
-  const current = staleNodes === 0 && missingNodes === 0;
+  const current = staleNodes === 0 && missingNodes === 0 && !discoveryChanged;
   const complete = !truncated;
   const healthy = current && complete;
   const state = !current ? 'stale' : !complete ? 'incomplete' : 'healthy';
-  return { available: true, totalNodes: (graph.nodes || []).length, freshNodes, staleNodes, missingNodes, truncated, current, complete, healthy, state };
+  return {
+    available: true,
+    totalNodes: (graph.nodes || []).length,
+    freshNodes,
+    staleNodes,
+    missingNodes,
+    truncated,
+    current,
+    complete,
+    healthy,
+    state,
+    sourceSetChanged,
+    resolverInputsChanged,
+    workspaceInputsChanged,
+    scanConfigChanged,
+    freshnessUnknown,
+    discoveryUnreadable,
+    freshnessError,
+  };
 }
 
 export async function impactAnalysis(root, target, maxDepth = 3) {
   const graph = await loadProjectGraph(root);
   if (!graph) return { found: false, blocked: true, reason: 'Project graph is missing. Run cmi scan.', graphHealth: await inspectProjectGraphHealth(root, graph) };
   const graphHealth = await inspectProjectGraphHealth(root, graph);
-  if (!graphHealth.current) return { found: false, blocked: true, reason: 'Project graph is stale. Run cmi scan before relying on impact analysis.', graphHealth, recommendedAction: { command: 'cmi scan', reason: 'Source fingerprints no longer match the stored graph.' } };
+  if (!graphHealth.current) return { found: false, blocked: true, reason: 'Project graph is stale or repository discovery inputs changed. Run cmi scan before relying on impact analysis.', graphHealth, recommendedAction: { command: 'cmi scan', reason: 'Source fingerprints, source set, resolver/workspace inputs, or scan configuration no longer match the stored graph.' } };
   const warnings = graphHealth.complete ? [] : ['Impact coverage is incomplete because the project graph is truncated.'];
   const query = String(target || '').trim().toLowerCase();
   if (!query) throw new Error('Impact target cannot be empty');

@@ -66,3 +66,32 @@ test('mcp-config refuses bulk refresh without explicit write permission', async 
   assert.equal(result.code, 1);
   assert.match(result.stderr, /requires --write/i);
 });
+
+test('unknown options fail instead of being silently ignored', async () => {
+  const root = await fixture();
+  const result = await run(['scan', '--bogus'], root);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /unknown option/i);
+  assert.equal(await fs.stat(path.join(root, '.codex-memory')).then(() => true).catch(() => false), false);
+});
+
+test('JSON mode emits one machine-readable error object', async () => {
+  const root = await fixture();
+  const result = await run(['search', '--json'], root);
+  assert.equal(result.code, 1);
+  assert.equal(result.stdout, '');
+  const parsed = JSON.parse(result.stderr.trim());
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.error.code, 'CMI_CLI_ERROR');
+  assert.match(parsed.error.message, /usage: cmi search/i);
+});
+
+test('blocked impact is structured success output with a nonzero blocked exit code', async () => {
+  const root = await fixture();
+  const result = await run(['impact', 'src/a.js', '--json'], root);
+  assert.equal(result.code, 2);
+  assert.equal(result.stderr, '');
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.blocked, true);
+  assert.equal(parsed.found, false);
+});
