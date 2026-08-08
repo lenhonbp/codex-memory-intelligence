@@ -102,9 +102,9 @@ test('CLI exposes incremental, workspace, advisory, change-intelligence, ignore,
   assert.equal(JSON.parse(result.stdout).ignored, true);
 });
 
-test('MCP negotiates stable versions and exposes tools, resources, and prompts', async () => {
+test('read-only MCP never exposes or executes durable scan writes', async () => {
   const root = await fixture();
-  const server = startMcp(root);
+  const server = startMcp(root, { CMI_WRITE_ENABLED: '0' });
   server.send({ jsonrpc: '2.0', id: 99, method: 'tools/list', params: {} });
   assert.equal((await server.waitFor((message) => message.id === 99)).error.code, -32002);
   const initialized = await initialize(server, '2025-11-25');
@@ -121,28 +121,29 @@ test('MCP negotiates stable versions and exposes tools, resources, and prompts',
   assert.ok(tools.result.tools.some((tool) => tool.name === 'prepare_change_brief'));
   assert.ok(tools.result.tools.some((tool) => tool.name === 'get_change_insights'));
   assert.ok(tools.result.tools.some((tool) => tool.name === 'list_change_records'));
+  assert.ok(!tools.result.tools.some((tool) => tool.name === 'scan_project_intelligence'));
   assert.ok(!tools.result.tools.some((tool) => tool.name === 'start_change_record'));
   assert.ok(!tools.result.tools.some((tool) => tool.name === 'remember_project_knowledge'));
-  server.send({ jsonrpc: '2.0', id: 3, method: 'resources/list', params: {} });
-  const resources = await server.waitFor((message) => message.id === 3);
+
+  server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'scan_project_intelligence', arguments: {} } });
+  const blockedScan = await server.waitFor((message) => message.id === 3);
+  assert.equal(blockedScan.result.isError, true);
+  assert.match(blockedScan.result.content[0].text, /writes are disabled/i);
+  await assert.rejects(() => fs.stat(path.join(root, '.codex-memory')), { code: 'ENOENT' });
+
+  server.send({ jsonrpc: '2.0', id: 4, method: 'resources/list', params: {} });
+  const resources = await server.waitFor((message) => message.id === 4);
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/architecture'));
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/baseline'));
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/boundaries'));
   assert.ok(resources.result.resources.some((resource) => resource.uri === 'cmi://project/change-history'));
-  server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/list', params: {} });
-  const prompts = await server.waitFor((message) => message.id === 4);
+  server.send({ jsonrpc: '2.0', id: 5, method: 'prompts/list', params: {} });
+  const prompts = await server.waitFor((message) => message.id === 5);
   assert.ok(prompts.result.prompts.some((prompt) => prompt.name === 'prepare_project_change'));
   assert.ok(prompts.result.prompts.some((prompt) => prompt.name === 'run_change_intelligence_loop'));
-  server.send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'scan_project_intelligence', arguments: {} } });
-  assert.equal((await server.waitFor((message) => message.id === 5)).result.structuredContent.graph.parsedFiles, 2);
-  server.send({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'cmi://project/architecture' } });
-  assert.match((await server.waitFor((message) => message.id === 6)).result.contents[0].text, /Project Architecture/);
-  server.send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'prepare_change_brief', arguments: { query: 'change migrate flow' } } });
-  const brief = await server.waitFor((message) => message.id === 7);
-  assert.equal(brief.result.structuredContent.ready, true);
-  assert.ok(Array.isArray(brief.result.structuredContent.risks));
-  server.send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'get_change_insights', arguments: { query: 'migrate' } } });
-  assert.equal((await server.waitFor((message) => message.id === 8)).result.structuredContent.corpus.completedRecords, 0);
+  server.send({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'get_repository_baseline', arguments: {} } });
+  assert.equal((await server.waitFor((message) => message.id === 6)).result.isError, undefined);
+  assert.equal(await fs.stat(path.join(root, '.codex-memory')).then(() => true).catch(() => false), false);
   server.child.stdin.end();
 });
 
@@ -155,6 +156,7 @@ test('MCP reports parse errors, negotiates fallback, and supports opt-in durable
   assert.equal(initialized.result.protocolVersion, '2025-11-25');
   server.send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   const tools = (await server.waitFor((message) => message.id === 2)).result.tools;
+  assert.ok(tools.some((tool) => tool.name === 'scan_project_intelligence'));
   assert.ok(tools.some((tool) => tool.name === 'remember_project_knowledge'));
   assert.ok(tools.some((tool) => tool.name === 'start_change_record'));
   assert.ok(tools.some((tool) => tool.name === 'observe_change_record'));
@@ -164,16 +166,20 @@ test('MCP reports parse errors, negotiates fallback, and supports opt-in durable
   server.send({ jsonrpc: '2.0', id: 4, method: 'prompts/get', params: { name: 'prepare_project_change', arguments: { target: 'migrate' } } });
   assert.match((await server.waitFor((message) => message.id === 4)).result.messages[0].content.text, /get_change_insights/i);
   server.send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'scan_project_intelligence', arguments: {} } });
-  await server.waitFor((message) => message.id === 5);
-  server.send({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'start_change_record', arguments: { goal: 'change migrate flow' } } });
-  const started = await server.waitFor((message) => message.id === 6);
+  const scan = await server.waitFor((message) => message.id === 5);
+  assert.equal(scan.result.isError, undefined);
+  assert.equal(scan.result.structuredContent.graph.parsedFiles, 2);
+  server.send({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'cmi://project/architecture' } });
+  assert.match((await server.waitFor((message) => message.id === 6)).result.contents[0].text, /Project Architecture/);
+  server.send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'start_change_record', arguments: { goal: 'change migrate flow' } } });
+  const started = await server.waitFor((message) => message.id === 7);
   const changeId = started.result.structuredContent.id;
   assert.equal(started.result.structuredContent.status, 'active');
-  server.send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'observe_change_record', arguments: { id: changeId, files: ['src/db.js'] } } });
-  assert.ok((await server.waitFor((message) => message.id === 7)).result.structuredContent.observedChangedFiles.includes('src/db.js'));
-  server.send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'complete_change_record', arguments: { id: changeId, outcome: 'succeeded', files: ['src/db.js'], verifications: [{ name: 'npm test', status: 'passed' }] } } });
-  assert.equal((await server.waitFor((message) => message.id === 8)).result.structuredContent.status, 'completed');
-  server.send({ jsonrpc: '2.0', id: 9, method: 'prompts/get', params: { name: 'run_change_intelligence_loop', arguments: { target: 'migrate' } } });
-  assert.match((await server.waitFor((message) => message.id === 9)).result.messages[0].content.text, /BEFORE.*DURING.*AFTER/i);
+  server.send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'observe_change_record', arguments: { id: changeId, files: ['src/db.js'] } } });
+  assert.ok((await server.waitFor((message) => message.id === 8)).result.structuredContent.observedChangedFiles.includes('src/db.js'));
+  server.send({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'complete_change_record', arguments: { id: changeId, outcome: 'succeeded', files: ['src/db.js'], verifications: [{ name: 'npm test', status: 'passed' }] } } });
+  assert.equal((await server.waitFor((message) => message.id === 9)).result.structuredContent.status, 'completed');
+  server.send({ jsonrpc: '2.0', id: 10, method: 'prompts/get', params: { name: 'run_change_intelligence_loop', arguments: { target: 'migrate' } } });
+  assert.match((await server.waitFor((message) => message.id === 10)).result.messages[0].content.text, /BEFORE.*DURING.*AFTER/i);
   server.child.stdin.end();
 });
