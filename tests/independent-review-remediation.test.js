@@ -88,6 +88,31 @@ test('oversized durable memory is visible as blocked evidence and cannot partici
   await assert.rejects(() => searchMemory(root, 'anything'), (error) => error?.code === 'CMI_MEMORY_BLOCKED');
 });
 
+test('symlinked durable memory is visible as blocked evidence', async (context) => {
+  const root = await rootFixture();
+  await fs.writeFile(path.join(root, 'src', 'a.js'), 'export const a = 1;\n');
+  await scanProject(root);
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-review-memory-outside-'));
+  const outside = path.join(outsideRoot, 'memory.md');
+  await fs.writeFile(outside, '# Outside memory\n', 'utf8');
+  const memoryPath = path.join(root, '.codex-memory', 'memory.md');
+  await fs.rm(memoryPath);
+  try {
+    await fs.symlink(outside, memoryPath);
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error?.code)) {
+      context.skip('Symlinks are unavailable on this runner.');
+      return;
+    }
+    throw error;
+  }
+
+  const project = await status(root);
+  assert.equal(project.healthy, false);
+  assert.equal(project.memoryHealth.blocked, 1);
+  assert.equal(project.evidenceHealth.domains.memory.state, 'blocked');
+});
+
 test('corrupt findings registry blocks reads and mutations without overwriting bytes', async () => {
   const root = await rootFixture();
   await scanProject(root);
