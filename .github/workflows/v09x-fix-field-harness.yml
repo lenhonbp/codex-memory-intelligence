@@ -1,0 +1,63 @@
+name: Correct v0.9.x field harness semantics
+
+on:
+  push:
+    paths:
+      - '.github/workflows/v09x-fix-field-harness.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: validation/v09x-stress-task-diversity-20260808
+      - name: Patch structured impact assertions
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/v09x-real-stress-task-diversity.yml')
+          t=p.read_text()
+          old='''            if node "$CMI_ROOT/src/cli-entry.js" impact "$OLD" --json > "$OUT/rename-impact.json" 2> "$OUT/rename-impact.err"; then
+              echo 'impact unexpectedly trusted stale graph after rename' >&2; exit 1
+            fi
+            grep -Eqi 'stale|scan|current' "$OUT/rename-impact.err"
+'''
+          new='''            node "$CMI_ROOT/src/cli-entry.js" impact "$OLD" --json > "$OUT/rename-impact.json"
+            node --input-type=module - "$OUT/rename-impact.json" <<'NODE'
+          import fs from 'node:fs';
+          const r=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (r.blocked !== true || r.found !== false) throw new Error('rename impact did not return structured blocked result');
+          if (r.graphHealth?.current !== false) throw new Error('rename impact did not retain stale graph health');
+          if (r.recommendedAction?.command !== 'cmi scan') throw new Error('rename impact did not recommend cmi scan');
+          NODE
+'''
+          if old not in t: raise SystemExit('rename impact block not found')
+          t=t.replace(old,new,1)
+          old='''            if node "$CMI_ROOT/src/cli-entry.js" impact "$FILE" --json > "$OUT/clock-impact.json" 2> "$OUT/clock-impact.err"; then
+              echo 'impact unexpectedly trusted metadata-stale graph' >&2; exit 1
+            fi
+'''
+          new='''            node "$CMI_ROOT/src/cli-entry.js" impact "$FILE" --json > "$OUT/clock-impact.json"
+            node --input-type=module - "$OUT/clock-impact.json" <<'NODE'
+          import fs from 'node:fs';
+          const r=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (r.blocked !== true || r.found !== false) throw new Error('clock-skew impact did not return structured blocked result');
+          if (r.graphHealth?.current !== false) throw new Error('clock-skew impact did not retain stale graph health');
+          if (r.recommendedAction?.command !== 'cmi scan') throw new Error('clock-skew impact did not recommend cmi scan');
+          NODE
+'''
+          if old not in t: raise SystemExit('clock impact block not found')
+          p.write_text(t.replace(old,new,1))
+          PY
+      - name: Commit corrected field harness
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/v09x-real-stress-task-diversity.yml
+          git commit -m 'ci: assert structured fail-closed impact results'
+          git push origin HEAD:validation/v09x-stress-task-diversity-20260808
