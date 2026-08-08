@@ -124,6 +124,7 @@ function validateConditionResult(result, study, condition) {
 function validateStudyDefinition(study) {
   if (!isObject(study)) throw new Error('study must be an object');
   const order = oneOf(study.order, ORDERS, 'study.order');
+  if (typeof study.negativeControl !== 'boolean') throw new Error('study.negativeControl must be boolean');
   return {
     studyId: boundedString(study.studyId, 'study.studyId', { max: 120 }),
     pairId: boundedString(study.pairId, 'study.pairId', { max: 120 }),
@@ -135,7 +136,7 @@ function validateStudyDefinition(study) {
     agentConfiguration: boundedString(study.agentConfiguration, 'study.agentConfiguration', { max: 500 }),
     taskReference: boundedString(study.taskReference ?? null, 'study.taskReference', { required: false, max: 300 }),
     acceptanceReference: boundedString(study.acceptanceReference ?? null, 'study.acceptanceReference', { required: false, max: 300 }),
-    negativeControl: Boolean(study.negativeControl),
+    negativeControl: study.negativeControl,
   };
 }
 
@@ -208,11 +209,11 @@ export function recordStudyCondition(ledger, condition, result) {
 function protocolEligibility(condition) {
   if (condition.status !== 'completed') return false;
   const result = condition.result;
-  return result.freshSession
+  return Boolean(result.freshSession
     && result.sameStartRevision
     && result.cleanStartState
     && result.crossConditionLeakage === 'none'
-    && result.observedStartRevision;
+    && result.observedStartRevision);
 }
 
 function reviewerLabel(result) {
@@ -227,7 +228,7 @@ function conditionSummary(entry) {
     condition: entry.condition,
     order: entry.order,
     status: 'completed',
-    protocolEligible: Boolean(protocolEligibility(entry)),
+    protocolEligible: protocolEligibility(entry),
     reconstructionAdequacyReached: result.reconstructionAdequacyReached,
     reconstruction: {
       inspectionCount: result.inspectionCount,
@@ -278,7 +279,7 @@ export function reportStudyLedger(ledger) {
   const plain = validated.conditions.find((entry) => entry.condition === 'plain');
   const cmi = validated.conditions.find((entry) => entry.condition === 'cmi');
   const complete = plain.status === 'completed' && cmi.status === 'completed';
-  const eligible = complete && Boolean(protocolEligibility(plain)) && Boolean(protocolEligibility(cmi));
+  const eligible = complete && protocolEligibility(plain) && protocolEligibility(cmi);
   const deltas = complete ? {
     inspectionCount: plain.result.inspectionCount - cmi.result.inspectionCount,
     searchCount: plain.result.searchCount - cmi.result.searchCount,
@@ -346,10 +347,6 @@ export function aggregateStudyLedgers(ledgers) {
   const reports = validated.map(reportStudyLedger);
   const completedReports = reports.filter((report) => report.status === 'complete');
   const eligibleReports = completedReports.filter((report) => report.protocolEligible);
-  const eligiblePairIds = new Set(eligibleReports.map((report) => report.pairId));
-  const eligibleConditions = validated.flatMap((ledger) => ledger.conditions)
-    .filter((entry) => entry.status === 'completed')
-    .filter((entry) => eligiblePairIds.has(validated.find((ledger) => ledger.conditions.includes(entry))?.study.pairId));
 
   const reconstruction = {};
   for (const condition of CONDITIONS) {
