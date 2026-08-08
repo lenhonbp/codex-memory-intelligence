@@ -4,10 +4,12 @@ export const EVALUATION_SCHEMA_VERSION = 1;
 export const EVALUATION_SOURCE_KINDS = ['external-real', 'self-host', 'synthetic'];
 export const EVALUATION_PROTOCOL_KINDS = ['observational', 'controlled-stress'];
 export const EVALUATION_REPOSITORY_CLASSES = ['application', 'service', 'library', 'cli-tool', 'tooling', 'monorepo', 'unknown'];
-export const EVALUATION_TASK_KINDS = ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'no-code-investigation', 'unknown'];
+export const EVALUATION_TASK_KINDS = ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'refactor', 'migration', 'architecture-analysis', 'no-code-investigation', 'unknown'];
 export const EVALUATION_REVIEW_OUTCOMES = ['pass', 'partial', 'fail', 'unreviewed'];
 export const EVALUATION_REVIEW_PROVENANCE = ['human', 'agent', 'unreviewed'];
 export const EVALUATION_UTILITY_RATINGS = ['useful', 'not-useful', 'unknown'];
+export const EVALUATION_STRESS_SCENARIOS = ['rename-after-scan', 'history-rewrite', 'dirty-worktree', 'clock-skew', 'interrupted-session', 'concurrent-sessions', 'large-monorepo', 'corrupt-durable-record', 'stale-graph'];
+export const EVALUATION_STRESS_OUTCOMES = ['not-applicable', 'pass', 'partial', 'fail'];
 export const EVALUATION_EVIDENCE_STATES = ['healthy', 'degraded', 'blocked', 'uninitialized'];
 export const EVALUATION_CALIBRATION_CONFIDENCE = ['high', 'medium', 'low', 'insufficient-evidence'];
 
@@ -26,7 +28,7 @@ export function validateEvaluationRecordContract(record) {
   const fail = (condition, message) => { if (!condition) errors.push(message); };
   fail(isObject(record), 'record must be an object');
   if (!isObject(record)) return { valid: false, errors };
-  fail(hasOnlyKeys(record, new Set(['schemaVersion', 'id', 'recordedAt', 'subject', 'source', 'protocol', 'repository', 'task', 'measurements', 'review', 'policy'])), 'record has unsupported top-level fields');
+  fail(hasOnlyKeys(record, new Set(['schemaVersion', 'id', 'recordedAt', 'subject', 'source', 'protocol', 'repository', 'task', 'measurements', 'stress', 'review', 'policy'])), 'record has unsupported top-level fields');
   fail(record.schemaVersion === EVALUATION_SCHEMA_VERSION, 'unsupported schemaVersion');
   fail(validUuid(record.id), 'id must be a canonical UUID');
   fail(validIso(record.recordedAt), 'recordedAt must be an ISO timestamp');
@@ -102,6 +104,26 @@ export function validateEvaluationRecordContract(record) {
       for (const key of ['completedRecords', 'consideredRecords', 'calibrationSamples']) fail(Number.isInteger(history[key]) && history[key] >= 0, `changeHistory ${key} must be non-negative integer`);
       for (const key of ['averagePathRecall', 'averagePathPrecision', 'averagePathF1']) fail(nullableNumber(history[key]) && (history[key] === null || (history[key] >= 0 && history[key] <= 1)), `changeHistory ${key} must be null or 0..1`);
       fail(validEnum(history.calibrationConfidence, EVALUATION_CALIBRATION_CONFIDENCE), 'changeHistory calibrationConfidence is invalid');
+    }
+  }
+
+  const stress = record.stress;
+  fail(hasOnlyKeys(stress, new Set(['scenario', 'expectedInvariantCount', 'passedInvariantCount', 'failedInvariantCount', 'outcome'])), 'stress shape is invalid');
+  if (isObject(stress)) {
+    fail(stress.scenario === null || validEnum(stress.scenario, EVALUATION_STRESS_SCENARIOS), 'stress scenario is invalid');
+    for (const key of ['expectedInvariantCount', 'passedInvariantCount', 'failedInvariantCount']) fail(Number.isInteger(stress[key]) && stress[key] >= 0, `stress ${key} must be non-negative integer`);
+    fail(validEnum(stress.outcome, EVALUATION_STRESS_OUTCOMES), 'stress outcome is invalid');
+    if (Number.isInteger(stress.expectedInvariantCount) && Number.isInteger(stress.passedInvariantCount) && Number.isInteger(stress.failedInvariantCount)) {
+      fail(stress.passedInvariantCount + stress.failedInvariantCount === stress.expectedInvariantCount, 'stress invariant counts must sum to expectedInvariantCount');
+    }
+    if (protocol?.kind === 'observational') {
+      fail(stress.scenario === null && stress.expectedInvariantCount === 0 && stress.passedInvariantCount === 0 && stress.failedInvariantCount === 0 && stress.outcome === 'not-applicable', 'observational protocol cannot assert controlled-stress results');
+    }
+    if (protocol?.kind === 'controlled-stress') {
+      fail(validEnum(stress.scenario, EVALUATION_STRESS_SCENARIOS), 'controlled-stress protocol requires an explicit stress scenario');
+      fail(stress.expectedInvariantCount > 0, 'controlled-stress protocol requires at least one invariant');
+      const expectedOutcome = stress.failedInvariantCount === 0 ? 'pass' : stress.passedInvariantCount === 0 ? 'fail' : 'partial';
+      fail(stress.outcome === expectedOutcome, 'stress outcome must be derived from invariant counts');
     }
   }
 

@@ -84,7 +84,7 @@ const evaluationWriteTools = [
     sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] },
     protocolKind: { type: 'string', enum: ['observational', 'controlled-stress'] },
     repositoryClass: { type: 'string', enum: ['application', 'service', 'library', 'cli-tool', 'tooling', 'monorepo', 'unknown'] },
-    taskKind: { type: 'string', enum: ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'no-code-investigation', 'unknown'] },
+    taskKind: { type: 'string', enum: ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'refactor', 'migration', 'architecture-analysis', 'no-code-investigation', 'unknown'] },
     session: { type: 'string', description: 'Closed session ID/prefix, latest, or none for project-only evidence.' },
     reviewOutcome: { type: 'string', enum: ['pass', 'partial', 'fail', 'unreviewed'] },
     reviewProvenance: { type: 'string', enum: ['human', 'agent', 'unreviewed'] },
@@ -92,6 +92,10 @@ const evaluationWriteTools = [
     missedFindings: { type: 'integer', minimum: 0 },
     nextActionRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
     handoffRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    stressScenario: { type: 'string', enum: ['rename-after-scan', 'history-rewrite', 'dirty-worktree', 'clock-skew', 'interrupted-session', 'concurrent-sessions', 'large-monorepo', 'corrupt-durable-record', 'stale-graph'] },
+    stressExpected: { type: 'integer', minimum: 1 },
+    stressPassed: { type: 'integer', minimum: 0 },
+    stressFailed: { type: 'integer', minimum: 0 },
   } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
 ];
 const evaluationResources = [

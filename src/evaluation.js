@@ -18,6 +18,7 @@ import {
   EVALUATION_REVIEW_OUTCOMES,
   EVALUATION_REVIEW_PROVENANCE,
   EVALUATION_UTILITY_RATINGS,
+  EVALUATION_STRESS_SCENARIOS,
   validateEvaluationRecordContract,
 } from './evaluation-contracts.js';
 
@@ -86,6 +87,23 @@ function normalizeReview(options) {
   if (!['human', 'agent'].includes(provenance)) throw new Error('Reviewed evaluation requires --review-provenance human or agent.');
   return { provenance, reviewedAt: nowIso(), outcome, falsePositiveFindings, missedFindings, nextActionRating, handoffRating };
 }
+function normalizeStress(options, protocolKind) {
+  const supplied = [options.stressScenario, options.stressExpected, options.stressPassed, options.stressFailed].some((value) => value !== undefined && value !== null && value !== '');
+  if (protocolKind === 'observational') {
+    if (supplied) throw new Error('Observational evaluation cannot assert controlled-stress scenario or invariant results.');
+    return { scenario: null, expectedInvariantCount: 0, passedInvariantCount: 0, failedInvariantCount: 0, outcome: 'not-applicable' };
+  }
+  const scenario = normalizeEnum(options.stressScenario, EVALUATION_STRESS_SCENARIOS, 'Stress scenario');
+  const expectedInvariantCount = normalizeOptionalCount(options.stressExpected, 'Stress expected invariant count');
+  const passedInvariantCount = normalizeOptionalCount(options.stressPassed, 'Stress passed invariant count');
+  const failedInvariantCount = normalizeOptionalCount(options.stressFailed, 'Stress failed invariant count');
+  if (!Number.isInteger(expectedInvariantCount) || expectedInvariantCount < 1) throw new Error('Controlled-stress evaluation requires --stress-expected >= 1.');
+  if (!Number.isInteger(passedInvariantCount) || !Number.isInteger(failedInvariantCount)) throw new Error('Controlled-stress evaluation requires explicit --stress-passed and --stress-failed counts.');
+  if (passedInvariantCount + failedInvariantCount !== expectedInvariantCount) throw new Error('Stress passed + failed invariant counts must equal expected invariant count.');
+  const outcome = failedInvariantCount === 0 ? 'pass' : passedInvariantCount === 0 ? 'fail' : 'partial';
+  return { scenario, expectedInvariantCount, passedInvariantCount, failedInvariantCount, outcome };
+}
+
 function sessionMetrics(session, handoff, openFindingCount) {
   if (!session || !handoff) return {
     sessionPresent: false, outcome: null, sessionScopeCount: 0, openFindingCount,
@@ -119,6 +137,7 @@ export async function captureEvaluation(root, options = {}) {
   const repositoryClass = normalizeEnum(options.repositoryClass, EVALUATION_REPOSITORY_CLASSES, 'Repository class', 'unknown');
   const taskKind = normalizeEnum(options.taskKind, EVALUATION_TASK_KINDS, 'Task kind', 'unknown');
   const review = normalizeReview(options);
+  const stress = normalizeStress(options, protocolKind);
   const project = await getProjectStatus(root);
   if (!project.initialized || !project.index) throw new Error('Evaluation capture requires initialized, scanned CMI project intelligence. Run cmi scan first.');
   await safeEnsureMemoryDir(root, EVALUATION_DIR);
@@ -165,6 +184,7 @@ export async function captureEvaluation(root, options = {}) {
         calibrationConfidence: history.calibration.confidence,
       },
     },
+    stress,
     review,
     policy: 'Evaluation records are anonymized descriptive evidence tied to a CMI version/source revision when available. external-real is the only independent-repository class; observational and controlled-stress protocols remain distinguishable; human and agent reviews remain separate. CMI does not infer production readiness, causal correctness, or usefulness from an unreviewed or undersized corpus.',
   };
@@ -218,7 +238,7 @@ export async function listEvaluations(root, options = {}) {
       id: record.id, recordedAt: record.recordedAt, subjectVersion: record.subject.version, sourceRevision: record.subject.sourceRevision,
       sourceKind: record.source.kind, protocolKind: record.protocol.kind,
       repositoryFingerprint: record.repository.fingerprint, repositoryClass: record.repository.class,
-      taskKind: record.task.kind, reviewOutcome: record.review.outcome, reviewProvenance: record.review.provenance,
+      taskKind: record.task.kind, stressScenario: record.stress.scenario, stressOutcome: record.stress.outcome, reviewOutcome: record.review.outcome, reviewProvenance: record.review.provenance,
       evidenceState: record.measurements.project.evidenceState,
       outcome: record.measurements.continuation.outcome,
     })),
@@ -248,6 +268,23 @@ function coverageState(all, external) {
   return tasks > 1 && classes > 1 ? 'external-multi-repository-multi-context' : 'external-multi-repository';
 }
 
+function controlledStressMetrics(records) {
+  const expectedInvariantCount = records.reduce((sum, record) => sum + record.stress.expectedInvariantCount, 0);
+  const passedInvariantCount = records.reduce((sum, record) => sum + record.stress.passedInvariantCount, 0);
+  const failedInvariantCount = records.reduce((sum, record) => sum + record.stress.failedInvariantCount, 0);
+  return {
+    records: records.length,
+    uniqueRepositories: uniqueCount(records, (record) => record.repository.fingerprint),
+    scenarios: countBy(records, (record) => record.stress.scenario),
+    outcomes: countBy(records, (record) => record.stress.outcome),
+    passRate: rate(records.filter((record) => record.stress.outcome === 'pass').length, records.length),
+    expectedInvariantCount,
+    passedInvariantCount,
+    failedInvariantCount,
+    invariantPassRate: rate(passedInvariantCount, expectedInvariantCount),
+  };
+}
+
 function reviewedMetrics(records) {
   const nextActionRated = records.filter((record) => record.review.nextActionRating !== 'unknown');
   const handoffRated = records.filter((record) => record.review.handoffRating !== 'unknown');
@@ -275,6 +312,7 @@ export async function buildEvaluationReport(root, options = {}) {
   const humanReviewed = reviewedExternal.filter((record) => record.review.provenance === 'human');
   const agentReviewed = reviewedExternal.filter((record) => record.review.provenance === 'agent');
   const externalWithSession = observationalExternal.filter((record) => record.measurements.continuation.sessionPresent);
+  const stressMetrics = controlledStressMetrics(controlledStressExternal);
   return {
     schemaVersion: 1,
     generatedAt: nowIso(),
@@ -295,6 +333,8 @@ export async function buildEvaluationReport(root, options = {}) {
         observationalUniqueRepositories: uniqueCount(observationalExternal, (record) => record.repository.fingerprint),
         repositoryClasses: countBy(external, (record) => record.repository.class),
         taskKinds: countBy(external, (record) => record.task.kind),
+        observationalTaskKinds: countBy(observationalExternal, (record) => record.task.kind),
+        stressScenarios: countBy(controlledStressExternal, (record) => record.stress.scenario),
         protocols: countBy(external, (record) => record.protocol.kind),
       },
     },
@@ -315,6 +355,7 @@ export async function buildEvaluationReport(root, options = {}) {
       observationalAverageOpenFindings: average(observationalExternal.map((record) => record.measurements.continuation.openFindingCount)),
       observationalAverageCalibrationSamples: average(observationalExternal.map((record) => record.measurements.changeHistory.calibrationSamples)),
     },
+    controlledStress: stressMetrics,
     reviewedUsefulness: {
       reviewedExternalRecords: reviewedExternal.length,
       provenance: { human: humanReviewed.length, agent: agentReviewed.length },
@@ -323,7 +364,7 @@ export async function buildEvaluationReport(root, options = {}) {
     },
     limitations: [
       'external-real records are descriptive independent-repository evidence; self-host and synthetic records never contribute to independent-repository counts.',
-      'Coverage state is based on observational external-real runs; controlled-stress runs are reported separately and cannot inflate ordinary field-coverage state.',
+      'Coverage state is based on observational external-real runs; controlled-stress runs are reported separately with invariant pass/fail counts and cannot inflate ordinary field-coverage state.',
       'A multi-repository corpus is coverage evidence, not automatic proof of production readiness or causal correctness.',
       'Human-reviewed and agent-reviewed usefulness metrics remain separate; unreviewed records never contribute to usefulness rates.',
       'Repository fingerprints are one-way hashes for grouping runs; raw repository names, remotes, absolute paths, session goals, findings text, and recommendation text are not stored in evaluation records.',
@@ -335,7 +376,7 @@ export async function buildEvaluationReport(root, options = {}) {
 }
 
 export function formatEvaluationRecord(record) {
-  return `# CMI evaluation ${record.id.slice(0, 12)}\n\n- CMI: ${record.subject.version}${record.subject.sourceRevision ? ` · ${record.subject.sourceRevision.slice(0, 12)}` : ''}\n- Source: ${record.source.kind}${record.source.independent ? ' · independent repository evidence' : ''}\n- Protocol: ${record.protocol.kind}\n- Repository class: ${record.repository.class}\n- Task kind: ${record.task.kind}\n- Evidence health: ${record.measurements.project.evidenceState}\n- Session outcome: ${record.measurements.continuation.outcome || 'none'}\n- Open findings: ${record.measurements.continuation.openFindingCount}\n- Next action: ${record.measurements.continuation.nextActionPresent ? record.measurements.continuation.nextActionPriority : 'none'}\n- Review: ${record.review.outcome} · ${record.review.provenance}\n\n${record.policy}`;
+  return `# CMI evaluation ${record.id.slice(0, 12)}\n\n- CMI: ${record.subject.version}${record.subject.sourceRevision ? ` · ${record.subject.sourceRevision.slice(0, 12)}` : ''}\n- Source: ${record.source.kind}${record.source.independent ? ' · independent repository evidence' : ''}\n- Protocol: ${record.protocol.kind}\n- Stress: ${record.stress.scenario || 'n/a'} · ${record.stress.outcome} (${record.stress.passedInvariantCount}/${record.stress.expectedInvariantCount} invariants passed)\n- Repository class: ${record.repository.class}\n- Task kind: ${record.task.kind}\n- Evidence health: ${record.measurements.project.evidenceState}\n- Session outcome: ${record.measurements.continuation.outcome || 'none'}\n- Open findings: ${record.measurements.continuation.openFindingCount}\n- Next action: ${record.measurements.continuation.nextActionPresent ? record.measurements.continuation.nextActionPriority : 'none'}\n- Review: ${record.review.outcome} · ${record.review.provenance}\n\n${record.policy}`;
 }
 export function formatEvaluationList(result) {
   if (!result.records.length) return 'No matching CMI evaluation records.';
@@ -344,5 +385,5 @@ export function formatEvaluationList(result) {
 export function formatEvaluationReport(report) {
   const external = report.corpus.externalReal;
   const usefulness = report.reviewedUsefulness;
-  return `# CMI real-repository evaluation\n\nCoverage: ${report.coverage.state}\nRecords: ${report.corpus.totalRecords} · external-real ${external.records} · observational ${external.observationalRecords} · controlled-stress ${external.controlledStressRecords}\nIndependent repositories: ${external.uniqueRepositories} · observational repositories ${external.observationalUniqueRepositories}\nRepository classes: ${Object.keys(external.repositoryClasses).length} · task kinds: ${Object.keys(external.taskKinds).length}\nReviewed observational external records: ${usefulness.reviewedExternalRecords} · human ${usefulness.provenance.human} · agent ${usefulness.provenance.agent}\nHuman next-action useful rate: ${usefulness.human.nextActionUsefulRate ?? 'n/a'}\nHuman handoff useful rate: ${usefulness.human.handoffUsefulRate ?? 'n/a'}\nAgent next-action useful rate: ${usefulness.agent.nextActionUsefulRate ?? 'n/a'}\nObservational project healthy rate: ${report.observedMetrics.observationalProjectHealthyRate ?? 'n/a'}\nObservational handoff presence rate: ${report.observedMetrics.observationalHandoffPresenceRate ?? 'n/a'}\n\n## Evidence limits\n${report.limitations.map((item) => `- ${item}`).join('\n')}\n\n${report.policy}`;
+  return `# CMI real-repository evaluation\n\nCoverage: ${report.coverage.state}\nRecords: ${report.corpus.totalRecords} · external-real ${external.records} · observational ${external.observationalRecords} · controlled-stress ${external.controlledStressRecords}\nIndependent repositories: ${external.uniqueRepositories} · observational repositories ${external.observationalUniqueRepositories}\nRepository classes: ${Object.keys(external.repositoryClasses).length} · observational task kinds: ${Object.keys(external.observationalTaskKinds).length}\nControlled stress: ${report.controlledStress.records} records · ${Object.keys(report.controlledStress.scenarios).length} scenarios · record pass rate ${report.controlledStress.passRate ?? 'n/a'} · invariant pass rate ${report.controlledStress.invariantPassRate ?? 'n/a'}\nReviewed observational external records: ${usefulness.reviewedExternalRecords} · human ${usefulness.provenance.human} · agent ${usefulness.provenance.agent}\nHuman next-action useful rate: ${usefulness.human.nextActionUsefulRate ?? 'n/a'}\nHuman handoff useful rate: ${usefulness.human.handoffUsefulRate ?? 'n/a'}\nAgent next-action useful rate: ${usefulness.agent.nextActionUsefulRate ?? 'n/a'}\nObservational project healthy rate: ${report.observedMetrics.observationalProjectHealthyRate ?? 'n/a'}\nObservational handoff presence rate: ${report.observedMetrics.observationalHandoffPresenceRate ?? 'n/a'}\n\n## Evidence limits\n${report.limitations.map((item) => `- ${item}`).join('\n')}\n\n${report.policy}`;
 }

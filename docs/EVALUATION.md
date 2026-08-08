@@ -84,6 +84,27 @@ These states describe corpus coverage only. They do not mean "validated", "produ
 
 Usefulness rates are reported only from explicitly reviewed observational `external-real` records. Human-reviewed and agent-reviewed rates remain separate. Behavioral confidence thresholds are not recalibrated automatically from evaluation data.
 
+## Controlled real-repository stress
+
+A `controlled-stress` record must identify one bounded scenario and invariant counts. The record does not retain arbitrary scenario prose. Supported scenarios are `rename-after-scan`, `history-rewrite`, `dirty-worktree`, `clock-skew`, `interrupted-session`, `concurrent-sessions`, `large-monorepo`, `corrupt-durable-record`, and `stale-graph`.
+
+Capture example:
+
+```bash
+cmi evaluate capture \
+  --source-kind external-real \
+  --protocol controlled-stress \
+  --repository-class library \
+  --task-kind verification \
+  --session none \
+  --stress-scenario stale-graph \
+  --stress-expected 3 \
+  --stress-passed 3 \
+  --stress-failed 0
+```
+
+`pass`, `partial`, or `fail` is derived from the invariant counts; callers cannot supply a more favorable stress outcome. Observational records reject stress fields. Reports aggregate stress scenario coverage and invariant pass rate separately from ordinary field coverage.
+
 ## Runtime contract
 
 `schemas/evaluation-record.schema.json` documents the durable format and repository quality checks keep trust-critical enums/version fields aligned with the runtime validator.

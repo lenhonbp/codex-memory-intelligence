@@ -75,6 +75,10 @@ function evaluationOptions() {
     missedFindings: optionValues('--missed-findings')[0],
     nextActionRating: optionValues('--next-action-rating')[0],
     handoffRating: optionValues('--handoff-rating')[0],
+    stressScenario: optionValues('--stress-scenario')[0],
+    stressExpected: optionValues('--stress-expected')[0],
+    stressPassed: optionValues('--stress-passed')[0],
+    stressFailed: optionValues('--stress-failed')[0],
   };
 }
 function print(value, formatted) { console.log(json ? JSON.stringify(value, null, 2) : formatted); }
@@ -136,10 +140,10 @@ try {
       throw new Error('Usage: cmi finding <list|show|state> ...');
     }
   } else {
-    const values = positional(['--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--limit']);
+    const values = positional(['--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--stress-scenario','--stress-expected','--stress-passed','--stress-failed','--limit']);
     const action = values.shift();
     if (action === 'capture') {
-      if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id]');
+      if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id] [--stress-scenario scenario --stress-expected N --stress-passed N --stress-failed N]');
       const record = await captureEvaluation(process.cwd(), evaluationOptions());
       print(record, formatEvaluationRecord(record));
     } else if (action === 'list') {

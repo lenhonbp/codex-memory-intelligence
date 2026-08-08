@@ -117,7 +117,8 @@ The v0.9.x evaluation foundation records what CMI has actually observed without 
 - [x] Keep runtime validation and JSON Schema enums/version fields aligned through repository quality checks.
 - [x] Keep production-readiness and empirical threshold recalibration outside the automatic report contract.
 - [ ] Accumulate enough independent external-real repositories and repeated tasks to move the existing v0.8 field-validation questions from anecdotal evidence to measured evidence.
-- [ ] Add controlled real-repository stress runs for rename-after-scan, rebases, dirty worktrees, clock skew, and large monorepos.
+- [x] Add a controlled-stress evaluation contract with explicit scenario taxonomy, derived pass/partial/fail outcome, and invariant-count aggregation that cannot inflate observational coverage.
+- [ ] Complete controlled external-real stress evidence for rename-after-scan, rebases/history rewrite, dirty worktrees, clock skew, and large monorepos.
 - [ ] Measure repeated-task verification-choice improvement and session-handoff/next-action usefulness with explicit review data.
 
 ## Precision and interoperability track

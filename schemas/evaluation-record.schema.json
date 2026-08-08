@@ -3,104 +3,377 @@
   "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/evaluation-record.schema.json",
   "title": "CMI Real-Repository Evaluation Record",
   "type": "object",
-  "required": ["schemaVersion", "id", "recordedAt", "subject", "source", "protocol", "repository", "task", "measurements", "review", "policy"],
+  "required": [
+    "schemaVersion",
+    "id",
+    "recordedAt",
+    "subject",
+    "source",
+    "protocol",
+    "repository",
+    "task",
+    "measurements",
+    "stress",
+    "review",
+    "policy"
+  ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "id": { "type": "string", "format": "uuid" },
-    "recordedAt": { "type": "string", "format": "date-time" },
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
     "subject": {
       "type": "object",
-      "required": ["version", "sourceRevision"],
+      "required": [
+        "version",
+        "sourceRevision"
+      ],
       "properties": {
-        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$" },
-        "sourceRevision": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "sourceRevision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        }
       },
       "additionalProperties": false
     },
     "source": {
       "type": "object",
-      "required": ["kind", "independent"],
+      "required": [
+        "kind",
+        "independent"
+      ],
       "properties": {
-        "kind": { "enum": ["external-real", "self-host", "synthetic"] },
-        "independent": { "type": "boolean" }
+        "kind": {
+          "enum": [
+            "external-real",
+            "self-host",
+            "synthetic"
+          ]
+        },
+        "independent": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": false
     },
     "protocol": {
       "type": "object",
-      "required": ["kind"],
-      "properties": { "kind": { "enum": ["observational", "controlled-stress"] } },
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "observational",
+            "controlled-stress"
+          ]
+        }
+      },
       "additionalProperties": false
     },
     "repository": {
       "type": "object",
-      "required": ["fingerprint", "fingerprintBasis", "class"],
+      "required": [
+        "fingerprint",
+        "fingerprintBasis",
+        "class"
+      ],
       "properties": {
-        "fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-        "fingerprintBasis": { "enum": ["git-origin-hash", "local-root-hash"] },
-        "class": { "enum": ["application", "service", "library", "cli-tool", "tooling", "monorepo", "unknown"] }
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "fingerprintBasis": {
+          "enum": [
+            "git-origin-hash",
+            "local-root-hash"
+          ]
+        },
+        "class": {
+          "enum": [
+            "application",
+            "service",
+            "library",
+            "cli-tool",
+            "tooling",
+            "monorepo",
+            "unknown"
+          ]
+        }
       },
       "additionalProperties": false
     },
     "task": {
       "type": "object",
-      "required": ["kind", "sessionId"],
+      "required": [
+        "kind",
+        "sessionId"
+      ],
       "properties": {
-        "kind": { "enum": ["implementation", "debugging", "audit", "review", "research", "verification", "no-code-investigation", "unknown"] },
-        "sessionId": { "type": ["string", "null"], "format": "uuid" }
+        "kind": {
+          "enum": [
+            "implementation",
+            "debugging",
+            "audit",
+            "review",
+            "research",
+            "verification",
+            "refactor",
+            "migration",
+            "architecture-analysis",
+            "no-code-investigation",
+            "unknown"
+          ]
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        }
       },
       "additionalProperties": false
     },
     "measurements": {
       "type": "object",
-      "required": ["project", "continuation", "changeHistory"],
+      "required": [
+        "project",
+        "continuation",
+        "changeHistory"
+      ],
       "properties": {
         "project": {
           "type": "object",
-          "required": ["evidenceState", "healthy", "graphCurrent", "graphTruncated", "graphStaleNodes", "graphMissingNodes", "worktreeClean", "sourceFiles", "workspaceCount"],
+          "required": [
+            "evidenceState",
+            "healthy",
+            "graphCurrent",
+            "graphTruncated",
+            "graphStaleNodes",
+            "graphMissingNodes",
+            "worktreeClean",
+            "sourceFiles",
+            "workspaceCount"
+          ],
           "properties": {
-            "evidenceState": { "enum": ["healthy", "degraded", "blocked", "uninitialized"] },
-            "healthy": { "type": "boolean" },
-            "graphCurrent": { "type": "boolean" },
-            "graphTruncated": { "type": "boolean" },
-            "graphStaleNodes": { "type": "integer", "minimum": 0 },
-            "graphMissingNodes": { "type": "integer", "minimum": 0 },
-            "worktreeClean": { "type": ["boolean", "null"] },
-            "sourceFiles": { "type": ["integer", "null"], "minimum": 0 },
-            "workspaceCount": { "type": "integer", "minimum": 0 }
+            "evidenceState": {
+              "enum": [
+                "healthy",
+                "degraded",
+                "blocked",
+                "uninitialized"
+              ]
+            },
+            "healthy": {
+              "type": "boolean"
+            },
+            "graphCurrent": {
+              "type": "boolean"
+            },
+            "graphTruncated": {
+              "type": "boolean"
+            },
+            "graphStaleNodes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "graphMissingNodes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "worktreeClean": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "sourceFiles": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "workspaceCount": {
+              "type": "integer",
+              "minimum": 0
+            }
           },
           "additionalProperties": false
         },
         "continuation": {
           "type": "object",
-          "required": ["sessionPresent", "outcome", "sessionScopeCount", "openFindingCount", "recommendationCount", "handoffPresent", "nextActionPresent", "nextActionPriority", "nextActionEvidenceType", "nextActionConfidence", "guardrailCount", "planningSignalCount"],
+          "required": [
+            "sessionPresent",
+            "outcome",
+            "sessionScopeCount",
+            "openFindingCount",
+            "recommendationCount",
+            "handoffPresent",
+            "nextActionPresent",
+            "nextActionPriority",
+            "nextActionEvidenceType",
+            "nextActionConfidence",
+            "guardrailCount",
+            "planningSignalCount"
+          ],
           "properties": {
-            "sessionPresent": { "type": "boolean" },
-            "outcome": { "type": ["string", "null"], "enum": ["succeeded", "partial", "blocked", "investigated", "abandoned", "unknown", null] },
-            "sessionScopeCount": { "type": "integer", "minimum": 0 },
-            "openFindingCount": { "type": "integer", "minimum": 0 },
-            "recommendationCount": { "type": "integer", "minimum": 0 },
-            "handoffPresent": { "type": "boolean" },
-            "nextActionPresent": { "type": "boolean" },
-            "nextActionPriority": { "type": ["string", "null"], "enum": ["P0", "P1", "P2", "P3", null] },
-            "nextActionEvidenceType": { "type": ["string", "null"], "enum": ["observed", "reviewed", "historical-correlation", "inferred", null] },
-            "nextActionConfidence": { "type": ["string", "null"], "enum": ["high", "medium", "low", null] },
-            "guardrailCount": { "type": "integer", "minimum": 0 },
-            "planningSignalCount": { "type": "integer", "minimum": 0 }
+            "sessionPresent": {
+              "type": "boolean"
+            },
+            "outcome": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "succeeded",
+                "partial",
+                "blocked",
+                "investigated",
+                "abandoned",
+                "unknown",
+                null
+              ]
+            },
+            "sessionScopeCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "openFindingCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "recommendationCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "handoffPresent": {
+              "type": "boolean"
+            },
+            "nextActionPresent": {
+              "type": "boolean"
+            },
+            "nextActionPriority": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "P0",
+                "P1",
+                "P2",
+                "P3",
+                null
+              ]
+            },
+            "nextActionEvidenceType": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "observed",
+                "reviewed",
+                "historical-correlation",
+                "inferred",
+                null
+              ]
+            },
+            "nextActionConfidence": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                null
+              ]
+            },
+            "guardrailCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "planningSignalCount": {
+              "type": "integer",
+              "minimum": 0
+            }
           },
           "additionalProperties": false
         },
         "changeHistory": {
           "type": "object",
-          "required": ["completedRecords", "consideredRecords", "calibrationSamples", "averagePathRecall", "averagePathPrecision", "averagePathF1", "calibrationConfidence"],
+          "required": [
+            "completedRecords",
+            "consideredRecords",
+            "calibrationSamples",
+            "averagePathRecall",
+            "averagePathPrecision",
+            "averagePathF1",
+            "calibrationConfidence"
+          ],
           "properties": {
-            "completedRecords": { "type": "integer", "minimum": 0 },
-            "consideredRecords": { "type": "integer", "minimum": 0 },
-            "calibrationSamples": { "type": "integer", "minimum": 0 },
-            "averagePathRecall": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
-            "averagePathPrecision": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
-            "averagePathF1": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
-            "calibrationConfidence": { "enum": ["high", "medium", "low", "insufficient-evidence"] }
+            "completedRecords": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "consideredRecords": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "calibrationSamples": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "averagePathRecall": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "averagePathPrecision": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "averagePathF1": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "calibrationConfidence": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "insufficient-evidence"
+              ]
+            }
           },
           "additionalProperties": false
         }
@@ -109,19 +382,125 @@
     },
     "review": {
       "type": "object",
-      "required": ["provenance", "reviewedAt", "outcome", "falsePositiveFindings", "missedFindings", "nextActionRating", "handoffRating"],
+      "required": [
+        "provenance",
+        "reviewedAt",
+        "outcome",
+        "falsePositiveFindings",
+        "missedFindings",
+        "nextActionRating",
+        "handoffRating"
+      ],
       "properties": {
-        "provenance": { "enum": ["human", "agent", "unreviewed"] },
-        "reviewedAt": { "type": ["string", "null"], "format": "date-time" },
-        "outcome": { "enum": ["pass", "partial", "fail", "unreviewed"] },
-        "falsePositiveFindings": { "type": ["integer", "null"], "minimum": 0 },
-        "missedFindings": { "type": ["integer", "null"], "minimum": 0 },
-        "nextActionRating": { "enum": ["useful", "not-useful", "unknown"] },
-        "handoffRating": { "enum": ["useful", "not-useful", "unknown"] }
+        "provenance": {
+          "enum": [
+            "human",
+            "agent",
+            "unreviewed"
+          ]
+        },
+        "reviewedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "partial",
+            "fail",
+            "unreviewed"
+          ]
+        },
+        "falsePositiveFindings": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "missedFindings": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "nextActionRating": {
+          "enum": [
+            "useful",
+            "not-useful",
+            "unknown"
+          ]
+        },
+        "handoffRating": {
+          "enum": [
+            "useful",
+            "not-useful",
+            "unknown"
+          ]
+        }
       },
       "additionalProperties": false
     },
-    "policy": { "type": "string", "minLength": 20, "maxLength": 1200 }
+    "policy": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 1200
+    },
+    "stress": {
+      "type": "object",
+      "required": [
+        "scenario",
+        "expectedInvariantCount",
+        "passedInvariantCount",
+        "failedInvariantCount",
+        "outcome"
+      ],
+      "properties": {
+        "scenario": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "rename-after-scan",
+            "history-rewrite",
+            "dirty-worktree",
+            "clock-skew",
+            "interrupted-session",
+            "concurrent-sessions",
+            "large-monorepo",
+            "corrupt-durable-record",
+            "stale-graph",
+            null
+          ]
+        },
+        "expectedInvariantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passedInvariantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedInvariantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcome": {
+          "enum": [
+            "not-applicable",
+            "pass",
+            "partial",
+            "fail"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

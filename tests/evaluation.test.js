@@ -83,7 +83,7 @@ test('review usefulness requires explicit reviewer provenance and keeps human an
 
 test('controlled stress on an external repository does not inflate observational field coverage', async () => {
   const root = await projectFixture();
-  await captureEvaluation(root, { sourceKind: 'external-real', protocolKind: 'controlled-stress', repositoryClass: 'library', taskKind: 'verification', session: 'none' });
+  await captureEvaluation(root, { sourceKind: 'external-real', protocolKind: 'controlled-stress', repositoryClass: 'library', taskKind: 'verification', session: 'none', stressScenario: 'stale-graph', stressExpected: 2, stressPassed: 2, stressFailed: 0 });
   const report = await buildEvaluationReport(root);
   assert.equal(report.corpus.externalReal.records, 1);
   assert.equal(report.corpus.externalReal.controlledStressRecords, 1);
@@ -92,6 +92,10 @@ test('controlled stress on an external repository does not inflate observational
   assert.equal(report.coverage.hasControlledStressEvidence, true);
   assert.equal(report.coverage.hasObservationalExternalEvidence, false);
   assert.equal(report.coverage.state, 'none');
+  assert.equal(report.controlledStress.records, 1);
+  assert.equal(report.controlledStress.passRate, 1);
+  assert.equal(report.controlledStress.invariantPassRate, 1);
+  assert.equal(report.controlledStress.scenarios['stale-graph'], 1);
 });
 
 test('invalid durable evaluation records are ignored and counted', async () => {

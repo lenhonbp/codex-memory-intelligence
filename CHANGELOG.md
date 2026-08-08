@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+- Added controlled real-repository stress evaluation with explicit scenario taxonomy, derived invariant outcomes, separate aggregate stress metrics, and CLI/MCP parity without inflating observational coverage.
+
 ### Added
 
 - Real-repository evaluation records under `.codex-memory/evaluations/` with an explicit `external-real`, `self-host`, or `synthetic` source class.
