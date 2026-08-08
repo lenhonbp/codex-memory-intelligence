@@ -4,7 +4,12 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- Real-repository evaluation records under `.codex-memory/evaluations/` with an explicit `external-real`, `self-host`, or `synthetic` source class.
+- `cmi evaluate capture|list|show|report` for collecting and aggregating anonymized project/session/change-history measurements without storing repository names, raw remotes, absolute paths, session text, finding text, recommendation text, or source content.
+- Runtime + JSON Schema validation for evaluation records and repository quality checks that keep trust-critical evaluation enums/version fields aligned.
+- Descriptive corpus coverage states and reviewed usefulness metrics that never count self-host/synthetic runs as independent real-repository evidence or automatically declare production/v1.0 readiness.
 
 ## [0.9.0] - 2026-08-08
 

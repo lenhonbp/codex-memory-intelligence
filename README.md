@@ -18,6 +18,7 @@ CMI helps an agent answer these questions before, during, and after project work
 6. **Which verification work should happen before the change is considered complete?**
 7. **What actually changed in similar work before, and what did earlier predictions miss?**
 8. **What happened in the current work session, what remains unresolved, and what should happen next?**
+9. **What has CMI actually demonstrated across real repositories, and which claims are still unsupported?**
 
 Everything stays in a human-reviewable `.codex-memory/` directory. There is no cloud service, API key, database, telemetry, remote model, or network enrichment requirement.
 
@@ -29,7 +30,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
-See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
+See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
 Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Historical co-change is correlation, not causality. CMI never treats an observed changed path as proof of complete runtime impact, never treats a recommendation as business truth, and never turns learning candidates into durable project truth automatically.
 
@@ -205,6 +206,19 @@ cmi session handoff latest
 
 CMI can auto-resolve deterministic health findings when their measured condition disappears, but explicit blockers/questions remain review-controlled. Historical verification suggestions are labeled correlation rather than fact. See [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md).
 
+## Real-repository evaluation
+
+The unreleased v0.9.x evaluation foundation keeps field evidence separate from ordinary regression tests. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
+
+```bash
+cmi evaluate capture --source-kind self-host --repository-class cli-tool --task-kind audit
+cmi evaluate capture --source-kind external-real --repository-class application --task-kind debugging
+cmi evaluate report
+cmi evaluate report --source-kind external-real
+```
+
+Only `external-real` contributes to independent-repository counts. `self-host` and `synthetic` remain useful evidence classes but cannot silently inflate real-world coverage. Evaluation records store a one-way repository fingerprint and bounded measurements, not repository names, remotes, absolute paths, session/finding/recommendation text, source contents, or diffs. Reviewed usefulness metrics require explicit review metadata and the report never declares production or v1.0 readiness automatically. See [Real-Repository Evaluation](docs/EVALUATION.md).
+
 ## Monorepos and workspaces
 
 CMI detects npm/pnpm workspaces, Cargo workspace members, and Go workspaces/modules.
@@ -271,6 +285,10 @@ cmi session handoff <id|latest> [--json]
 cmi finding list [--status open|resolved|accepted|dismissed|superseded] [--limit N] [--json]
 cmi finding show <id> [--json]
 cmi finding state <id> <open|resolved|accepted|dismissed|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
+cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--repository-class class] [--task-kind kind] [--session latest|none|id] [--review-outcome pass|partial|fail|unreviewed] [--false-positive-findings N] [--missed-findings N] [--next-action-rating useful|not-useful|unknown] [--handoff-rating useful|not-useful|unknown] [--json]
+cmi evaluate list [--source-kind external-real|self-host|synthetic] [--limit N] [--json]
+cmi evaluate show <id> [--json]
+cmi evaluate report [--source-kind external-real|self-host|synthetic] [--json]
 cmi remember <fact|decision|mistake> <text> [--source path ...]
 cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
 cmi stale [path] [--fail-on stale|review|any] [--json]
@@ -360,7 +378,7 @@ npm run package:smoke
 
 CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchmark smoke job checks incremental reuse and release metadata. CodeQL scans JavaScript and GitHub Actions workflows.
 
-Community documents: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Maintainers](MAINTAINERS.md), [Architecture](docs/ARCHITECTURE.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), and [Releasing](docs/RELEASING.md).
+Community documents: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Maintainers](MAINTAINERS.md), [Architecture](docs/ARCHITECTURE.md), [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), and [Releasing](docs/RELEASING.md).
 
 ## License
 
