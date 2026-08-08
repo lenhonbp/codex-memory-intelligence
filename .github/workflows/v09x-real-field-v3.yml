@@ -1,0 +1,46 @@
+name: Validate v0.9.x exact candidate real field v3
+on:
+  push:
+    paths:
+      - '.github/workflows/v09x-real-field-v3.yml'
+permissions:
+  contents: read
+jobs:
+  field:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 3eb6e42848c98e1982c4fdd9cb821495834fcd31
+          fetch-depth: 20
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify exact product candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "3eb6e42848c98e1982c4fdd9cb821495834fcd31"
+          npm run verify
+          npm run package:smoke
+      - name: Fetch validation script from validation branch
+        run: |
+          git show origin/validation/v09x-stress-task-diversity-20260808:scripts/v09x-real-field-validation.sh > "$RUNNER_TEMP/v09x-real-field-validation.sh" || {
+            git fetch origin validation/v09x-stress-task-diversity-20260808 --depth=1
+            git show FETCH_HEAD:scripts/v09x-real-field-validation.sh > "$RUNNER_TEMP/v09x-real-field-validation.sh"
+          }
+          chmod +x "$RUNNER_TEMP/v09x-real-field-validation.sh"
+      - name: Run task diversity and five controlled stresses
+        env:
+          CMI_ROOT: ${{ github.workspace }}
+        run: "$RUNNER_TEMP/v09x-real-field-validation.sh"
+      - name: Show bounded aggregate
+        run: node -e "const r=require(process.env.RUNNER_TEMP+'/v09x-field-v3/report.json'); console.log(JSON.stringify({coverage:r.coverage, external:r.corpus.externalReal, stress:r.controlledStress, usefulness:r.reviewedUsefulness},null,2))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v09x-real-field-evidence-3eb6e428
+          path: |
+            ${{ runner.temp }}/v09x-field-v3/records/*.json
+            ${{ runner.temp }}/v09x-field-v3/report.json
+          if-no-files-found: error
+          retention-days: 30
