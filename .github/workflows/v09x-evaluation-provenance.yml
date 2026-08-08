@@ -1,0 +1,75 @@
+name: Harden v0.9.x Evaluation Provenance
+
+on:
+  push:
+    branches:
+      - v0.9x/real-repo-evaluation
+    paths:
+      - .github/workflows/v09x-evaluation-provenance.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.9.0
+          package-manager-cache: false
+      - name: Apply provenance hardening
+        run: python3 scripts/_v09x_evaluation_trust_patch.py
+      - name: Remove hardening helpers
+        run: rm -f scripts/_v09x_evaluation_trust_patch.py .github/workflows/v09x-evaluation-provenance.yml
+      - name: Verify repository
+        run: npm run verify
+      - name: Benchmark incremental intelligence
+        run: npm run benchmark:smoke
+      - name: Test packed installation
+        run: npm run package:smoke
+      - name: Validate unreleased discipline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(node -p "require('./package.json').version")" = "0.9.0"
+          test ! -e scripts/_v09x_evaluation_trust_patch.py
+          test ! -e .github/workflows/v09x-evaluation-provenance.yml
+          test ! -e .codex-memory
+      - name: Commit validated hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: harden evaluation provenance"
+      - name: Self-host provenance smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          CANDIDATE="$(git rev-parse HEAD)"
+          node src/cli-entry.js scan . --json > "$RUNNER_TEMP/eval-scan.json"
+          node src/cli-entry.js session start "provenance smoke" --json > "$RUNNER_TEMP/eval-start.json"
+          node src/cli-entry.js session close latest --outcome investigated --accomplished "Exercised provenance-aware evaluation." --json > "$RUNNER_TEMP/eval-close.json"
+          node src/cli-entry.js evaluate capture --source-kind self-host --repository-class cli-tool --task-kind audit --json > "$RUNNER_TEMP/eval-record.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const record = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/eval-record.json', 'utf8'));
+          if (record.subject.version !== '0.9.0') throw new Error(`unexpected subject version ${record.subject.version}`);
+          if (record.subject.sourceRevision !== process.env.CANDIDATE) throw new Error(`subject revision mismatch: ${record.subject.sourceRevision} != ${process.env.CANDIDATE}`);
+          if (record.protocol.kind !== 'observational') throw new Error('default protocol must be observational');
+          if (record.review.provenance !== 'unreviewed' || record.review.reviewedAt !== null) throw new Error('unreviewed provenance drifted');
+          NODE
+          rm -rf .codex-memory
+          test -z "$(git status --porcelain)"
+        env:
+          CANDIDATE: ${{ github.sha }}
+      - name: Push validated hardening
+        shell: bash
+        run: git push origin HEAD:v0.9x/real-repo-evaluation
