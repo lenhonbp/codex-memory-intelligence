@@ -4,7 +4,19 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-No unreleased changes yet.
+- Fixed large generated graph caches being unreadable through the 1 MB durable-record ceiling; generated project caches now use a separate finite read ceiling.
+- Added one-time post-hoc evaluation review so human/agent usefulness can be rated after capture without mutating captured measurements or overwriting reviewer provenance.
+
+- Added controlled real-repository stress evaluation with explicit scenario taxonomy, derived invariant outcomes, separate aggregate stress metrics, and CLI/MCP parity without inflating observational coverage.
+
+### Added
+
+- Real-repository evaluation records under `.codex-memory/evaluations/` with an explicit `external-real`, `self-host`, or `synthetic` source class.
+- `cmi evaluate capture|list|show|report` for collecting and aggregating anonymized project/session/change-history measurements without storing repository names, raw remotes, absolute paths, session text, finding text, recommendation text, or source content.
+- Runtime + JSON Schema validation for evaluation records and repository quality checks that keep trust-critical evaluation enums/version fields aligned.
+- Descriptive corpus coverage states and reviewed usefulness metrics that never count self-host/synthetic runs as independent real-repository evidence or automatically declare production/v1.0 readiness.
+- Evaluation subject provenance (CMI version + source revision when available), observational vs controlled-stress protocol classification, and explicit human vs agent review provenance so field coverage and usefulness evidence cannot be silently mixed.
+- Session-aware MCP parity for evaluation list/show/report plus write-gated capture and `cmi://project/evaluation-report`, using the same runtime evidence contract as the CLI.
 
 ## [0.9.0] - 2026-08-08
 

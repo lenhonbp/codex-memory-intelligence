@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 
 export const MEMORY_DIR = '.codex-memory';
 export const DEFAULT_MAX_DURABLE_BYTES = 1_000_000;
+export const DEFAULT_MAX_GENERATED_CACHE_BYTES = 64 * 1024 * 1024;
 
 function unsafe(reason) {
   const error = new Error(`Unsafe CMI storage: ${reason}`);

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { checkStaleMemory } from './stale.js';
-import { safeReadMemoryFile, safeReadMemoryJson } from './storage.js';
+import { safeReadMemoryFile, safeReadMemoryJson, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { buildEvidenceHealth } from './evidence-health.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
@@ -65,7 +65,7 @@ function fingerprintMatches(stat, fingerprint) {
 
 async function graphChunks(root) {
   try {
-    const graph = await safeReadMemoryJson(root, 'project-graph.json');
+    const graph = await safeReadMemoryJson(root, 'project-graph.json', { maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES });
     const chunks = [];
     let staleNodes = 0;
     let missingNodes = 0;
@@ -144,7 +144,7 @@ async function resolveWorkspaceScope(root, workspaceQuery) {
   const needle = normalize(workspaceQuery);
   let workspaces = [];
   try {
-    const index = await safeReadMemoryJson(root, 'project-index.json');
+    const index = await safeReadMemoryJson(root, 'project-index.json', { maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES });
     workspaces = index.workspaces?.workspaces || [];
   } catch {}
   const exact = workspaces.filter((workspace) => [workspace.id, workspace.name, workspace.path].some((value) => normalize(value || '') === needle));

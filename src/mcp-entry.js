@@ -19,6 +19,16 @@ import {
   formatHandoff,
   formatFindingList,
 } from './session-intelligence.js';
+import {
+  captureEvaluation,
+  getEvaluation,
+  reviewEvaluation,
+  listEvaluations,
+  buildEvaluationReport,
+  formatEvaluationRecord,
+  formatEvaluationList,
+  formatEvaluationReport,
+} from './evaluation.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(process.env.CMI_PROJECT_ROOT || process.cwd());
@@ -37,7 +47,7 @@ const transforms = new Map();
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function errorResult(id, message) { send({ jsonrpc: '2.0', id: id ?? null, result: { isError: true, content: [{ type: 'text', text: message }] } }); }
 function textResult(text, structuredContent) { return { content: [{ type: 'text', text }], ...(structuredContent ? { structuredContent } : {}) }; }
-function writable() { if (!writeEnabled) throw new Error('MCP durable project writes are disabled. Generate config with cmi mcp-config --write to enable session/finding writes.'); }
+function writable() { if (!writeEnabled) throw new Error('MCP durable project writes are disabled. Generate config with cmi mcp-config --write to enable session, finding, and evaluation writes.'); }
 function forward(message, transform) {
   if (transform && message?.id !== undefined) transforms.set(String(message.id), transform);
   child.stdin.write(`${JSON.stringify(message)}\n`);
@@ -65,6 +75,43 @@ const sessionWriteTools = [
   { name: 'finalize_work_session', title: 'Finalize work session', description: 'Close the session and always return outcome, unresolved findings, prioritized next actions, knowledge candidates, and a handoff. Call before ending substantial project work.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, outcome: { type: 'string', enum: ['succeeded', 'partial', 'blocked', 'investigated', 'abandoned', 'unknown'] }, ...observationProperties } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
   { name: 'set_project_finding_state', title: 'Set project-finding state', description: 'Explicitly resolve, accept, dismiss, reopen, or supersede one persistent finding with a review reason.', inputSchema: { type: 'object', required: ['id', 'state', 'reason'], properties: { id: { type: 'string' }, state: { type: 'string', enum: ['open', 'resolved', 'accepted', 'dismissed', 'superseded'] }, reason: { type: 'string', minLength: 1, maxLength: 500 }, changedBy: { type: 'string', maxLength: 100 }, supersededBy: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } },
 ];
+const evaluationReadTools = [
+  { name: 'list_project_evaluations', title: 'List project evaluations', description: 'List bounded anonymized evaluation records with explicit source, protocol, CMI subject revision, repository/task class, and review provenance.', inputSchema: { type: 'object', properties: { sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] }, limit: { type: 'integer', minimum: 1, maximum: 200 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_project_evaluation', title: 'Get project evaluation', description: 'Read one durable anonymized evaluation record by ID or unique prefix.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_project_evaluation_report', title: 'Get project evaluation report', description: 'Aggregate the retained evaluation corpus while keeping external-real/self-host/synthetic, observational/controlled-stress, and human/agent/unreviewed evidence separate.', inputSchema: { type: 'object', properties: { sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+];
+const evaluationWriteTools = [
+  { name: 'capture_project_evaluation', title: 'Capture project evaluation', description: 'Persist one bounded anonymized evaluation record. Requires MCP write opt-in. Source class, protocol, and review provenance are explicit and are never auto-promoted.', inputSchema: { type: 'object', required: ['sourceKind'], properties: {
+    sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] },
+    protocolKind: { type: 'string', enum: ['observational', 'controlled-stress'] },
+    repositoryClass: { type: 'string', enum: ['application', 'service', 'library', 'cli-tool', 'tooling', 'monorepo', 'unknown'] },
+    taskKind: { type: 'string', enum: ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'refactor', 'migration', 'architecture-analysis', 'no-code-investigation', 'unknown'] },
+    session: { type: 'string', description: 'Closed session ID/prefix, latest, or none for project-only evidence.' },
+    reviewOutcome: { type: 'string', enum: ['pass', 'partial', 'fail', 'unreviewed'] },
+    reviewProvenance: { type: 'string', enum: ['human', 'agent', 'unreviewed'] },
+    falsePositiveFindings: { type: 'integer', minimum: 0 },
+    missedFindings: { type: 'integer', minimum: 0 },
+    nextActionRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    handoffRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    stressScenario: { type: 'string', enum: ['rename-after-scan', 'history-rewrite', 'dirty-worktree', 'clock-skew', 'interrupted-session', 'concurrent-sessions', 'large-monorepo', 'corrupt-durable-record', 'stale-graph'] },
+    stressExpected: { type: 'integer', minimum: 1 },
+    stressPassed: { type: 'integer', minimum: 0 },
+    stressFailed: { type: 'integer', minimum: 0 },
+  } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: 'review_project_evaluation', title: 'Review project evaluation', description: 'Attach one explicit human or agent post-hoc review to an unreviewed evaluation record without changing its captured measurements, source/protocol class, or stress evidence. Requires MCP write opt-in.', inputSchema: { type: 'object', required: ['id', 'reviewOutcome', 'reviewProvenance'], properties: {
+    id: { type: 'string' },
+    reviewOutcome: { type: 'string', enum: ['pass', 'partial', 'fail'] },
+    reviewProvenance: { type: 'string', enum: ['human', 'agent'] },
+    falsePositiveFindings: { type: 'integer', minimum: 0 },
+    missedFindings: { type: 'integer', minimum: 0 },
+    nextActionRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    handoffRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+  } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+];
+const evaluationResources = [
+  { uri: 'cmi://project/evaluation-report', name: 'Project evaluation report', title: 'Real-Repository Evaluation Report', description: 'Aggregate local evaluation evidence without collapsing source class, protocol, or reviewer provenance.', mimeType: 'application/json' },
+];
+
 const sessionResources = [
   { uri: 'cmi://project/session/latest', name: 'Latest work session', title: 'Latest Work Session', description: 'Latest durable session report, including next-action intelligence when closed.', mimeType: 'application/json' },
   { uri: 'cmi://project/session-handoff/latest', name: 'Latest session handoff', title: 'Latest Session Handoff', description: 'Continuation pack for the latest closed session.', mimeType: 'application/json' },
@@ -75,7 +122,7 @@ const sessionPrompts = [
   { name: 'continue_from_session_handoff', title: 'Continue from the latest handoff', description: 'Resume project work from the latest CMI handoff instead of asking the user to reconstruct context.', arguments: [] },
 ];
 
-function isSessionTool(name) { return [...sessionReadTools, ...sessionWriteTools].some((tool) => tool.name === name); }
+function isLocalTool(name) { return [...sessionReadTools, ...sessionWriteTools, ...evaluationReadTools, ...evaluationWriteTools].some((tool) => tool.name === name); }
 async function callSessionTool(name, args = {}) {
   if (name === 'get_work_session_status') {
     const result = await assessSession(root, args.id || 'latest');
@@ -121,13 +168,36 @@ async function callSessionTool(name, args = {}) {
     const result = await setFindingState(root, args.id || '', args.state || '', { reason: args.reason, changedBy: args.changedBy || 'mcp-agent', supersededBy: args.supersededBy });
     return textResult(`Finding ${result.id} is now ${result.state}.`, result);
   }
-  throw new Error(`Unknown session tool: ${name}`);
+  if (name === 'list_project_evaluations') {
+    const result = await listEvaluations(root, { sourceKind: args.sourceKind, limit: args.limit || 50 });
+    return textResult(formatEvaluationList(result), result);
+  }
+  if (name === 'get_project_evaluation') {
+    const result = await getEvaluation(root, args.id || '');
+    return textResult(formatEvaluationRecord(result), result);
+  }
+  if (name === 'get_project_evaluation_report') {
+    const result = await buildEvaluationReport(root, { sourceKind: args.sourceKind });
+    return textResult(formatEvaluationReport(result), result);
+  }
+  if (name === 'capture_project_evaluation') {
+    writable();
+    const result = await captureEvaluation(root, args);
+    return textResult(formatEvaluationRecord(result), result);
+  }
+  if (name === 'review_project_evaluation') {
+    writable();
+    const result = await reviewEvaluation(root, args.id || '', args);
+    return textResult(formatEvaluationRecord(result), result);
+  }
+  throw new Error(`Unknown session/evaluation tool: ${name}`);
 }
 async function readSessionResource(uri) {
   if (uri === 'cmi://project/session/latest') return { uri, mimeType: 'application/json', text: JSON.stringify(await getSession(root, 'latest'), null, 2) };
   if (uri === 'cmi://project/session-handoff/latest') return { uri, mimeType: 'application/json', text: JSON.stringify(await getSessionHandoff(root, 'latest'), null, 2) };
   if (uri === 'cmi://project/findings') return { uri, mimeType: 'application/json', text: JSON.stringify(await listFindings(root, { state: 'open', limit: 100 }), null, 2) };
-  throw new Error(`Unknown session resource: ${uri}`);
+  if (uri === 'cmi://project/evaluation-report') return { uri, mimeType: 'application/json', text: JSON.stringify(await buildEvaluationReport(root), null, 2) };
+  throw new Error(`Unknown session/evaluation resource: ${uri}`);
 }
 function sessionPrompt(name) {
   if (name === 'close_project_session') {
@@ -165,7 +235,7 @@ input.on('line', (line) => {
     if (method === 'initialize') {
       lifecycle = 'initializing';
       forward(message, (response) => {
-        if (response?.result) response.result.instructions = `${response.result.instructions || ''} Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next.`.trim();
+        if (response?.result) response.result.instructions = `${response.result.instructions || ''} Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness.`.trim();
         return response;
       });
       return;
@@ -173,26 +243,26 @@ input.on('line', (line) => {
     if (method === 'notifications/initialized') { lifecycle = 'ready'; forward(message); return; }
     if (method === 'tools/list') {
       forward(message, (response) => {
-        if (response?.result?.tools) response.result.tools.push(...sessionReadTools, ...(writeEnabled ? sessionWriteTools : []));
+        if (response?.result?.tools) response.result.tools.push(...sessionReadTools, ...evaluationReadTools, ...(writeEnabled ? [...sessionWriteTools, ...evaluationWriteTools] : []));
         return response;
       });
       return;
     }
     if (method === 'resources/list') {
-      forward(message, (response) => { if (response?.result?.resources) response.result.resources.push(...sessionResources); return response; });
+      forward(message, (response) => { if (response?.result?.resources) response.result.resources.push(...sessionResources, ...evaluationResources); return response; });
       return;
     }
     if (method === 'prompts/list') {
       forward(message, (response) => { if (response?.result?.prompts) response.result.prompts.push(...sessionPrompts); return response; });
       return;
     }
-    if (method === 'tools/call' && isSessionTool(params?.name)) {
+    if (method === 'tools/call' && isLocalTool(params?.name)) {
       if (lifecycle !== 'ready') { errorResult(id, 'Server is not initialized.'); return; }
       try { send({ jsonrpc: '2.0', id, result: await callSessionTool(params.name, params.arguments || {}) }); }
       catch (error) { errorResult(id, error.message); }
       return;
     }
-    if (method === 'resources/read' && sessionResources.some((resource) => resource.uri === params?.uri)) {
+    if (method === 'resources/read' && [...sessionResources, ...evaluationResources].some((resource) => resource.uri === params?.uri)) {
       if (lifecycle !== 'ready') { send({ jsonrpc: '2.0', id, error: { code: -32002, message: 'Server is not initialized.' } }); return; }
       try { send({ jsonrpc: '2.0', id, result: { contents: [await readSessionResource(params.uri)] } }); }
       catch (error) { send({ jsonrpc: '2.0', id, error: { code: -32001, message: error.message } }); }

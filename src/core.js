@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { buildProjectGraph, loadProjectGraph } from './graph.js';
 import { checkStaleMemory, sourceFingerprints } from './stale.js';
 import { resolveProjectFile } from './paths.js';
-import { ensureSafeMemoryRoot, safeEnsureMemoryDir, safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile, safeAppendMemoryFile, safeListMemoryDir } from './storage.js';
+import { ensureSafeMemoryRoot, safeEnsureMemoryDir, safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile, safeAppendMemoryFile, safeListMemoryDir, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { looksSensitive } from './sensitive.js';
 import { createIgnoreMatcher, explainIgnore as explainIgnoreRule } from './ignore.js';
 import { detectWorkspaces, formatWorkspaces } from './workspaces.js';
@@ -256,8 +256,8 @@ export async function status(root) {
     return { initialized: true, healthy: false, evidenceHealth, storageHealth: { safe: false, reason: error.message }, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
   }
   if (!directory) return { initialized: false, healthy: false, evidenceHealth: buildEvidenceHealth({ initialized: false, storageSafe: true, indexAvailable: false, graphHealth: null, memoryHealth: null }) };
-  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true }).catch(() => null);
-  const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true }).catch(() => null);
+  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
+  const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
   const snapshots = await safeListMemoryDir(root, 'snapshots').catch(() => []);
   const entries = { facts: await countEntries(root, 'memory.md'), decisions: await countEntries(root, 'decisions.md'), mistakes: await countEntries(root, 'mistakes.md') };
   const memoryHealth = await checkStaleMemory(root);
