@@ -4,7 +4,19 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- Unified Evidence Health Model with explicit healthy/degraded/blocked states, per-domain usability, capability status, reasons, and deterministic recovery actions.
+- Git-history continuity evidence for change/session attribution so rebase/reset/history rewrites are detected before committed paths are attributed.
+- Runtime durable contracts for versioned memory metadata, session records, findings, recommendations, guardrails, handoffs, and the persistent findings registry.
+- `schemas/findings-registry.schema.json` plus CI-enforced schema/runtime enum and version parity.
+
+### Changed
+
+- `status --json` and context packs expose the shared evidence-health model; human status output reports graph/impact capability state.
+- Change and session intelligence fail closed on automatic committed-path attribution when the recorded baseline HEAD is no longer an ancestor of current HEAD.
+- Versioned memory metadata with invalid lifecycle/review/refresh provenance is treated as untracked evidence instead of reviewed current truth.
+- Session-record runtime validation now enforces the nested evidence contract rather than validating only the top-level close shape.
 
 ## [0.8.1] - 2026-08-08
 

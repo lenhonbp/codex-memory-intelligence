@@ -3,16 +3,154 @@
   "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/memory-metadata.schema.json",
   "title": "CMI memory metadata",
   "type": "object",
-  "required": ["id", "type", "createdAt", "sources", "sourceHashes", "projectHash"],
+  "required": [
+    "id",
+    "type",
+    "createdAt",
+    "sources",
+    "sourceHashes",
+    "projectHash"
+  ],
   "properties": {
-    "id": { "type": "string", "format": "uuid" },
-    "type": { "enum": ["fact", "decision", "mistake"] },
-    "createdAt": { "type": "string", "format": "date-time" },
-    "sources": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "sourceHashes": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
-    "projectHash": { "type": ["string", "null"] },
-    "reviewedAt": { "type": "string", "format": "date-time" },
-    "reviewedBy": { "type": "string" },
-    "reviewReason": { "type": "string" }
-  }
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "enum": [
+        "fact",
+        "decision",
+        "mistake"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "sourceHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "projectHash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reviewedBy": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "reviewReason": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "sourceRefreshedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sourceRefreshedBy": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "sourceRefreshReason": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "lifecycle": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "active",
+            "deprecated",
+            "rejected",
+            "superseded"
+          ]
+        },
+        "changedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "changedBy": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "supersededBy": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "schemaVersion"
+        ]
+      },
+      "then": {
+        "required": [
+          "lifecycle"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "properties": {
+              "state": {
+                "const": "superseded"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        },
+        "required": [
+          "lifecycle"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lifecycle": {
+            "required": [
+              "supersededBy"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
 }

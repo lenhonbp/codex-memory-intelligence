@@ -208,6 +208,27 @@ export async function getRepositoryBaseline(root) {
   }
 }
 
+function compactSha(value) {
+  return /^[0-9a-f]{40}$/i.test(String(value || '')) ? String(value).slice(0, 12) : null;
+}
+
+export async function inspectGitHistoryContinuity(root, startHead, currentHead) {
+  const start = String(startHead || '').trim();
+  const current = String(currentHead || '').trim();
+  if (!/^[0-9a-f]{40}$/i.test(start) || !/^[0-9a-f]{40}$/i.test(current)) {
+    return { available: false, state: 'unavailable', safeForCommittedAttribution: false, startHead: compactSha(start), currentHead: compactSha(current), mergeBase: null, reason: 'A full start and current Git HEAD are required for committed-path attribution.' };
+  }
+  if (start === current) return { available: true, state: 'same-head', safeForCommittedAttribution: true, startHead: compactSha(start), currentHead: compactSha(current), mergeBase: compactSha(start) };
+  try {
+    await runGit(root, ['merge-base', '--is-ancestor', start, current]);
+    return { available: true, state: 'descendant', safeForCommittedAttribution: true, startHead: compactSha(start), currentHead: compactSha(current), mergeBase: compactSha(start) };
+  } catch {}
+  let mergeBase = null;
+  try { mergeBase = await runGit(root, ['merge-base', start, current]); } catch {}
+  if (mergeBase) return { available: true, state: 'rewritten', safeForCommittedAttribution: false, startHead: compactSha(start), currentHead: compactSha(current), mergeBase: compactSha(mergeBase), reason: 'The recorded start HEAD is no longer an ancestor of current HEAD. Rebase/reset/history rewrite makes automatic committed-path attribution ambiguous.' };
+  return { available: true, state: 'unrelated', safeForCommittedAttribution: false, startHead: compactSha(start), currentHead: compactSha(current), mergeBase: null, reason: 'The recorded start and current HEAD do not share a usable merge base for automatic committed-path attribution.' };
+}
+
 export async function mapProjectBoundaries(root) {
   const graph = await loadProjectGraph(root);
   if (!graph) return { available: false, reason: 'Project graph is missing. Run cmi scan.', boundaries: [], connections: [], graphHealth: await inspectProjectGraphHealth(root, graph) };

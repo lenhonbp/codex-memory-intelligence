@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { resolveProjectFile } from './paths.js';
 import { withMemoryWriteLock } from './memory-lock.js';
 import { safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile } from './storage.js';
+import { validateMemoryMetadataContract } from './durable-contracts.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md'];
 const META_PATTERN = /<!--\s*cmi-meta:(\{.*?\})\s*-->/;
@@ -27,9 +28,17 @@ function parseEntries(content, file) {
     const section = content.slice(start, end).trim();
     const metaMatch = section.match(META_PATTERN);
     let metadata = null;
-    try { metadata = metaMatch ? JSON.parse(metaMatch[1]) : null; } catch {}
+    let metadataValidation = null;
+    try {
+      const parsed = metaMatch ? JSON.parse(metaMatch[1]) : null;
+      if (parsed) {
+        const validation = validateMemoryMetadataContract(parsed, { allowLegacy: true });
+        if (validation.valid) metadata = parsed;
+        else metadataValidation = validation.errors;
+      }
+    } catch { metadataValidation = ['Metadata JSON could not be parsed.']; }
     const text = section.replace(/^##[^\n]*\n?/, '').replace(META_PATTERN, '').trim();
-    return { file, heading: heading[1], text, metadata, start, end };
+    return { file, heading: heading[1], text, metadata, metadataValidation, start, end };
   });
 }
 function lifecycleOf(metadata) {
@@ -87,7 +96,13 @@ export async function checkStaleMemory(root) {
   const results = [];
   for (const entry of entries) {
     const meta = entry.metadata;
-    if (!meta) { results.push({ id: null, file: entry.file, heading: entry.heading, text: entry.text, status: 'untracked', lifecycleState: 'active', reasons: ['Entry predates metadata tracking. Refresh it to establish a baseline.'] }); continue; }
+    if (!meta) {
+      const reasons = entry.metadataValidation?.length
+        ? [`Memory metadata failed runtime validation: ${entry.metadataValidation.join(' ')}`]
+        : ['Entry predates metadata tracking. Refresh it to establish a baseline.'];
+      results.push({ id: null, file: entry.file, heading: entry.heading, text: entry.text, status: 'untracked', lifecycleState: 'active', reasons });
+      continue;
+    }
     const lifecycle = lifecycleOf(meta);
     if (lifecycle.state !== 'active') {
       const reason = lifecycle.reason ? ` ${lifecycle.reason}` : '';

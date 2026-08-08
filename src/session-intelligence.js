@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { initProject, status as getProjectStatus } from './core.js';
-import { getRepositoryBaseline } from './advisor.js';
+import { getRepositoryBaseline, inspectGitHistoryContinuity } from './advisor.js';
 import { buildContextPack } from './search.js';
 import { checkStaleMemory } from './stale.js';
 import { listChangeRecords, getChangeRecord, buildChangeInsights } from './change-intelligence.js';
@@ -14,6 +14,7 @@ import { associateSessionChanges } from './session-change-association.js';
 import { looksSensitive } from './sensitive.js';
 import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
 import { safeEnsureMemoryDir } from './storage.js';
+import { SESSION_OUTCOMES, FINDING_STATES, validateSessionRecordContract, validateFindingRegistryContract } from './durable-contracts.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -27,8 +28,6 @@ const MAX_TEXT_LENGTH = 500;
 const LOCK_STALE_MS = 120_000;
 const LOCK_RETRIES = 120;
 const LOCK_RETRY_MS = 20;
-const SESSION_OUTCOMES = new Set(['succeeded', 'partial', 'blocked', 'investigated', 'abandoned', 'unknown']);
-const FINDING_STATES = new Set(['open', 'resolved', 'accepted', 'dismissed', 'superseded']);
 const SEVERITY_ORDER = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
 const PRIORITY_ORDER = { P0: 4, P1: 3, P2: 2, P3: 1 };
 const AUTO_RESOLVABLE = new Set(['project-intelligence-missing', 'graph-drift', 'stale-memory', 'memory-review', 'active-change', 'invalid-change-records']);
@@ -115,16 +114,8 @@ async function safeReadJson(target, validator) {
   finally { await handle?.close().catch(() => {}); }
 }
 
-export function validateSessionRecord(record) {
-  if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
-  if (record.schemaVersion !== 1 || !record.id || !Number.isInteger(record.revision) || record.revision < 1) return false;
-  if (!['active', 'closed'].includes(record.status) || typeof record.goal !== 'string' || !record.goal.trim()) return false;
-  if (!validIso(record.createdAt) || !validIso(record.updatedAt) || !record.start || typeof record.start !== 'object') return false;
-  if (!Array.isArray(record.observations)) return false;
-  if (record.status === 'active') return record.close === null;
-  return Boolean(record.close && validIso(record.close.closedAt) && SESSION_OUTCOMES.has(record.close.outcome) && Array.isArray(record.close.findings) && Array.isArray(record.close.recommendations));
-}
-function validateFindingRegistry(value) { return Boolean(value && typeof value === 'object' && value.schemaVersion === 1 && Array.isArray(value.findings)); }
+export function validateSessionRecord(record) { return validateSessionRecordContract(record).valid; }
+function validateFindingRegistry(value) { return validateFindingRegistryContract(value).valid; }
 async function writeSession(root, record) {
   if (!validateSessionRecord(record)) throw new Error('Invalid session record.');
   const lockTarget = sessionLockPath(root, record.id);
@@ -166,6 +157,8 @@ async function readFindingsRegistry(root) {
   return await safeReadJson(findingsPath(root), validateFindingRegistry) || { schemaVersion: 1, updatedAt: nowIso(), findings: [] };
 }
 async function writeFindingsRegistry(root, registry) {
+  const validation = validateFindingRegistryContract(registry);
+  if (!validation.valid) throw new Error(`Invalid findings registry: ${validation.errors.join(' ')}`);
   const lockTarget = findingsLockPath(root);
   const lock = await acquireLock(lockTarget);
   try { registry.updatedAt = nowIso(); await atomicJsonWrite(findingsPath(root), registry); }
@@ -229,9 +222,10 @@ async function runGit(root, args) {
   } catch { return ''; }
 }
 async function committedPathsSince(root, startHead, currentHead) {
-  if (!/^[0-9a-f]{40}$/i.test(startHead || '') || !/^[0-9a-f]{40}$/i.test(currentHead || '') || startHead === currentHead) return [];
+  const continuity = await inspectGitHistoryContinuity(root, startHead, currentHead);
+  if (!continuity.safeForCommittedAttribution || continuity.state === 'same-head') return { paths: [], continuity };
   const output = await runGit(root, ['diff', '--name-only', '--relative', startHead, currentHead, '--']);
-  return bounded(unique(output.split(/\r?\n/).filter(Boolean).map(slash).filter((item) => !isCmiInternalPath(item))), MAX_PATHS);
+  return { paths: bounded(unique(output.split(/\r?\n/).filter(Boolean).map(slash).filter((item) => !isCmiInternalPath(item))), MAX_PATHS), continuity };
 }
 function sessionRepositoryBaseline(repository) {
   if (!repository?.available) return repository;
@@ -335,7 +329,7 @@ function makeFinding(category, severity, title, detail, options = {}) {
 function verificationNames(records) {
   return new Set(records.flatMap((record) => record.completion?.verifications || []).map((item) => String(item.name || '').trim().toLowerCase()));
 }
-function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, staleReport }) {
+function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, staleReport, gitContinuity }) {
   const findings = [];
   const graph = current.project.graph;
   if (!current.project.initialized || !graph) {
@@ -349,6 +343,7 @@ function detectFindings({ record, current, relatedActive, concurrentActive, comp
   if ((current.invalidChangeRecords || 0) > 0) findings.push(makeFinding('invalid-change-records', 'high', 'Invalid durable change records were ignored', `${current.invalidChangeRecords} change record(s) failed runtime validation and were excluded from evidence.`, { target: 'change-history', evidence: ['runtime-validation'] }));
   const preexisting = baselinePaths(record.start.repository);
   if (preexisting.length) findings.push(makeFinding('preexisting-worktree', 'medium', 'Session attribution started from a dirty worktree', `${preexisting.length} project path(s) were already dirty when the session started. CMI cannot attribute later edits to those same paths from path status alone.`, { target: record.id, evidence: ['session-start-git-baseline'], relatedFiles: preexisting }));
+  if (['rewritten', 'unrelated'].includes(gitContinuity?.state)) findings.push(makeFinding('git-history-rewrite', 'medium', 'Git history changed across the session baseline', gitContinuity.reason || 'The session-start HEAD is no longer an ancestor of current HEAD, so automatic committed-path attribution is ambiguous.', { target: record.id, evidence: [`git-continuity:${gitContinuity.state}`], confidence: 'high' }));
 
   for (const relation of relatedActive) {
     const active = relation.change;
@@ -389,7 +384,7 @@ function priorityFor(finding) {
   if (finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed') return 'P3';
   if (finding.category === 'verification-failed' || finding.category === 'session-blocker') return 'P0';
   if (['verification-missing', 'active-change', 'project-intelligence-missing', 'graph-drift', 'uncaptured-session-change', 'invalid-change-records'].includes(finding.category)) return 'P1';
-  if (['verification-incomplete', 'prediction-gap', 'unexpected-impact', 'stale-memory', 'preexisting-worktree'].includes(finding.category)) return 'P2';
+  if (['verification-incomplete', 'prediction-gap', 'unexpected-impact', 'stale-memory', 'preexisting-worktree', 'git-history-rewrite'].includes(finding.category)) return 'P2';
   return 'P3';
 }
 function actionFor(finding) {
@@ -405,6 +400,7 @@ function actionFor(finding) {
     'stale-memory': 'Run `cmi stale` and review stale entries; refresh, deprecate, reject, or supersede them based on current evidence.',
     'memory-review': 'Review untracked/review-state memory before relying on it as durable project knowledge.',
     'preexisting-worktree': 'Separate, stash, commit, or explicitly annotate pre-existing dirty paths before relying on session-level change attribution.',
+    'git-history-rewrite': 'Review session scope manually after rebase/reset/history rewrite; use explicit observed paths or a new clean session baseline instead of start-to-current Git diff attribution.',
     'prediction-gap': `Review the missed changed paths (${finding.relatedFiles?.join(', ') || 'see evidence'}) and decide whether future scope/boundary expectations should be updated.`,
     'unexpected-impact': 'Investigate the unexpected impact and add a reviewed lesson only if the evidence supports it.',
     'uncaptured-session-change': 'Create/complete a CMI change record for the session scope so expected-vs-actual and verification evidence are not lost.',
@@ -470,6 +466,7 @@ function buildGuardrails(findings, recommendations) {
   if (categories.has('verification-missing') || categories.has('verification-incomplete')) items.push({ id: 'do-not-claim-complete', rule: 'Do not represent the affected related change as fully validated while verification evidence is missing, skipped, or unknown.', reason: 'Completion claims exceed recorded verification evidence.' });
   if (categories.has('graph-drift') || categories.has('project-intelligence-missing')) items.push({ id: 'do-not-trust-stale-graph', rule: 'Do not rely on graph/impact output as current evidence until project intelligence is refreshed.', reason: 'Graph evidence is unavailable or stale.' });
   if (categories.has('stale-memory')) items.push({ id: 'do-not-promote-stale-memory', rule: 'Do not treat stale reviewed memory as current project truth without source review.', reason: 'Source-linked knowledge no longer matches current evidence.' });
+  if (categories.has('git-history-rewrite')) items.push({ id: 'do-not-overattribute-rewritten-history', rule: 'Do not attribute commits from a rewritten start-to-current Git diff to this session automatically.', reason: 'The session-start HEAD is not an ancestor of current HEAD.' });
   if (findings.some((item) => item.category === 'active-change' && item.sessionRelevance === 'related')) items.push({ id: 'do-not-orphan-active-change', rule: 'Do not silently abandon a related active Change Intelligence record when switching tasks.', reason: 'Expected-vs-actual and verification history would become incomplete.' });
   if (findings.some((item) => item.category === 'active-change' && item.sessionRelevance === 'concurrent-unattributed')) items.push({ id: 'do-not-hijack-concurrent-change', rule: 'Do not let a concurrent/unattributed change record determine this session next action unless new evidence links it.', reason: 'CMI lacks sufficient association evidence.' });
   if (categories.has('preexisting-worktree')) items.push({ id: 'do-not-overattribute-dirty-worktree', rule: 'Do not attribute all dirty paths to this session when the session started from a dirty worktree.', reason: 'Path status alone cannot separate pre-existing edits from later edits to the same path.' });
@@ -559,7 +556,7 @@ function relationSummary(item) {
 }
 function buildHandoff(record, current, scopePaths, association, completedDetails, openFindings, recommendations, guardrails, knowledgeCandidates, planningSignals, outcome) {
   const observations = record.observations;
-  const fallback = { priority: 'P3', action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.', reason: 'CMI found no unresolved evidence requiring a more specific action.', evidenceType: 'observed', evidence: [], confidence: 'high' };
+  const fallback = { id: 'no-follow-up', priority: 'P3', action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.', reason: 'CMI found no unresolved evidence requiring a more specific action.', evidenceType: 'observed', evidence: [], confidence: 'high', relatedFindingIds: [] };
   return {
     schemaVersion: 1, sessionId: record.id, generatedAt: nowIso(), objective: record.goal, outcome,
     repository: current.repository?.available ? {
@@ -593,7 +590,8 @@ async function buildAssessment(root, record) {
   const startPaths = new Set(baselinePaths(record.start.repository));
   const currentPaths = baselinePaths(current.repository);
   const newDirtyPaths = currentPaths.filter((item) => !startPaths.has(item));
-  const committedPaths = await committedPathsSince(root, record.start.repository?.fullHead, current.repository?.fullHead);
+  const committedEvidence = await committedPathsSince(root, record.start.repository?.fullHead, current.repository?.fullHead);
+  const committedPaths = committedEvidence.paths;
   const observedPaths = record.observations.flatMap((item) => item.files || []);
   const scopePaths = bounded(unique([...newDirtyPaths, ...committedPaths, ...observedPaths]), MAX_PATHS);
   const association = associateSessionChanges({
@@ -606,7 +604,7 @@ async function buildAssessment(root, record) {
   const completedDetails = association.relatedCompleted.map((item) => item.change);
   const detected = detectFindings({
     record, current, relatedActive: association.relatedActive, concurrentActive: association.concurrentActive,
-    completedDetails, scopePaths, staleReport,
+    completedDetails, scopePaths, staleReport, gitContinuity: committedEvidence.continuity,
   });
   const findings = mergeLiveFindings(existingOpen, detected);
   const planningSignals = intelligence.planning?.signals || [];
@@ -616,7 +614,7 @@ async function buildAssessment(root, record) {
     schemaVersion: 1, generatedAt: nowIso(),
     session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt },
     current,
-    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths] },
+    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths], gitContinuity: committedEvidence.continuity },
     association: {
       relatedActive: association.relatedActive.map(relationSummary),
       concurrentActive: association.concurrentActive.map(relationSummary),

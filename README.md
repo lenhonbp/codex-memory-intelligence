@@ -25,11 +25,11 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.8.1` is the current source release line. It hardens the v0.8 intelligence layer with complete-vs-truncated graph health, stale-impact fail-closed behavior, project-local durable-storage guards, owner-tagged lease locking, broader best-effort secret detection, and a strict separation between source-fingerprint refresh and semantic review. It retains the Behavioral Change Intelligence and Session Continuation capabilities introduced in v0.8.0. The npm badge above is the authoritative indicator of the version currently published to the registry.
+`v0.8.1` is the current published release line. It hardens the v0.8 intelligence layer with complete-vs-truncated graph health, stale-impact fail-closed behavior, project-local durable-storage guards, owner-tagged lease locking, broader best-effort secret detection, and a strict separation between source-fingerprint refresh and semantic review. The current development line adds v0.9 Evidence Integrity: unified evidence health, Git-history continuity guardrails, and runtime/schema contract parity. The npm badge above remains the authoritative indicator of the version currently published to the registry.
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
-See [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
+See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
 Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Historical co-change is correlation, not causality. CMI never treats an observed changed path as proof of complete runtime impact, never treats a recommendation as business truth, and never turns learning candidates into durable project truth automatically.
 

@@ -89,6 +89,21 @@ These items require real evidence from multiple repositories or longer-lived his
 - [ ] Measure whether session handoffs reduce context reconstruction and whether next-action intelligence reduces user follow-up questions.
 - [ ] Add retention/export/import policy only after real repositories demonstrate a need; do not introduce a database or cloud service by default.
 
+## v0.9 — Evidence Integrity
+
+The v0.9 line unifies trust state across evidence classes and closes repository-internal contract/attribution gaps that can be verified without pretending synthetic fixtures are real-world calibration.
+
+- [x] Add one Evidence Health Model with explicit healthy/degraded/blocked state, per-domain usability, capability status, reasons, and recovery actions.
+- [x] Expose shared evidence health through `status`, `doctor`, CLI status text, and context packs.
+- [x] Detect Git ancestry continuity before using start-to-current committed-path diffs for change/session attribution.
+- [x] Fail closed after rebase/reset/unrelated-history transitions and preserve explicit Git-continuity evidence in change/session records.
+- [x] Add runtime durable contracts for memory metadata, nested session evidence, findings, recommendations, guardrails, handoffs, and the findings registry.
+- [x] Bring memory lifecycle/source-refresh JSON Schema in line with current runtime semantics and add a persistent findings-registry Schema.
+- [x] Make critical schema/runtime version and enum drift fail repository quality checks.
+- [x] Add adversarial regression coverage for rewritten Git history, invalid nested session evidence, invalid memory lifecycle metadata, and evidence-health state transitions.
+
+The existing real-repository field-validation items remain open until enough independent repository/task evidence exists. v0.9 does not convert those empirical questions into synthetic completion claims.
+
 ## Precision and interoperability track
 
 - [ ] Optional compiler/language-server adapters behind capability detection.

@@ -206,7 +206,7 @@ try {
   else if (cmd === 'snapshot') console.log(`Created ${await snapshot(process.cwd(), positional().join(' ') || 'snapshot')}`);
   else if (cmd === 'status') {
     const result = await status(commandRoot());
-    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Memory ${result.healthy ? 'healthy' : 'needs attention'} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.inactive || 0} inactive · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
+    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Evidence ${result.evidenceHealth?.state || (result.healthy ? 'healthy' : 'needs-attention')} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.inactive || 0} inactive · graph ${result.evidenceHealth?.capabilities?.graphContext || 'unknown'} · impact ${result.evidenceHealth?.capabilities?.impactAnalysis || 'unknown'} · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
   }
   else if (cmd === 'doctor') {
     const result = await doctor(commandRoot());
