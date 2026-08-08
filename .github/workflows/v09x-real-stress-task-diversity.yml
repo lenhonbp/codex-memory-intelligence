@@ -1,0 +1,280 @@
+name: Validate v0.9.x Real Stress and Task Diversity
+
+on:
+  push:
+    paths:
+      - '.github/workflows/v09x-real-stress-task-diversity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  field:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact CMI candidate
+        uses: actions/checkout@v6
+        with:
+          ref: 3eb6e42848c98e1982c4fdd9cb821495834fcd31
+          fetch-depth: 20
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify exact candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "3eb6e42848c98e1982c4fdd9cb821495834fcd31"
+          npm run verify
+          npm run package:smoke
+      - name: Run observational task-diversity and controlled-stress evaluations
+        shell: bash
+        run: |
+          set -euo pipefail
+          CMI_ROOT="$GITHUB_WORKSPACE"
+          OUT="$RUNNER_TEMP/v09x-field"
+          mkdir -p "$OUT/records"
+
+          cleanup_target() {
+            local target="$1"
+            rm -rf "$target/.codex-memory"
+            git -C "$target" reset --hard HEAD >/dev/null 2>&1 || true
+            git -C "$target" clean -fd >/dev/null 2>&1 || true
+          }
+
+          clone_repo() {
+            local name="$1" url="$2" depth="${3:-1}"
+            local target="$RUNNER_TEMP/$name"
+            rm -rf "$target"
+            git clone --depth "$depth" "$url" "$target" >/dev/null 2>&1
+            printf '%s' "$target"
+          }
+
+          capture_stdout() {
+            local target="$1" file="$2"; shift 2
+            (cd "$target" && node "$CMI_ROOT/src/cli-entry.js" evaluate capture "$@" --json) > "$OUT/records/$file.json"
+          }
+
+          # OBSERVATIONAL / REVIEW — Express
+          EXPRESS=$(clone_repo obs-express https://github.com/expressjs/express.git)
+          (
+            cd "$EXPRESS"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/obs-express-scan.json"
+            node "$CMI_ROOT/src/cli-entry.js" boundaries --json > "$OUT/obs-express-boundaries.json"
+            node "$CMI_ROOT/src/cli-entry.js" prepare "review middleware routing boundaries" --json > "$OUT/obs-express-prepare.json"
+            node "$CMI_ROOT/src/cli-entry.js" session start "review middleware routing boundaries" --json > "$OUT/obs-express-session.json"
+            node "$CMI_ROOT/src/cli-entry.js" session close latest --outcome investigated --accomplished "Reviewed bounded architecture and change-risk evidence." --json > "$OUT/obs-express-close.json"
+          )
+          capture_stdout "$EXPRESS" obs-review --source-kind external-real --protocol observational --repository-class library --task-kind review
+          rm -rf "$EXPRESS/.codex-memory"
+          test -z "$(git -C "$EXPRESS" status --porcelain)"
+
+          # OBSERVATIONAL / RESEARCH — Click
+          CLICK=$(clone_repo obs-click https://github.com/pallets/click.git)
+          (
+            cd "$CLICK"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/obs-click-scan.json"
+            node "$CMI_ROOT/src/cli-entry.js" context "command parsing architecture" --json > "$OUT/obs-click-context.json"
+            node "$CMI_ROOT/src/cli-entry.js" session start "research command parsing architecture" --json > "$OUT/obs-click-session.json"
+            node "$CMI_ROOT/src/cli-entry.js" session close latest --outcome investigated --accomplished "Researched bounded project context without editing product files." --json > "$OUT/obs-click-close.json"
+          )
+          capture_stdout "$CLICK" obs-research --source-kind external-real --protocol observational --repository-class cli-tool --task-kind research
+          rm -rf "$CLICK/.codex-memory"
+          test -z "$(git -C "$CLICK" status --porcelain)"
+
+          # OBSERVATIONAL / VERIFICATION — Cobra
+          COBRA=$(clone_repo obs-cobra https://github.com/spf13/cobra.git 10)
+          (
+            cd "$COBRA"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/obs-cobra-scan.json"
+            node "$CMI_ROOT/src/cli-entry.js" status --json > "$OUT/obs-cobra-status.json"
+            node "$CMI_ROOT/src/cli-entry.js" doctor --json > "$OUT/obs-cobra-doctor.json"
+            node "$CMI_ROOT/src/cli-entry.js" session start "verify repository intelligence health" --json > "$OUT/obs-cobra-session.json"
+            node "$CMI_ROOT/src/cli-entry.js" session close latest --outcome investigated --accomplished "Verified current CMI repository-health evidence." --json > "$OUT/obs-cobra-close.json"
+          )
+          capture_stdout "$COBRA" obs-verification --source-kind external-real --protocol observational --repository-class library --task-kind verification
+          rm -rf "$COBRA/.codex-memory"
+          test -z "$(git -C "$COBRA" status --porcelain)"
+
+          # STRESS 1 — rename-after-scan on Express.
+          RENAME=$(clone_repo stress-rename https://github.com/expressjs/express.git)
+          (
+            cd "$RENAME"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/rename-scan.json"
+            OLD=$(git ls-files '*.js' | head -n 1)
+            test -n "$OLD"
+            DIR=$(dirname "$OLD"); BASE=$(basename "$OLD" .js); NEW="$DIR/${BASE}.cmi-renamed.js"
+            git mv "$OLD" "$NEW"
+            node "$CMI_ROOT/src/cli-entry.js" status --json > "$OUT/rename-status.json"
+            node --input-type=module - "$OUT/rename-status.json" <<'NODE'
+          import fs from 'node:fs';
+          const s=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (s.graphHealth.current !== false) throw new Error('rename did not stale current graph');
+          if (s.evidenceHealth.state !== 'blocked') throw new Error(`rename evidence state=${s.evidenceHealth.state}, expected blocked`);
+          NODE
+            if node "$CMI_ROOT/src/cli-entry.js" impact "$OLD" --json > "$OUT/rename-impact.json" 2> "$OUT/rename-impact.err"; then
+              echo 'impact unexpectedly trusted stale graph after rename' >&2; exit 1
+            fi
+            grep -Eqi 'stale|scan|current' "$OUT/rename-impact.err"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/rename-rescan.json"
+            node "$CMI_ROOT/src/cli-entry.js" status --json > "$OUT/rename-refreshed.json"
+            node --input-type=module - "$OUT/rename-refreshed.json" <<'NODE'
+          import fs from 'node:fs';
+          const s=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (s.graphHealth.current !== true) throw new Error('rescan did not restore current graph');
+          NODE
+          )
+          capture_stdout "$RENAME" stress-rename --source-kind external-real --protocol controlled-stress --repository-class library --task-kind verification --session none --stress-scenario rename-after-scan --stress-expected 3 --stress-passed 3 --stress-failed 0
+          git -C "$RENAME" reset --hard HEAD >/dev/null
+          rm -rf "$RENAME/.codex-memory"
+          test -z "$(git -C "$RENAME" status --porcelain)"
+
+          # STRESS 2 — dirty worktree before session on Click.
+          DIRTY=$(clone_repo stress-dirty https://github.com/pallets/click.git)
+          (
+            cd "$DIRTY"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/dirty-scan.json"
+            FILE=$(git ls-files '*.py' | head -n 1); test -n "$FILE"
+            printf '\n# cmi controlled dirty-worktree stress\n' >> "$FILE"
+            node "$CMI_ROOT/src/cli-entry.js" session start "inspect dirty worktree attribution" --json > "$OUT/dirty-session.json"
+            node "$CMI_ROOT/src/cli-entry.js" session status latest --json > "$OUT/dirty-assess.json"
+            node --input-type=module - "$OUT/dirty-assess.json" <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (!a.findings.some(x=>x.category==='preexisting-worktree')) throw new Error('preexisting-worktree finding missing');
+          if (!a.guardrails.some(x=>x.id==='do-not-overattribute-dirty-worktree')) throw new Error('dirty-worktree guardrail missing');
+          NODE
+            node "$CMI_ROOT/src/cli-entry.js" session close latest --outcome investigated --json > "$OUT/dirty-close.json"
+          )
+          capture_stdout "$DIRTY" stress-dirty --source-kind external-real --protocol controlled-stress --repository-class cli-tool --task-kind verification --stress-scenario dirty-worktree --stress-expected 2 --stress-passed 2 --stress-failed 0
+          git -C "$DIRTY" reset --hard HEAD >/dev/null
+          rm -rf "$DIRTY/.codex-memory"
+          test -z "$(git -C "$DIRTY" status --porcelain)"
+
+          # STRESS 3 — history rewrite on Cobra.
+          REWRITE=$(clone_repo stress-rewrite https://github.com/spf13/cobra.git 20)
+          (
+            cd "$REWRITE"
+            git config user.email 'cmi-field@example.invalid'
+            git config user.name 'CMI Field Validation'
+            BASE=$(git rev-parse HEAD)
+            printf 'package cobra\n\nconst cmiOldLine = 1\n' > cmi_stress_old.go
+            git add cmi_stress_old.go && git commit -m 'cmi stress old line' >/dev/null
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/rewrite-scan.json"
+            node "$CMI_ROOT/src/cli-entry.js" session start "inspect history rewrite attribution" --json > "$OUT/rewrite-session.json"
+            git reset --hard "$BASE" >/dev/null
+            printf 'package cobra\n\nconst cmiNewLine = 1\n' > cmi_stress_new.go
+            git add cmi_stress_new.go && git commit -m 'cmi stress new line' >/dev/null
+            node "$CMI_ROOT/src/cli-entry.js" session status latest --json > "$OUT/rewrite-assess.json"
+            node --input-type=module - "$OUT/rewrite-assess.json" <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (a.scope.gitContinuity.state !== 'rewritten') throw new Error(`continuity=${a.scope.gitContinuity.state}`);
+          if (a.scope.committedPaths.length !== 0) throw new Error('rewritten commits were attributed');
+          if (!a.findings.some(x=>x.category==='git-history-rewrite')) throw new Error('rewrite finding missing');
+          if (!a.guardrails.some(x=>x.id==='do-not-overattribute-rewritten-history')) throw new Error('rewrite guardrail missing');
+          NODE
+          )
+          capture_stdout "$REWRITE" stress-rewrite --source-kind external-real --protocol controlled-stress --repository-class library --task-kind verification --stress-scenario history-rewrite --stress-expected 4 --stress-passed 4 --stress-failed 0
+          git -C "$REWRITE" reset --hard "$(git -C "$REWRITE" rev-list --max-parents=0 HEAD | tail -n 1)" >/dev/null || true
+          rm -rf "$REWRITE/.codex-memory"
+
+          # STRESS 4 — filesystem clock skew / metadata drift on Click.
+          CLOCK=$(clone_repo stress-clock https://github.com/pallets/click.git)
+          (
+            cd "$CLOCK"
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/clock-scan.json"
+            FILE=$(git ls-files '*.py' | head -n 1); test -n "$FILE"
+            python3 - "$FILE" <<'PY'
+          import os,sys,time
+          future=time.time()+86400*365
+          os.utime(sys.argv[1],(future,future))
+          PY
+            test -z "$(git status --porcelain)"
+            node "$CMI_ROOT/src/cli-entry.js" status --json > "$OUT/clock-status.json"
+            node --input-type=module - "$OUT/clock-status.json" <<'NODE'
+          import fs from 'node:fs';
+          const s=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (s.graphHealth.current !== false) throw new Error('clock skew did not surface graph metadata drift');
+          if (s.evidenceHealth.state !== 'blocked') throw new Error(`clock-skew evidence state=${s.evidenceHealth.state}`);
+          NODE
+            if node "$CMI_ROOT/src/cli-entry.js" impact "$FILE" --json > "$OUT/clock-impact.json" 2> "$OUT/clock-impact.err"; then
+              echo 'impact unexpectedly trusted metadata-stale graph' >&2; exit 1
+            fi
+            node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/clock-rescan.json"
+            node "$CMI_ROOT/src/cli-entry.js" status --json > "$OUT/clock-refreshed.json"
+            node --input-type=module - "$OUT/clock-refreshed.json" <<'NODE'
+          import fs from 'node:fs';
+          const s=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if (s.graphHealth.current !== true) throw new Error('rescan did not recover after clock skew');
+          NODE
+          )
+          capture_stdout "$CLOCK" stress-clock --source-kind external-real --protocol controlled-stress --repository-class cli-tool --task-kind verification --session none --stress-scenario clock-skew --stress-expected 4 --stress-passed 4 --stress-failed 0
+          rm -rf "$CLOCK/.codex-memory"
+          test -z "$(git -C "$CLOCK" status --porcelain)"
+
+          # STRESS 5 — genuinely large public monorepo.
+          LARGE=$(clone_repo stress-large https://github.com/pnpm/pnpm.git)
+          (
+            cd "$LARGE"
+            timeout 180 node "$CMI_ROOT/src/cli-entry.js" scan --json > "$OUT/large-scan.json"
+            node "$CMI_ROOT/src/cli-entry.js" status --json > "$OUT/large-status.json"
+            node --input-type=module - "$OUT/large-scan.json" "$OUT/large-status.json" <<'NODE'
+          import fs from 'node:fs';
+          const scan=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          const s=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));
+          if ((s.workspaces?.count || 0) < 2) throw new Error('large monorepo did not expose multiple workspaces');
+          if (!s.graphHealth?.available || s.graphHealth.current !== true) throw new Error('large monorepo graph unavailable/current=false immediately after scan');
+          if (s.graphHealth.truncated && (s.healthy !== false || s.evidenceHealth.state !== 'degraded')) throw new Error('truncated large graph reported false healthy semantics');
+          if (!s.graphHealth.truncated && !['healthy','degraded'].includes(s.evidenceHealth.state)) throw new Error(`unexpected large-repo evidence state ${s.evidenceHealth.state}`);
+          if (!Number.isFinite(scan.durationMs) || scan.durationMs <= 0) throw new Error('scan duration not reported');
+          NODE
+          )
+          capture_stdout "$LARGE" stress-large --source-kind external-real --protocol controlled-stress --repository-class monorepo --task-kind verification --session none --stress-scenario large-monorepo --stress-expected 4 --stress-passed 4 --stress-failed 0
+          rm -rf "$LARGE/.codex-memory"
+          test -z "$(git -C "$LARGE" status --porcelain)"
+
+          # Aggregate only the anonymized records produced by this exact candidate.
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'; import path from 'node:path';
+          import { buildEvaluationReport, validateEvaluationRecord } from './src/evaluation.js';
+          const out=path.join(process.env.RUNNER_TEMP,'v09x-field');
+          const recordsDir=path.join(out,'records');
+          const names=fs.readdirSync(recordsDir).filter(x=>x.endsWith('.json')).sort();
+          if (names.length!==8) throw new Error(`expected 8 records, got ${names.length}`);
+          const corpus=path.join(out,'corpus','.codex-memory','evaluations'); fs.mkdirSync(corpus,{recursive:true});
+          const fingerprints=new Set();
+          const forbidden=/expressjs|pallets|spf13|pnpm\/pnpm|github\.com|\/home\/runner|middleware routing boundaries|command parsing architecture|repository intelligence health/i;
+          for (const name of names) {
+            const text=fs.readFileSync(path.join(recordsDir,name),'utf8');
+            if (forbidden.test(text)) throw new Error(`${name} leaked repository/session identity`);
+            const record=JSON.parse(text);
+            if (!validateEvaluationRecord(record)) throw new Error(`${name}: invalid runtime record`);
+            if (record.subject.sourceRevision!=='3eb6e42848c98e1982c4fdd9cb821495834fcd31') throw new Error(`${name}: wrong candidate SHA`);
+            if (record.source.kind!=='external-real') throw new Error(`${name}: wrong source kind`);
+            fingerprints.add(record.repository.fingerprint);
+            fs.copyFileSync(path.join(recordsDir,name),path.join(corpus,`${record.id}.json`));
+          }
+          const report=await buildEvaluationReport(path.join(out,'corpus'));
+          fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2)+'\n');
+          if (report.corpus.externalReal.observationalRecords!==3) throw new Error('observational count drift');
+          if (report.coverage.state!=='external-multi-repository-multi-context') throw new Error(`coverage=${report.coverage.state}`);
+          if (!report.coverage.hasMultipleExternalTaskKinds) throw new Error('task diversity not recognized');
+          if (Object.keys(report.corpus.externalReal.observationalTaskKinds).length!==3) throw new Error('expected 3 observational task kinds');
+          if (report.controlledStress.records!==5 || Object.keys(report.controlledStress.scenarios).length!==5) throw new Error('stress scenario coverage drift');
+          if (report.controlledStress.passRate!==1 || report.controlledStress.invariantPassRate!==1) throw new Error('stress invariants did not all pass');
+          if (report.controlledStress.expectedInvariantCount!==17 || report.controlledStress.passedInvariantCount!==17 || report.controlledStress.failedInvariantCount!==0) throw new Error('stress invariant aggregate drift');
+          if (report.reviewedUsefulness.reviewedExternalRecords!==0) throw new Error('unreviewed field evidence became usefulness evidence');
+          if (fingerprints.size < 4) throw new Error(`expected at least 4 repository fingerprints, got ${fingerprints.size}`);
+          NODE
+      - name: Show bounded aggregate
+        run: node -e "const r=require(process.env.RUNNER_TEMP+'/v09x-field/report.json'); console.log(JSON.stringify({coverage:r.coverage,external:r.corpus.externalReal,stress:r.controlledStress,usefulness:r.reviewedUsefulness},null,2))"
+      - name: Upload anonymized evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v09x-stress-task-evidence-3eb6e428
+          path: |
+            ${{ runner.temp }}/v09x-field/records/*.json
+            ${{ runner.temp }}/v09x-field/report.json
+          if-no-files-found: error
+          retention-days: 30
