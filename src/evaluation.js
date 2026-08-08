@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -19,14 +21,22 @@ import {
   EVALUATION_REVIEW_OUTCOMES,
   EVALUATION_REVIEW_PROVENANCE,
   EVALUATION_UTILITY_RATINGS,
+  EVALUATION_RECONSTRUCTION_RATINGS,
+  EVALUATION_FOLLOW_UP_OUTCOMES,
+  EVALUATION_VERIFICATION_CHOICE_OUTCOMES,
+  EVALUATION_HISTORY_RATINGS,
+  EVALUATION_BUNDLE_SCHEMA_VERSION,
+  EVALUATION_BUNDLE_KIND,
   EVALUATION_STRESS_SCENARIOS,
   validateEvaluationRecordContract,
+  validateEvaluationBundleContract,
 } from './evaluation-contracts.js';
 
 const execFileAsync = promisify(execFile);
 const EVALUATION_DIR = 'evaluations';
 const MAX_RECORDS = 1000;
 const MAX_RECORD_BYTES = 1_000_000;
+const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
 const CMI_SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function nowIso() { return new Date().toISOString(); }
@@ -80,13 +90,40 @@ function normalizeReview(options) {
   const missedFindings = normalizeOptionalCount(options.missedFindings, 'Missed finding count');
   const nextActionRating = normalizeEnum(options.nextActionRating, EVALUATION_UTILITY_RATINGS, 'Next-action rating', 'unknown');
   const handoffRating = normalizeEnum(options.handoffRating, EVALUATION_UTILITY_RATINGS, 'Handoff rating', 'unknown');
-  const carriesJudgment = falsePositiveFindings !== null || missedFindings !== null || nextActionRating !== 'unknown' || handoffRating !== 'unknown';
+  const reconstructionRating = normalizeEnum(options.reconstructionRating, EVALUATION_RECONSTRUCTION_RATINGS, 'Reconstruction rating', 'unknown');
+  const followUpOutcome = normalizeEnum(options.followUpOutcome, EVALUATION_FOLLOW_UP_OUTCOMES, 'Follow-up outcome', 'unknown');
+  const verificationChoiceOutcome = normalizeEnum(options.verificationChoiceOutcome, EVALUATION_VERIFICATION_CHOICE_OUTCOMES, 'Verification-choice outcome', 'unknown');
+  const historyRating = normalizeEnum(options.historyRating, EVALUATION_HISTORY_RATINGS, 'History rating', 'unknown');
+  const carriesJudgment = falsePositiveFindings !== null || missedFindings !== null || nextActionRating !== 'unknown' || handoffRating !== 'unknown'
+    || reconstructionRating !== 'unknown' || followUpOutcome !== 'unknown' || verificationChoiceOutcome !== 'unknown' || historyRating !== 'unknown';
   if (outcome === 'unreviewed') {
-    if (provenance !== 'unreviewed' || carriesJudgment) throw new Error('Unreviewed evaluation cannot assert reviewer provenance, finding-error counts, or usefulness ratings.');
-    return { provenance: 'unreviewed', reviewedAt: null, outcome, falsePositiveFindings: null, missedFindings: null, nextActionRating: 'unknown', handoffRating: 'unknown' };
+    if (provenance !== 'unreviewed' || carriesJudgment) throw new Error('Unreviewed evaluation cannot assert reviewer provenance, finding-error counts, usefulness ratings, or longitudinal outcomes.');
+    return { provenance: 'unreviewed', reviewedAt: null, outcome, falsePositiveFindings: null, missedFindings: null, nextActionRating: 'unknown', handoffRating: 'unknown', reconstructionRating: 'unknown', followUpOutcome: 'unknown', verificationChoiceOutcome: 'unknown', historyRating: 'unknown' };
   }
   if (!['human', 'agent'].includes(provenance)) throw new Error('Reviewed evaluation requires --review-provenance human or agent.');
-  return { provenance, reviewedAt: nowIso(), outcome, falsePositiveFindings, missedFindings, nextActionRating, handoffRating };
+  return { provenance, reviewedAt: nowIso(), outcome, falsePositiveFindings, missedFindings, nextActionRating, handoffRating, reconstructionRating, followUpOutcome, verificationChoiceOutcome, historyRating };
+}
+function reviewValue(review, key) { return review?.[key] ?? 'unknown'; }
+function assertReviewApplicability(record, review) {
+  if (review.outcome === 'unreviewed') return;
+  const continuation = record.measurements.continuation;
+  const history = record.measurements.changeHistory;
+  const longitudinal = [review.reconstructionRating, review.followUpOutcome, review.verificationChoiceOutcome, review.historyRating];
+  if (record.protocol.kind === 'controlled-stress' && longitudinal.some((value) => !['unknown', 'not-applicable'].includes(value))) {
+    throw new Error('Controlled-stress review cannot assert ordinary longitudinal usefulness outcomes.');
+  }
+  if (!['unknown', 'not-applicable'].includes(review.reconstructionRating) && (!continuation.sessionPresent || !continuation.handoffPresent)) {
+    throw new Error('Reconstruction rating requires a captured session handoff.');
+  }
+  if (!['unknown', 'not-applicable'].includes(review.followUpOutcome) && (!continuation.sessionPresent || !continuation.nextActionPresent)) {
+    throw new Error('Follow-up outcome requires a captured session next action.');
+  }
+  if (!['unknown', 'not-applicable'].includes(review.historyRating) && history.completedRecords < 1) {
+    throw new Error('History rating requires at least one completed change-history record in the captured evidence.');
+  }
+  if (!['unknown', 'not-applicable'].includes(review.verificationChoiceOutcome) && history.completedRecords < 1) {
+    throw new Error('Verification-choice outcome requires at least one completed change-history record in the captured evidence.');
+  }
 }
 function normalizeStress(options, protocolKind) {
   const supplied = [options.stressScenario, options.stressExpected, options.stressPassed, options.stressFailed].some((value) => value !== undefined && value !== null && value !== '');
@@ -189,6 +226,7 @@ export async function captureEvaluation(root, options = {}) {
     review,
     policy: 'Evaluation records are anonymized descriptive evidence tied to a CMI version/source revision when available. external-real is the only independent-repository class; observational and controlled-stress protocols remain distinguishable; human and agent reviews remain separate. CMI does not infer production readiness, causal correctness, or usefulness from an unreviewed or undersized corpus.',
   };
+  if (review.outcome !== 'unreviewed') assertReviewApplicability(record, review);
   const validation = validateEvaluationRecordContract(record);
   if (!validation.valid) throw new Error(`Invalid evaluation record: ${validation.errors.join(' ')}`);
   await safeWriteMemoryFile(root, `${EVALUATION_DIR}/${record.id}.json`, `${JSON.stringify(record, null, 2)}\n`, { ifMissing: true });
@@ -236,6 +274,7 @@ export async function reviewEvaluation(root, selector, options = {}) {
     const { records } = await readEvaluationRecords(root);
     const record = resolveEvaluation(records, selector);
     if (record.review.outcome !== 'unreviewed') throw new Error('Evaluation record is already reviewed. Capture a new evaluation for a distinct review rather than overwriting provenance.');
+    assertReviewApplicability(record, review);
     const updated = { ...record, review };
     const validation = validateEvaluationRecordContract(updated);
     if (!validation.valid) throw new Error(`Invalid reviewed evaluation record: ${validation.errors.join(' ')}`);
@@ -245,11 +284,83 @@ export async function reviewEvaluation(root, selector, options = {}) {
   });
 }
 
+function normalizeEvaluationFilters(options = {}) {
+  const sourceKind = options.sourceKind ? normalizeEnum(options.sourceKind, EVALUATION_SOURCE_KINDS, 'Evaluation source kind') : null;
+  const taskKind = options.taskKind ? normalizeEnum(options.taskKind, EVALUATION_TASK_KINDS, 'Evaluation task kind') : null;
+  const subjectVersion = options.subjectVersion ? String(options.subjectVersion).trim() : null;
+  if (subjectVersion && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(subjectVersion)) throw new Error('Evaluation subject version must be semantic.');
+  let sinceDays = null;
+  if (options.sinceDays !== undefined && options.sinceDays !== null && options.sinceDays !== '') {
+    sinceDays = Number(options.sinceDays);
+    if (!Number.isInteger(sinceDays) || sinceDays < 1 || sinceDays > 3650) throw new Error('Evaluation since-days must be an integer from 1 to 3650.');
+  }
+  const cutoff = sinceDays ? new Date(Date.now() - sinceDays * 86_400_000).toISOString() : null;
+  return { sourceKind, taskKind, subjectVersion, sinceDays, cutoff };
+}
+function matchesEvaluationFilters(record, filters) {
+  return (!filters.sourceKind || record.source.kind === filters.sourceKind)
+    && (!filters.taskKind || record.task.kind === filters.taskKind)
+    && (!filters.subjectVersion || record.subject.version === filters.subjectVersion)
+    && (!filters.cutoff || record.recordedAt >= filters.cutoff);
+}
+async function readPortableBundle(filePath) {
+  const target = path.resolve(String(filePath || '').trim());
+  if (!String(filePath || '').trim()) throw new Error('Evaluation bundle path is required.');
+  const before = await fs.lstat(target);
+  if (before.isSymbolicLink() || !before.isFile()) throw new Error('Evaluation bundle must be a regular non-symlink file.');
+  if (before.size > MAX_BUNDLE_BYTES) throw new Error(`Evaluation bundle exceeds ${MAX_BUNDLE_BYTES} bytes.`);
+  const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+  let handle;
+  try { handle = await fs.open(target, fsConstants.O_RDONLY | noFollow); }
+  catch (error) {
+    if (!noFollow || !['EINVAL', 'ENOTSUP'].includes(error?.code)) throw error;
+    handle = await fs.open(target, fsConstants.O_RDONLY);
+  }
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.size > MAX_BUNDLE_BYTES || before.dev !== opened.dev || before.ino !== opened.ino) throw new Error('Evaluation bundle changed or is unsafe while opening.');
+    return JSON.parse(await handle.readFile('utf8'));
+  } finally { await handle?.close().catch(() => {}); }
+}
+export async function exportEvaluations(root, filePath, options = {}) {
+  const { records } = await readEvaluationRecords(root);
+  const filters = normalizeEvaluationFilters(options);
+  const selected = records.filter((record) => matchesEvaluationFilters(record, filters));
+  const bundle = { schemaVersion: EVALUATION_BUNDLE_SCHEMA_VERSION, kind: EVALUATION_BUNDLE_KIND, exportedAt: nowIso(), records: selected };
+  const validation = validateEvaluationBundleContract(bundle);
+  if (!validation.valid) throw new Error(`Invalid evaluation bundle: ${validation.errors.join(' ')}`);
+  const serialized = `${JSON.stringify(bundle, null, 2)}\n`;
+  if (Buffer.byteLength(serialized) > MAX_BUNDLE_BYTES) throw new Error(`Evaluation bundle exceeds ${MAX_BUNDLE_BYTES} bytes.`);
+  const target = path.resolve(String(filePath || '').trim());
+  if (!String(filePath || '').trim()) throw new Error('Evaluation export path is required.');
+  const memory = path.resolve(root, '.codex-memory');
+  if (target === memory || target.startsWith(`${memory}${path.sep}`)) throw new Error('Evaluation bundle export must stay outside .codex-memory.');
+  await fs.writeFile(target, serialized, { flag: 'wx', mode: 0o600 });
+  return { schemaVersion: 1, path: target, records: selected.length, filter: filters };
+}
+export async function importEvaluations(root, filePath) {
+  const bundle = await readPortableBundle(filePath);
+  const validation = validateEvaluationBundleContract(bundle);
+  if (!validation.valid) throw new Error(`Invalid evaluation bundle: ${validation.errors.join(' ')}`);
+  await safeEnsureMemoryDir(root, EVALUATION_DIR);
+  const pending = [];
+  let skipped = 0;
+  for (const record of bundle.records) {
+    const relative = `${EVALUATION_DIR}/${record.id}.json`;
+    const existing = await safeReadMemoryJson(root, relative, { optional: true, maxBytes: MAX_RECORD_BYTES });
+    if (!existing) { pending.push(record); continue; }
+    if (JSON.stringify(existing) !== JSON.stringify(record)) throw new Error(`Evaluation import conflict for id ${record.id}; existing evidence differs.`);
+    skipped += 1;
+  }
+  for (const record of pending) await safeWriteMemoryFile(root, `${EVALUATION_DIR}/${record.id}.json`, `${JSON.stringify(record, null, 2)}\n`, { ifMissing: true });
+  return { schemaVersion: 1, imported: pending.length, skipped, total: bundle.records.length, sourceKinds: countBy(bundle.records, (record) => record.source.kind) };
+}
+
 export async function listEvaluations(root, options = {}) {
   const { records, invalidRecords, truncated } = await readEvaluationRecords(root);
-  const sourceKind = options.sourceKind ? normalizeEnum(options.sourceKind, EVALUATION_SOURCE_KINDS, 'Evaluation source kind') : null;
+  const filters = normalizeEvaluationFilters(options);
   const limit = Math.max(1, Math.min(200, Number(options.limit) || 50));
-  const selected = records.filter((record) => !sourceKind || record.source.kind === sourceKind);
+  const selected = records.filter((record) => matchesEvaluationFilters(record, filters));
   return {
     schemaVersion: 1,
     records: selected.slice(0, limit).map((record) => ({
@@ -306,6 +417,10 @@ function controlledStressMetrics(records) {
 function reviewedMetrics(records) {
   const nextActionRated = records.filter((record) => record.review.nextActionRating !== 'unknown');
   const handoffRated = records.filter((record) => record.review.handoffRating !== 'unknown');
+  const reconstructionRated = records.filter((record) => ['reduced', 'unchanged', 'increased'].includes(reviewValue(record.review, 'reconstructionRating')));
+  const followUpRated = records.filter((record) => ['not-needed', 'needed'].includes(reviewValue(record.review, 'followUpOutcome')));
+  const verificationChoiceRated = records.filter((record) => ['improved', 'unchanged', 'worse'].includes(reviewValue(record.review, 'verificationChoiceOutcome')));
+  const historyRated = records.filter((record) => ['useful', 'not-useful'].includes(reviewValue(record.review, 'historyRating')));
   const falsePositiveCounts = records.map((record) => record.review.falsePositiveFindings).filter(Number.isInteger);
   const missedCounts = records.map((record) => record.review.missedFindings).filter(Number.isInteger);
   return {
@@ -314,15 +429,66 @@ function reviewedMetrics(records) {
     nextActionUsefulRate: rate(nextActionRated.filter((record) => record.review.nextActionRating === 'useful').length, nextActionRated.length),
     handoffRatedRecords: handoffRated.length,
     handoffUsefulRate: rate(handoffRated.filter((record) => record.review.handoffRating === 'useful').length, handoffRated.length),
+    reconstructionRatedRecords: reconstructionRated.length,
+    reconstructionReducedRate: rate(reconstructionRated.filter((record) => reviewValue(record.review, 'reconstructionRating') === 'reduced').length, reconstructionRated.length),
+    followUpRatedRecords: followUpRated.length,
+    followUpNotNeededRate: rate(followUpRated.filter((record) => reviewValue(record.review, 'followUpOutcome') === 'not-needed').length, followUpRated.length),
+    verificationChoiceRatedRecords: verificationChoiceRated.length,
+    verificationChoiceImprovedRate: rate(verificationChoiceRated.filter((record) => reviewValue(record.review, 'verificationChoiceOutcome') === 'improved').length, verificationChoiceRated.length),
+    historyRatedRecords: historyRated.length,
+    historyUsefulRate: rate(historyRated.filter((record) => reviewValue(record.review, 'historyRating') === 'useful').length, historyRated.length),
     falsePositiveFindingsObserved: falsePositiveCounts.length ? falsePositiveCounts.reduce((sum, value) => sum + value, 0) : null,
     missedFindingsObserved: missedCounts.length ? missedCounts.reduce((sum, value) => sum + value, 0) : null,
+  };
+}
+function longitudinalMetrics(observationalExternal, humanReviewed, agentReviewed) {
+  const groups = new Map();
+  for (const record of observationalExternal) {
+    const key = record.repository.fingerprint;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  }
+  const repeated = [...groups.values()].filter((items) => items.length >= 2);
+  const repeatedFingerprints = new Set(repeated.map((items) => items[0].repository.fingerprint));
+  const repeatedRecords = observationalExternal.filter((record) => repeatedFingerprints.has(record.repository.fingerprint));
+  const times = repeatedRecords.map((record) => Date.parse(record.recordedAt)).filter(Number.isFinite).sort((a, b) => a - b);
+  const repeatedTaskRepositories = repeated.filter((items) => uniqueCount(items, (record) => record.task.kind) >= 2).length;
+  const humanRepeated = humanReviewed.filter((record) => repeatedFingerprints.has(record.repository.fingerprint));
+  const agentRepeated = agentReviewed.filter((record) => repeatedFingerprints.has(record.repository.fingerprint));
+  return {
+    observationalRecords: observationalExternal.length,
+    repeatedRepositories: repeated.length,
+    repeatedRecords: repeatedRecords.length,
+    repeatedRepositoriesWithMultipleTaskKinds: repeatedTaskRepositories,
+    firstRepeatedAt: times.length ? new Date(times[0]).toISOString() : null,
+    lastRepeatedAt: times.length ? new Date(times[times.length - 1]).toISOString() : null,
+    repeatedSpanDays: times.length >= 2 ? round((times[times.length - 1] - times[0]) / 86_400_000) : null,
+    human: reviewedMetrics(humanRepeated),
+    agent: reviewedMetrics(agentRepeated),
+  };
+}
+function evidenceDiagnostics(longitudinal) {
+  const gaps = [];
+  if (longitudinal.repeatedRepositories < 2) gaps.push('Need repeated observational evidence from at least two independent external repositories.');
+  if (longitudinal.repeatedRepositoriesWithMultipleTaskKinds < 1) gaps.push('Need at least one repeated external repository covering multiple task kinds.');
+  if (longitudinal.human.records < 1) gaps.push('Need explicit human-reviewed repeated external observations.');
+  if (longitudinal.human.reconstructionRatedRecords < 1) gaps.push('Need human reconstruction-effort judgments on repeated work.');
+  if (longitudinal.human.followUpRatedRecords < 1) gaps.push('Need human follow-up-needed judgments on repeated work.');
+  if (longitudinal.human.historyRatedRecords < 1) gaps.push('Need human usefulness judgments for historical change evidence when history exists.');
+  if (longitudinal.human.verificationChoiceRatedRecords < 1) gaps.push('Need human verification-choice judgments for history-informed work.');
+  return {
+    state: gaps.length === 0 ? 'longitudinal-evidence-present' : longitudinal.repeatedRepositories > 0 ? 'collecting' : 'insufficient',
+    gaps,
+    structuralCoverageOnly: true,
+    statisticalSufficiency: 'not-automatically-determined',
+    automaticRecalibrationAllowed: false,
   };
 }
 
 export async function buildEvaluationReport(root, options = {}) {
   const { records, invalidRecords, truncated } = await readEvaluationRecords(root);
-  const sourceKind = options.sourceKind ? normalizeEnum(options.sourceKind, EVALUATION_SOURCE_KINDS, 'Evaluation source kind') : null;
-  const selected = records.filter((record) => !sourceKind || record.source.kind === sourceKind);
+  const filters = normalizeEvaluationFilters(options);
+  const selected = records.filter((record) => matchesEvaluationFilters(record, filters));
   const external = selected.filter((record) => record.source.kind === 'external-real');
   const observationalExternal = external.filter((record) => record.protocol.kind === 'observational');
   const controlledStressExternal = external.filter((record) => record.protocol.kind === 'controlled-stress');
@@ -331,10 +497,12 @@ export async function buildEvaluationReport(root, options = {}) {
   const agentReviewed = reviewedExternal.filter((record) => record.review.provenance === 'agent');
   const externalWithSession = observationalExternal.filter((record) => record.measurements.continuation.sessionPresent);
   const stressMetrics = controlledStressMetrics(controlledStressExternal);
+  const longitudinal = longitudinalMetrics(observationalExternal, humanReviewed, agentReviewed);
+  const diagnostics = evidenceDiagnostics(longitudinal);
   return {
     schemaVersion: 1,
     generatedAt: nowIso(),
-    filter: { sourceKind },
+    filter: filters,
     corpus: {
       totalRecords: selected.length,
       invalidRecords,
@@ -374,6 +542,8 @@ export async function buildEvaluationReport(root, options = {}) {
       observationalAverageCalibrationSamples: average(observationalExternal.map((record) => record.measurements.changeHistory.calibrationSamples)),
     },
     controlledStress: stressMetrics,
+    longitudinal,
+    evidenceDiagnostics: diagnostics,
     reviewedUsefulness: {
       reviewedExternalRecords: reviewedExternal.length,
       provenance: { human: humanReviewed.length, agent: agentReviewed.length },
@@ -385,16 +555,19 @@ export async function buildEvaluationReport(root, options = {}) {
       'Coverage state is based on observational external-real runs; controlled-stress runs are reported separately with invariant pass/fail counts and cannot inflate ordinary field-coverage state.',
       'A multi-repository corpus is coverage evidence, not automatic proof of production readiness or causal correctness.',
       'Human-reviewed and agent-reviewed usefulness metrics remain separate; unreviewed records never contribute to usefulness rates.',
+      'Longitudinal reconstruction, follow-up, history, and verification-choice outcomes are explicit reviewer judgments, not values inferred by CMI.',
+      'Evidence diagnostics report missing evidence dimensions only; structural coverage does not establish statistical sufficiency and never triggers automatic threshold recalibration.',
+      'Portable evaluation bundles contain only validated anonymized evaluation records and preserve original source/protocol/reviewer provenance on import.',
       'Repository fingerprints are one-way hashes for grouping runs; raw repository names, remotes, absolute paths, session goals, findings text, and recommendation text are not stored in evaluation records.',
       'Subject sourceRevision is recorded when CMI runs from a Git checkout; packaged installations may report only the semantic version.',
       'Evaluation aggregation does not recalibrate Behavioral Change Intelligence thresholds automatically.',
     ],
-    policy: 'CMI reports what the retained corpus supports and keeps source classes, protocols, and reviewer provenance separate. It does not declare v1.0 readiness, production validity, or empirical calibration complete from a small or unreviewed corpus.',
+    policy: 'CMI reports what the retained corpus supports, keeps reviewer provenance separate, and keeps source classes, protocols, repeated-repository evidence, and longitudinal outcome judgments distinct. Structural evidence diagnostics never declare statistical sufficiency, v1.0 readiness, production validity, or empirical calibration complete.',
   };
 }
 
 export function formatEvaluationRecord(record) {
-  return `# CMI evaluation ${record.id.slice(0, 12)}\n\n- CMI: ${record.subject.version}${record.subject.sourceRevision ? ` · ${record.subject.sourceRevision.slice(0, 12)}` : ''}\n- Source: ${record.source.kind}${record.source.independent ? ' · independent repository evidence' : ''}\n- Protocol: ${record.protocol.kind}\n- Stress: ${record.stress.scenario || 'n/a'} · ${record.stress.outcome} (${record.stress.passedInvariantCount}/${record.stress.expectedInvariantCount} invariants passed)\n- Repository class: ${record.repository.class}\n- Task kind: ${record.task.kind}\n- Evidence health: ${record.measurements.project.evidenceState}\n- Session outcome: ${record.measurements.continuation.outcome || 'none'}\n- Open findings: ${record.measurements.continuation.openFindingCount}\n- Next action: ${record.measurements.continuation.nextActionPresent ? record.measurements.continuation.nextActionPriority : 'none'}\n- Review: ${record.review.outcome} · ${record.review.provenance}\n\n${record.policy}`;
+  return `# CMI evaluation ${record.id.slice(0, 12)}\n\n- CMI: ${record.subject.version}${record.subject.sourceRevision ? ` · ${record.subject.sourceRevision.slice(0, 12)}` : ''}\n- Source: ${record.source.kind}${record.source.independent ? ' · independent repository evidence' : ''}\n- Protocol: ${record.protocol.kind}\n- Stress: ${record.stress.scenario || 'n/a'} · ${record.stress.outcome} (${record.stress.passedInvariantCount}/${record.stress.expectedInvariantCount} invariants passed)\n- Repository class: ${record.repository.class}\n- Task kind: ${record.task.kind}\n- Evidence health: ${record.measurements.project.evidenceState}\n- Session outcome: ${record.measurements.continuation.outcome || 'none'}\n- Open findings: ${record.measurements.continuation.openFindingCount}\n- Next action: ${record.measurements.continuation.nextActionPresent ? record.measurements.continuation.nextActionPriority : 'none'}\n- Review: ${record.review.outcome} · ${record.review.provenance}\n- Reconstruction: ${reviewValue(record.review, 'reconstructionRating')}\n- Follow-up: ${reviewValue(record.review, 'followUpOutcome')}\n- History: ${reviewValue(record.review, 'historyRating')}\n- Verification choice: ${reviewValue(record.review, 'verificationChoiceOutcome')}\n\n${record.policy}`;
 }
 export function formatEvaluationList(result) {
   if (!result.records.length) return 'No matching CMI evaluation records.';
@@ -403,5 +576,6 @@ export function formatEvaluationList(result) {
 export function formatEvaluationReport(report) {
   const external = report.corpus.externalReal;
   const usefulness = report.reviewedUsefulness;
-  return `# CMI real-repository evaluation\n\nCoverage: ${report.coverage.state}\nRecords: ${report.corpus.totalRecords} · external-real ${external.records} · observational ${external.observationalRecords} · controlled-stress ${external.controlledStressRecords}\nIndependent repositories: ${external.uniqueRepositories} · observational repositories ${external.observationalUniqueRepositories}\nRepository classes: ${Object.keys(external.repositoryClasses).length} · observational task kinds: ${Object.keys(external.observationalTaskKinds).length}\nControlled stress: ${report.controlledStress.records} records · ${Object.keys(report.controlledStress.scenarios).length} scenarios · record pass rate ${report.controlledStress.passRate ?? 'n/a'} · invariant pass rate ${report.controlledStress.invariantPassRate ?? 'n/a'}\nReviewed observational external records: ${usefulness.reviewedExternalRecords} · human ${usefulness.provenance.human} · agent ${usefulness.provenance.agent}\nHuman next-action useful rate: ${usefulness.human.nextActionUsefulRate ?? 'n/a'}\nHuman handoff useful rate: ${usefulness.human.handoffUsefulRate ?? 'n/a'}\nAgent next-action useful rate: ${usefulness.agent.nextActionUsefulRate ?? 'n/a'}\nObservational project healthy rate: ${report.observedMetrics.observationalProjectHealthyRate ?? 'n/a'}\nObservational handoff presence rate: ${report.observedMetrics.observationalHandoffPresenceRate ?? 'n/a'}\n\n## Evidence limits\n${report.limitations.map((item) => `- ${item}`).join('\n')}\n\n${report.policy}`;
+  const longitudinal = report.longitudinal;
+  return `# CMI real-repository evaluation\n\nCoverage: ${report.coverage.state}\nRecords: ${report.corpus.totalRecords} · external-real ${external.records} · observational ${external.observationalRecords} · controlled-stress ${external.controlledStressRecords}\nIndependent repositories: ${external.uniqueRepositories} · observational repositories ${external.observationalUniqueRepositories}\nRepository classes: ${Object.keys(external.repositoryClasses).length} · observational task kinds: ${Object.keys(external.observationalTaskKinds).length}\nControlled stress: ${report.controlledStress.records} records · ${Object.keys(report.controlledStress.scenarios).length} scenarios · record pass rate ${report.controlledStress.passRate ?? 'n/a'} · invariant pass rate ${report.controlledStress.invariantPassRate ?? 'n/a'}\nReviewed observational external records: ${usefulness.reviewedExternalRecords} · human ${usefulness.provenance.human} · agent ${usefulness.provenance.agent}\nHuman next-action useful rate: ${usefulness.human.nextActionUsefulRate ?? 'n/a'}\nHuman handoff useful rate: ${usefulness.human.handoffUsefulRate ?? 'n/a'}\nRepeated external repositories: ${longitudinal.repeatedRepositories} · repeated records ${longitudinal.repeatedRecords} · multi-task repeated repositories ${longitudinal.repeatedRepositoriesWithMultipleTaskKinds}\nHuman reconstruction reduced rate: ${longitudinal.human.reconstructionReducedRate ?? 'n/a'}\nHuman follow-up not-needed rate: ${longitudinal.human.followUpNotNeededRate ?? 'n/a'}\nHuman history useful rate: ${longitudinal.human.historyUsefulRate ?? 'n/a'}\nHuman verification-choice improved rate: ${longitudinal.human.verificationChoiceImprovedRate ?? 'n/a'}\nEvidence diagnostics: ${report.evidenceDiagnostics.state}\n${report.evidenceDiagnostics.gaps.length ? report.evidenceDiagnostics.gaps.map((item) => `- GAP: ${item}`).join('\n') : '- No structural evidence dimension is currently missing; statistical sufficiency still requires human judgment.'}\nAgent next-action useful rate: ${usefulness.agent.nextActionUsefulRate ?? 'n/a'}\nObservational project healthy rate: ${report.observedMetrics.observationalProjectHealthyRate ?? 'n/a'}\nObservational handoff presence rate: ${report.observedMetrics.observationalHandoffPresenceRate ?? 'n/a'}\n\n## Evidence limits\n${report.limitations.map((item) => `- ${item}`).join('\n')}\n\n${report.policy}`;
 }

@@ -123,6 +123,49 @@ A review is one-time. CMI serializes competing review writers with an owner-tagg
 
 Generated project index/graph caches use a larger bounded read ceiling than 1 MB durable evaluation/change/session records. This prevents large repositories from writing a graph that CMI cannot subsequently read while preserving finite cache reads.
 
+## Longitudinal human-reviewed outcomes
+
+Post-hoc review can explicitly record four longitudinal outcomes in addition to next-action/handoff usefulness:
+
+- `--reconstruction-rating reduced|unchanged|increased|not-applicable|unknown` — whether the captured handoff reduced project-state reconstruction effort;
+- `--follow-up-outcome not-needed|needed|not-applicable|unknown` — whether the captured next action avoided a separate "what next?" follow-up;
+- `--history-rating useful|not-useful|not-applicable|unknown` — whether captured historical change evidence was useful;
+- `--verification-choice-outcome improved|unchanged|worse|not-applicable|unknown` — whether history-informed evidence improved the verification decision.
+
+These are explicit reviewer judgments. CMI never infers them from session text. Reconstruction/follow-up judgments require the corresponding captured handoff/next-action evidence. History/verification-choice judgments require at least one completed change-history record in the captured measurements. Controlled-stress records cannot assert ordinary longitudinal outcomes.
+
+```bash
+cmi evaluate review <id> \
+  --review-outcome pass \
+  --review-provenance human \
+  --reconstruction-rating reduced \
+  --follow-up-outcome not-needed \
+  --history-rating useful \
+  --verification-choice-outcome improved
+```
+
+Reports aggregate human and agent outcomes separately. Repeated-repository metrics count only observational `external-real` evidence and report the number of repositories with 2+ observations, repeated records, repeated multi-task repositories, and repeated time span.
+
+```bash
+cmi evaluate report --source-kind external-real --since-days 90
+cmi evaluate report --task-kind debugging
+cmi evaluate report --subject-version 0.9.0
+```
+
+`evidenceDiagnostics` is deliberately structural. It reports which evidence dimensions are still missing (multi-repository repetition, human repeated reviews, reconstruction/follow-up/history/verification judgments, multi-task repetition). It never declares statistical sufficiency and never enables automatic confidence/priority recalibration.
+
+## Portable local corpus
+
+Longitudinal evidence often lives in separate repositories. CMI therefore supports a bounded local bundle rather than requiring a database or cloud service:
+
+```bash
+cmi evaluate export ./cmi-evidence.json --source-kind external-real
+cmi evaluate import ./other-project-evidence.json
+cmi evaluate report --source-kind external-real
+```
+
+A bundle contains only validated anonymized evaluation records. Export refuses to overwrite an existing file and refuses to write inside `.codex-memory`. Import validates the entire bundle before writing, skips identical IDs, and fails closed if an existing ID contains different evidence. Original source/protocol/reviewer provenance is preserved; import never upgrades `agent` or `unreviewed` evidence to human evidence. Bundle reads are bounded to 16 MiB and reject symlink/non-regular inputs.
+
 ## Runtime contract
 
 `schemas/evaluation-record.schema.json` documents the durable format and repository quality checks keep trust-critical enums/version fields aligned with the runtime validator.
@@ -137,7 +180,7 @@ The evaluation harness creates a disciplined place to collect evidence. It does 
 - that session handoffs reduce reconstruction effort;
 - that next-action intelligence reduces user follow-up questions;
 - that current confidence or priority thresholds are well calibrated;
-- that CMI behaves well across large, rename-heavy, rebased, clock-skewed, or long-lived repositories;
+- that the currently observed controlled stress results generalize to all large, rename-heavy, rebased, clock-skewed, or long-lived repositories;
 - that CMI is production-ready across clients, languages, architectures, and operating systems.
 
 Those claims require enough independent real-repository/task observations and explicit review data.

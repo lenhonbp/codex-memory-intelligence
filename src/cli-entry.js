@@ -19,6 +19,8 @@ import {
   captureEvaluation,
   getEvaluation,
   reviewEvaluation,
+  exportEvaluations,
+  importEvaluations,
   listEvaluations,
   buildEvaluationReport,
   formatEvaluationRecord,
@@ -76,6 +78,10 @@ function evaluationOptions() {
     missedFindings: optionValues('--missed-findings')[0],
     nextActionRating: optionValues('--next-action-rating')[0],
     handoffRating: optionValues('--handoff-rating')[0],
+    reconstructionRating: optionValues('--reconstruction-rating')[0],
+    followUpOutcome: optionValues('--follow-up-outcome')[0],
+    verificationChoiceOutcome: optionValues('--verification-choice-outcome')[0],
+    historyRating: optionValues('--history-rating')[0],
     stressScenario: optionValues('--stress-scenario')[0],
     stressExpected: optionValues('--stress-expected')[0],
     stressPassed: optionValues('--stress-passed')[0],
@@ -86,7 +92,7 @@ function print(value, formatted) { console.log(json ? JSON.stringify(value, null
 function groupHelp(name) {
   if (name === 'session') return 'Usage: cmi session <start|observe|status|close|show|list|handoff> ...\n\nTrack project work, persist findings, and produce an evidence-based handoff/next action.';
   if (name === 'finding') return 'Usage: cmi finding <list|show|state> ...\n\nInspect and explicitly review persistent project findings.';
-  return 'Usage: cmi evaluate <capture|review|list|show|report> ...\n\nCollect anonymized field evidence while keeping external-real, self-host, and synthetic records separate. Reviews are explicit post-hoc attestations and are not inferred from capture.';
+  return 'Usage: cmi evaluate <capture|review|list|show|report> ...\n       cmi evaluate <export|import> ...\n\nSource kinds: external-real | self-host | synthetic.\nCollect anonymized field evidence, explicit longitudinal human/agent judgments, and portable local bundles without mixing provenance classes.';
 }
 
 try {
@@ -141,7 +147,7 @@ try {
       throw new Error('Usage: cmi finding <list|show|state> ...');
     }
   } else {
-    const values = positional(['--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--stress-scenario','--stress-expected','--stress-passed','--stress-failed','--limit']);
+    const values = positional(['--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--reconstruction-rating','--follow-up-outcome','--verification-choice-outcome','--history-rating','--stress-scenario','--stress-expected','--stress-passed','--stress-failed','--subject-version','--since-days','--limit']);
     const action = values.shift();
     if (action === 'capture') {
       if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id] [--stress-scenario scenario --stress-expected N --stress-passed N --stress-failed N]');
@@ -153,16 +159,26 @@ try {
       const record = await reviewEvaluation(process.cwd(), selector, evaluationOptions());
       print(record, formatEvaluationRecord(record));
     } else if (action === 'list') {
-      const result = await listEvaluations(process.cwd(), { sourceKind: optionValues('--source-kind')[0], limit: optionNumber('--limit', 50) });
+      const result = await listEvaluations(process.cwd(), { sourceKind: optionValues('--source-kind')[0], taskKind: optionValues('--task-kind')[0], subjectVersion: optionValues('--subject-version')[0], sinceDays: optionValues('--since-days')[0], limit: optionNumber('--limit', 50) });
       print(result, formatEvaluationList(result));
     } else if (action === 'show') {
       const record = await getEvaluation(process.cwd(), values[0]);
       print(record, formatEvaluationRecord(record));
     } else if (action === 'report') {
-      const report = await buildEvaluationReport(process.cwd(), { sourceKind: optionValues('--source-kind')[0] });
+      const report = await buildEvaluationReport(process.cwd(), { sourceKind: optionValues('--source-kind')[0], taskKind: optionValues('--task-kind')[0], subjectVersion: optionValues('--subject-version')[0], sinceDays: optionValues('--since-days')[0] });
       print(report, formatEvaluationReport(report));
+    } else if (action === 'export') {
+      const filePath = values[0];
+      if (!filePath) throw new Error('Usage: cmi evaluate export <file> [--source-kind kind] [--task-kind kind] [--subject-version version] [--since-days N]');
+      const result = await exportEvaluations(process.cwd(), filePath, { sourceKind: optionValues('--source-kind')[0], taskKind: optionValues('--task-kind')[0], subjectVersion: optionValues('--subject-version')[0], sinceDays: optionValues('--since-days')[0] });
+      print(result, `Exported ${result.records} anonymized evaluation record(s) to ${result.path}.`);
+    } else if (action === 'import') {
+      const filePath = values[0];
+      if (!filePath) throw new Error('Usage: cmi evaluate import <file>');
+      const result = await importEvaluations(process.cwd(), filePath);
+      print(result, `Imported ${result.imported} evaluation record(s); ${result.skipped} already present.`);
     } else {
-      throw new Error('Usage: cmi evaluate <capture|review|list|show|report> ...');
+      throw new Error('Usage: cmi evaluate <capture|review|list|show|report|export|import> ...');
     }
   }
 } catch (error) {

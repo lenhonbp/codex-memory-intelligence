@@ -73,6 +73,9 @@ test('read-only MCP exposes evaluation reads/report resource without durable cap
     assert.ok(tools.some((tool) => tool.name === 'list_project_evaluations'));
     assert.ok(tools.some((tool) => tool.name === 'get_project_evaluation'));
     assert.ok(tools.some((tool) => tool.name === 'get_project_evaluation_report'));
+    const reportTool = tools.find((tool) => tool.name === 'get_project_evaluation_report');
+    assert.ok(reportTool.inputSchema.properties.sinceDays);
+    assert.ok(reportTool.inputSchema.properties.taskKind);
     assert.ok(!tools.some((tool) => tool.name === 'capture_project_evaluation'));
     assert.ok(!tools.some((tool) => tool.name === 'review_project_evaluation'));
 
@@ -100,6 +103,12 @@ test('write-enabled MCP captures evaluation evidence without weakening provenanc
     server.send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
     const tools = (await server.waitFor((message) => message.id === 2)).result.tools;
     assert.ok(tools.some((tool) => tool.name === 'capture_project_evaluation'));
+    const reviewTool = tools.find((tool) => tool.name === 'review_project_evaluation');
+    assert.ok(reviewTool);
+    assert.ok(reviewTool.inputSchema.properties.reconstructionRating);
+    assert.ok(reviewTool.inputSchema.properties.followUpOutcome);
+    assert.ok(reviewTool.inputSchema.properties.verificationChoiceOutcome);
+    assert.ok(reviewTool.inputSchema.properties.historyRating);
     assert.ok(tools.some((tool) => tool.name === 'review_project_evaluation'));
 
     server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'capture_project_evaluation', arguments: {

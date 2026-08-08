@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { MEMORY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, FINDINGS_SCHEMA_VERSION, MEMORY_LIFECYCLE_STATES, SESSION_OUTCOMES, FINDING_STATES, FINDING_SEVERITIES, EVIDENCE_TYPES, RECOMMENDATION_PRIORITIES, CONFIDENCE_LEVELS } from '../src/durable-contracts.js';
-import { EVALUATION_SCHEMA_VERSION, EVALUATION_SOURCE_KINDS, EVALUATION_PROTOCOL_KINDS, EVALUATION_REPOSITORY_CLASSES, EVALUATION_TASK_KINDS, EVALUATION_REVIEW_OUTCOMES, EVALUATION_REVIEW_PROVENANCE, EVALUATION_UTILITY_RATINGS, EVALUATION_STRESS_SCENARIOS, EVALUATION_STRESS_OUTCOMES } from '../src/evaluation-contracts.js';
+import { EVALUATION_SCHEMA_VERSION, EVALUATION_SOURCE_KINDS, EVALUATION_PROTOCOL_KINDS, EVALUATION_REPOSITORY_CLASSES, EVALUATION_TASK_KINDS, EVALUATION_REVIEW_OUTCOMES, EVALUATION_REVIEW_PROVENANCE, EVALUATION_UTILITY_RATINGS, EVALUATION_RECONSTRUCTION_RATINGS, EVALUATION_FOLLOW_UP_OUTCOMES, EVALUATION_VERIFICATION_CHOICE_OUTCOMES, EVALUATION_HISTORY_RATINGS, EVALUATION_BUNDLE_SCHEMA_VERSION, EVALUATION_BUNDLE_KIND, EVALUATION_STRESS_SCENARIOS, EVALUATION_STRESS_OUTCOMES } from '../src/evaluation-contracts.js';
 
 const allowed = new Set(['.js','.md','.json','.yml','.yaml']);
 const ignored = new Set(['.git','node_modules']);
@@ -53,6 +53,7 @@ function validateSchemaContracts() {
   const session = JSON.parse(fs.readFileSync('schemas/session-record.schema.json', 'utf8'));
   const findings = JSON.parse(fs.readFileSync('schemas/findings-registry.schema.json', 'utf8'));
   const evaluation = JSON.parse(fs.readFileSync('schemas/evaluation-record.schema.json', 'utf8'));
+  const evaluationBundle = JSON.parse(fs.readFileSync('schemas/evaluation-bundle.schema.json', 'utf8'));
   if (memory.properties?.schemaVersion?.const !== MEMORY_SCHEMA_VERSION) errors.push('memory schemaVersion differs from runtime contract');
   if (!sameValues(memory.properties?.lifecycle?.properties?.state?.enum, MEMORY_LIFECYCLE_STATES)) errors.push('memory lifecycle enum differs from runtime contract');
   if (session.properties?.schemaVersion?.const !== SESSION_SCHEMA_VERSION) errors.push('session schemaVersion differs from runtime contract');
@@ -83,6 +84,12 @@ function validateSchemaContracts() {
   if (!sameValues(evaluation.properties?.review?.properties?.provenance?.enum, EVALUATION_REVIEW_PROVENANCE)) errors.push('evaluation review provenance differs from runtime contract');
   if (!sameValues(evaluation.properties?.review?.properties?.nextActionRating?.enum, EVALUATION_UTILITY_RATINGS)) errors.push('evaluation next-action ratings differ from runtime contract');
   if (!sameValues(evaluation.properties?.review?.properties?.handoffRating?.enum, EVALUATION_UTILITY_RATINGS)) errors.push('evaluation handoff ratings differ from runtime contract');
+  if (!sameValues(evaluation.properties?.review?.properties?.reconstructionRating?.enum, EVALUATION_RECONSTRUCTION_RATINGS)) errors.push('evaluation reconstruction ratings differ from runtime contract');
+  if (!sameValues(evaluation.properties?.review?.properties?.followUpOutcome?.enum, EVALUATION_FOLLOW_UP_OUTCOMES)) errors.push('evaluation follow-up outcomes differ from runtime contract');
+  if (!sameValues(evaluation.properties?.review?.properties?.verificationChoiceOutcome?.enum, EVALUATION_VERIFICATION_CHOICE_OUTCOMES)) errors.push('evaluation verification-choice outcomes differ from runtime contract');
+  if (!sameValues(evaluation.properties?.review?.properties?.historyRating?.enum, EVALUATION_HISTORY_RATINGS)) errors.push('evaluation history ratings differ from runtime contract');
+  if (evaluationBundle.properties?.schemaVersion?.const !== EVALUATION_BUNDLE_SCHEMA_VERSION) errors.push('evaluation bundle schemaVersion differs from runtime contract');
+  if (evaluationBundle.properties?.kind?.const !== EVALUATION_BUNDLE_KIND) errors.push('evaluation bundle kind differs from runtime contract');
   if (!sameValues((evaluation.properties?.stress?.properties?.scenario?.enum || []).filter((value) => value !== null), EVALUATION_STRESS_SCENARIOS)) errors.push('evaluation stress scenarios differ from runtime contract');
   if (!sameValues(evaluation.properties?.stress?.properties?.outcome?.enum, EVALUATION_STRESS_OUTCOMES)) errors.push('evaluation stress outcomes differ from runtime contract');
 }

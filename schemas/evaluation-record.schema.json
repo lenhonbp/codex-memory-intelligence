@@ -441,6 +441,40 @@
             "not-useful",
             "unknown"
           ]
+        },
+        "reconstructionRating": {
+          "enum": [
+            "reduced",
+            "unchanged",
+            "increased",
+            "not-applicable",
+            "unknown"
+          ]
+        },
+        "followUpOutcome": {
+          "enum": [
+            "not-needed",
+            "needed",
+            "not-applicable",
+            "unknown"
+          ]
+        },
+        "verificationChoiceOutcome": {
+          "enum": [
+            "improved",
+            "unchanged",
+            "worse",
+            "not-applicable",
+            "unknown"
+          ]
+        },
+        "historyRating": {
+          "enum": [
+            "useful",
+            "not-useful",
+            "not-applicable",
+            "unknown"
+          ]
         }
       },
       "additionalProperties": false
