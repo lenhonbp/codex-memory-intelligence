@@ -1,0 +1,122 @@
+name: Validate v0.9.x longitudinal field corpus
+
+on:
+  push:
+    branches:
+      - validation/v09x-longitudinal-field-70217f3c
+
+permissions:
+  contents: read
+
+jobs:
+  field:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 70217f3c107a734546c8a29006a6c41424b7e082
+          fetch-depth: 20
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify exact candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "70217f3c107a734546c8a29006a6c41424b7e082"
+          npm run verify
+          npm run package:smoke
+      - name: Collect repeated observational evidence and aggregate portable bundles
+        env:
+          CMI_SHA: 70217f3c107a734546c8a29006a6c41424b7e082
+        run: |
+          set -euo pipefail
+          CMI_ROOT="$PWD"
+          CLI="$CMI_ROOT/src/cli-entry.js"
+          OUT="$RUNNER_TEMP/v09x-longitudinal-field"
+          mkdir -p "$OUT"
+
+          collect_repo() {
+            repo_url="$1"
+            repo_dir="$2"
+            bundle="$3"
+            rm -rf "$repo_dir"
+            git clone --depth=1 "$repo_url" "$repo_dir" >/dev/null 2>&1
+            pushd "$repo_dir" >/dev/null
+            node "$CLI" init >/dev/null
+            node "$CLI" scan --json > "$OUT/$(basename "$repo_dir")-scan.json"
+
+            node "$CLI" session start "Review repository continuation evidence" --json > /dev/null
+            node "$CLI" session close latest --outcome investigated --accomplished "Reviewed current project intelligence without product edits." --json > /dev/null
+            node "$CLI" evaluate capture --source-kind external-real --repository-class library --task-kind review --session latest --json > "$OUT/$(basename "$repo_dir")-review.json"
+
+            node "$CLI" session start "Research repository structure and continuation evidence" --json > /dev/null
+            node "$CLI" session close latest --outcome investigated --accomplished "Researched repository structure without product edits." --json > /dev/null
+            node "$CLI" evaluate capture --source-kind external-real --repository-class library --task-kind research --session latest --json > "$OUT/$(basename "$repo_dir")-research.json"
+
+            node "$CLI" evaluate export "$bundle" --source-kind external-real --json > "$OUT/$(basename "$repo_dir")-export.json"
+            popd >/dev/null
+          }
+
+          collect_repo https://github.com/sindresorhus/yoctocolors.git "$RUNNER_TEMP/yoctocolors" "$OUT/yoctocolors-bundle.json"
+          collect_repo https://github.com/pallets/itsdangerous.git "$RUNNER_TEMP/itsdangerous" "$OUT/itsdangerous-bundle.json"
+
+          AGG="$RUNNER_TEMP/aggregate-corpus"
+          mkdir -p "$AGG"
+          pushd "$AGG" >/dev/null
+          node "$CLI" init >/dev/null
+          node "$CLI" evaluate import "$OUT/yoctocolors-bundle.json" --json > "$OUT/import-yoctocolors.json"
+          node "$CLI" evaluate import "$OUT/itsdangerous-bundle.json" --json > "$OUT/import-itsdangerous.json"
+          node "$CLI" evaluate import "$OUT/yoctocolors-bundle.json" --json > "$OUT/import-yoctocolors-dedupe.json"
+          node "$CLI" evaluate report --source-kind external-real --json > "$OUT/report.json"
+          popd >/dev/null
+
+          node --input-type=module - "$OUT" "$CMI_SHA" <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const out = process.argv[2];
+          const expectedSha = process.argv[3];
+          const read = (name) => JSON.parse(fs.readFileSync(path.join(out, name), 'utf8'));
+          const report = read('report.json');
+          const dedupe = read('import-yoctocolors-dedupe.json');
+          if (report.corpus.externalReal.records !== 4) throw new Error(`expected 4 external records, got ${report.corpus.externalReal.records}`);
+          if (report.corpus.externalReal.observationalRecords !== 4) throw new Error('all field records must remain observational');
+          if (report.corpus.externalReal.controlledStressRecords !== 0) throw new Error('field corpus must not invent controlled stress');
+          if (report.corpus.externalReal.observationalUniqueRepositories !== 2) throw new Error('expected two independent repeated repositories');
+          if (report.longitudinal.repeatedRepositories !== 2) throw new Error(`expected 2 repeated repositories, got ${report.longitudinal.repeatedRepositories}`);
+          if (report.longitudinal.repeatedRecords !== 4) throw new Error(`expected 4 repeated records, got ${report.longitudinal.repeatedRecords}`);
+          if (report.longitudinal.repeatedRepositoriesWithMultipleTaskKinds !== 2) throw new Error('each repository must contribute review + research task evidence');
+          if (report.reviewedUsefulness.provenance.human !== 0 || report.reviewedUsefulness.provenance.agent !== 0) throw new Error('field smoke must not fabricate reviews');
+          if (report.longitudinal.human.records !== 0 || report.longitudinal.agent.records !== 0) throw new Error('longitudinal usefulness must remain unreviewed');
+          if (report.evidenceDiagnostics.state !== 'collecting') throw new Error(`expected collecting diagnostics, got ${report.evidenceDiagnostics.state}`);
+          if (!report.evidenceDiagnostics.structuralCoverageOnly || report.evidenceDiagnostics.automaticRecalibrationAllowed !== false) throw new Error('diagnostics must remain structural-only and non-recalibrating');
+          if (!report.evidenceDiagnostics.gaps.some((gap) => /human/i.test(gap))) throw new Error('diagnostics must explicitly retain human-review gaps');
+          if (dedupe.imported !== 0 || dedupe.skipped !== 2) throw new Error('re-import must dedupe identical evaluation IDs');
+          const recordFiles = ['yoctocolors-review.json','yoctocolors-research.json','itsdangerous-review.json','itsdangerous-research.json'];
+          for (const file of recordFiles) {
+            const record = read(file);
+            if (record.subject.sourceRevision !== expectedSha) throw new Error(`${file} is not bound to exact CMI candidate`);
+            if (record.review.provenance !== 'unreviewed') throw new Error(`${file} unexpectedly carries review provenance`);
+            const text = JSON.stringify(record);
+            if (/github\.com|sindresorhus|pallets|\/home\/runner/i.test(text)) throw new Error(`${file} leaked repository identity/path`);
+          }
+          console.log(JSON.stringify({
+            coverage: report.coverage,
+            external: report.corpus.externalReal,
+            longitudinal: report.longitudinal,
+            evidenceDiagnostics: report.evidenceDiagnostics,
+            reviewedUsefulness: report.reviewedUsefulness,
+            dedupe,
+          }, null, 2));
+          NODE
+      - name: Upload anonymized field evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v09x-longitudinal-field-evidence-70217f3c
+          path: |
+            ${{ runner.temp }}/v09x-longitudinal-field/*-review.json
+            ${{ runner.temp }}/v09x-longitudinal-field/*-research.json
+            ${{ runner.temp }}/v09x-longitudinal-field/*-bundle.json
+            ${{ runner.temp }}/v09x-longitudinal-field/import-*.json
+            ${{ runner.temp }}/v09x-longitudinal-field/report.json
+          if-no-files-found: error
+          retention-days: 30
