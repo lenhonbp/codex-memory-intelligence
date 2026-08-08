@@ -22,7 +22,19 @@ jobs:
           node-version: 24.9.0
           package-manager-cache: false
       - name: Apply evaluation foundation
-        run: python3 scripts/_v09x_evaluation_patch.py
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/_v09x_evaluation_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = "function validEnum(value, values) { return values.includes(value); }"
+          new = "function validEnum(value, values) { return typeof values?.has === 'function' ? values.has(value) : values.includes(value); }"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one validEnum anchor, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 scripts/_v09x_evaluation_patch.py
       - name: Remove implementation helpers
         run: rm -f scripts/_v09x_evaluation_patch.py .github/workflows/v09x-evaluation-implementation.yml
       - name: Verify repository
