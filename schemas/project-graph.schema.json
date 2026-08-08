@@ -3,11 +3,33 @@
   "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/project-graph.schema.json",
   "title": "Codex Memory Intelligence project graph",
   "type": "object",
-  "required": ["schemaVersion", "parserVersion", "generatedAt", "summary", "nodes", "reverseDependents"],
+  "required": ["schemaVersion", "parserVersion", "generatedAt", "freshness", "summary", "nodes", "reverseDependents"],
   "properties": {
-    "schemaVersion": { "const": 3 },
-    "parserVersion": { "type": "integer", "minimum": 1 },
+    "schemaVersion": { "const": 4 },
+    "parserVersion": { "type": "integer", "minimum": 4 },
     "generatedAt": { "type": "string", "format": "date-time" },
+    "freshness": {
+      "type": "object",
+      "required": [
+        "version",
+        "sourceSetCount",
+        "sourceSetHash",
+        "resolverInputsHash",
+        "workspaceInputsHash",
+        "scanConfigHash",
+        "ignoreFileFingerprint"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "sourceSetCount": { "type": "integer", "minimum": 0 },
+        "sourceSetHash": { "type": "string", "minLength": 1 },
+        "resolverInputsHash": { "type": "string", "minLength": 1 },
+        "workspaceInputsHash": { "type": "string", "minLength": 1 },
+        "scanConfigHash": { "type": "string", "minLength": 1 },
+        "ignoreFileFingerprint": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
     "summary": { "type": "object" },
     "externalDependencies": { "type": "array", "items": { "type": "string" } },
     "hubs": { "type": "array" },
