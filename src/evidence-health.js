@@ -4,6 +4,7 @@ function finiteCount(value) {
 }
 
 function memoryDomain(counts = {}) {
+  counts = counts || {};
   const stale = finiteCount(counts.stale);
   const review = finiteCount(counts.review);
   const untracked = finiteCount(counts.untracked);

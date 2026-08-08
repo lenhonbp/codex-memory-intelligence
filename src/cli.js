@@ -28,6 +28,8 @@ import {
   formatChangeList,
 } from './change-intelligence.js';
 import { VERSION } from './version.js';
+import { collectExecutableProvenance } from './provenance.js';
+import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidence } from './portable-evidence.js';
 
 const [cmd, ...args] = process.argv.slice(2);
 const pathCommands = new Set(['init','scan','status','graph','stale','doctor','workspaces','baseline','boundaries']);
@@ -35,6 +37,7 @@ const json = args.includes('--json');
 const VALUE_FLAGS = new Set(['--fail-on','--limit','--workspace','--stale-policy','--depth','--file','--outcome','--verify','--unexpected','--note','--source','--reason','--changed-by','--superseded-by','--reviewed-by','--refreshed-by']);
 
 function help() {
+  console.log('  cmi provenance [--json]\n  cmi evidence <freeze|inspect|restore|rebind> <bundle-path> [--json]');
   console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi session <start|observe|status|close|show|list|handoff> ...\n  cmi finding <list|show|state> ...\n  cmi evaluate <capture|list|show|report> ...\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nInactive memory is excluded from search/context by default; --include-inactive is an explicit historical-inspection mode.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including generated scan caches, memory, change, session, and finding records, are disabled unless --write is explicitly requested.\n`);
 }
 
@@ -79,7 +82,7 @@ function allowedFlagsForCommand() {
     'explain-ignore': ['--directory','--json'], search: ['--limit','--workspace','--stale-policy','--include-inactive','--json'], context: ['--limit','--workspace','--stale-policy','--include-inactive','--json'],
     prepare: ['--limit','--depth','--workspace','--json'], 'memory-gaps': ['--limit','--workspace','--json'], impact: ['--depth','--json'], remember: ['--source'],
     'memory-state': ['--reason','--changed-by','--superseded-by','--json'], stale: ['--fail-on','--json'], 'refresh-memory': ['--reviewed-by','--refreshed-by','--reason'],
-    snapshot: [], status: ['--json'], doctor: ['--json'], 'mcp-config': ['--write','--bulk-refresh'],
+    snapshot: [], status: ['--json'], doctor: ['--json'], provenance: ['--json'], evidence: ['--json'], 'mcp-config': ['--write','--bulk-refresh'],
   };
   if (cmd !== 'change') return new Set(simple[cmd] || []);
   const action = positional(['--limit','--depth','--workspace','--file','--outcome','--verify','--unexpected','--note','--status'])[0];
@@ -99,7 +102,7 @@ function validateFlags() {
   for (const value of allowed) if (VALUE_FLAGS.has(value) && args.includes(value)) optionValues(value);
 }
 function emitError(error) {
-  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message } }));
+  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message, ...(error?.details === undefined ? {} : { details: error.details }) } }));
   else console.error(`Error: ${error.message}`);
 }
 
@@ -250,6 +253,26 @@ try {
     const result = await doctor(commandRoot());
     console.log(json ? JSON.stringify(result, null, 2) : formatDoctor(result));
     if (!result.healthy) process.exitCode = 1;
+  }
+  else if (cmd === 'provenance') {
+    const result = await collectExecutableProvenance({ projectRoot: process.cwd() });
+    console.log(json ? JSON.stringify(result, null, 2) : `CMI ${result.observed.packageVersion || 'unknown'} · ${result.observed.invocationKind}\nScript: ${result.observed.scriptPath || 'unknown'}\nPackage: ${result.observed.packageRoot || 'unknown'}\nSource revision: ${result.observed.sourceRevision || 'unknown'}\nConfidence: ${result.confidence}${result.ambiguity.ambiguous ? `\nAmbiguity: ${result.ambiguity.diagnostics.join(' ')}` : ''}`);
+  }
+  else if (cmd === 'evidence') {
+    const values = positional([]);
+    const action = values.shift();
+    const bundlePath = values.shift();
+    if (!['freeze', 'inspect', 'restore', 'rebind'].includes(action) || !bundlePath || values.length) throw new Error('Usage: cmi evidence <freeze|inspect|restore|rebind> <bundle-path> [--json]');
+    let result;
+    if (action === 'freeze') result = await freezePortableEvidence(process.cwd(), bundlePath);
+    else if (action === 'inspect') result = await inspectPortableEvidence(bundlePath);
+    else result = await restorePortableEvidence(process.cwd(), bundlePath, { rebind: action === 'rebind' });
+    const human = action === 'freeze'
+      ? `Frozen evidence at ${result.path}\nState: ${result.state} · identity ${result.identity.digest}\nArtifacts: ${result.artifacts} · authenticated: ${result.authenticated}`
+      : action === 'inspect'
+        ? `Portable evidence ${result.state}\nBundle: ${result.path}\nIdentity: ${result.identity.digest}\nArtifacts: ${result.artifacts} · authenticated: ${result.authenticated}`
+        : `${action === 'rebind' ? 'Rebound' : 'Restored'} evidence in ${result.path}\nState: ${result.state} · ${result.restored ? 'written' : 'already present'}\nNext safe action: inspect cmi status --json; portable evidence is not authenticated.`;
+    console.log(json ? JSON.stringify(result, null, 2) : human);
   }
   else if (cmd === 'mcp-config') {
     const executable = fileURLToPath(new URL('./mcp-entry.js', import.meta.url));

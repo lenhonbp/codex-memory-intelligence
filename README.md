@@ -302,9 +302,37 @@ cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]
 cmi snapshot [label]
 cmi status [path] [--json]
 cmi doctor [path] [--json]
+cmi provenance [--json]
+cmi evidence freeze <bundle-path> [--json]
+cmi evidence inspect <bundle-path> [--json]
+cmi evidence restore <bundle-path> [--json]
+cmi evidence rebind <bundle-path> [--json]
 cmi mcp-config [--write] [--bulk-refresh]
 cmi --version
 ```
+
+## Portable evidence and executable provenance
+
+Freeze the current `.codex-memory` state into a bounded directory bundle whose manifest contains path-independent source-content identity, Git repository/revision evidence when observable, CMI version/source provenance, a deterministic artifact inventory, and SHA-256 digests:
+
+```bash
+cmi evidence freeze ../cmi-evidence-freeze --json
+cmi evidence inspect ../cmi-evidence-freeze --json
+cmi evidence restore ../cmi-evidence-freeze --json
+cmi evidence rebind ../cmi-evidence-freeze --json
+```
+
+Restore and rebind verify the project source identity before writing. A same-state restore is `exact`; a compatible checkout at another path is `compatible-relocated`; a destination with unavailable Git identity may be reported as `compatible-content-only`; mismatches, corrupted manifests/artifacts, unsafe paths, symlinks, blocked evidence, and existing conflicting destinations fail closed. Existing evidence is never silently overwritten. Rebind records the original identity, requested operation, and verification result in `.codex-memory/portable-provenance.json` without changing semantic memory-review provenance.
+
+Portable evidence is a local, digest-verified transport format, not an authenticated backup or proof of source authorship. CMI does not export source files, but it refuses to freeze obvious credential-like content in intended evidence files. The source identity is content-based rather than an absolute filesystem path, so relocation does not alone create a new project identity.
+
+To diagnose which installation is actually running:
+
+```bash
+cmi provenance --json
+```
+
+The report identifies the runtime executable/script, resolved package root/version, install and invocation kind, source checkout revision/dirty state when observable, project-local candidates, and ambiguity/limitations. It never substitutes the current working directory's `package.json` for the invoked package.
 
 ## MCP integration
 

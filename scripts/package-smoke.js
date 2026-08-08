@@ -16,6 +16,9 @@ try {
   const runExecutable = (args, options = {}) => execFileSync(executable, args, { encoding: 'utf8', shell: process.platform === 'win32', ...options });
   const version = runExecutable(['--version']).trim();
   if (version !== packageJson.version) throw new Error(`Unexpected installed version: ${version}; expected ${packageJson.version}`);
+  const provenance = JSON.parse(runExecutable(['provenance', '--json']));
+  if (provenance.observed.packageName !== packageJson.name || provenance.observed.packageVersion !== packageJson.version) throw new Error('Installed package provenance did not resolve its own package metadata.');
+  if (!provenance.observed.packageRoot || provenance.observed.sourceCheckout || provenance.observed.installKind !== 'global-package') throw new Error('Installed package provenance was not classified as an external package installation.');
   runExecutable(['--help'], { stdio: 'ignore' });
   console.log(`Package smoke test passed for ${path.basename(archive)}.`);
 } finally {

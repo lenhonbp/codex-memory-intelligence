@@ -29,6 +29,8 @@ import {
   formatChangeList,
 } from './change-intelligence.js';
 import { VERSION, MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSIONS } from './version.js';
+import { collectExecutableProvenance } from './provenance.js';
+import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidence } from './portable-evidence.js';
 
 const root = path.resolve(process.env.CMI_PROJECT_ROOT || process.cwd());
 const writeEnabled = /^(1|true|yes)$/i.test(process.env.CMI_WRITE_ENABLED || '');
@@ -137,6 +139,29 @@ async function callTool(name, args = {}) {
     const result = await checkStaleMemory(root);
     return textResult(formatStaleReport(result), result);
   }
+  if (name === 'get_executable_provenance') {
+    const result = await collectExecutableProvenance({ projectRoot: root });
+    return textResult(JSON.stringify(result, null, 2), result);
+  }
+  if (name === 'inspect_portable_evidence') {
+    const result = await inspectPortableEvidence(args.bundlePath || '');
+    return textResult(JSON.stringify(result, null, 2), result);
+  }
+  if (name === 'freeze_portable_evidence') {
+    writable();
+    const result = await freezePortableEvidence(root, args.bundlePath || '');
+    return textResult(JSON.stringify(result, null, 2), result);
+  }
+  if (name === 'restore_portable_evidence') {
+    writable();
+    const result = await restorePortableEvidence(root, args.bundlePath || '');
+    return textResult(JSON.stringify(result, null, 2), result);
+  }
+  if (name === 'rebind_portable_evidence') {
+    writable();
+    const result = await restorePortableEvidence(root, args.bundlePath || '', { rebind: true });
+    return textResult(JSON.stringify(result, null, 2), result);
+  }
   if (name === 'refresh_project_memory') {
     writable();
     const selector = args.id || '';
@@ -189,8 +214,13 @@ const readTools = [
   { name: 'get_project_graph', title: 'Get project graph', description: 'Return compact import-graph statistics, high-impact files, incremental-scan metrics, and external dependencies.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'analyze_project_impact', title: 'Analyze project impact', description: 'Find files and workspaces that depend on a file or symbol before changing it. Returns blocked when graph freshness cannot be established.', inputSchema: { type: 'object', required: ['target'], properties: { target: { type: 'string' }, depth: { type: 'integer', minimum: 1, maximum: 8 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'check_stale_memory', title: 'Check memory health and lifecycle', description: 'Detect active project knowledge that is stale, needs review, predates metadata tracking, or cannot be safely read; intentionally inactive knowledge is listed separately.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_executable_provenance', title: 'Get executable provenance', description: 'Report the actual runtime executable/script, resolved package root and version, source checkout revision, install kind, project-local candidates, and ambiguity diagnostics. Unknown values remain unknown.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'inspect_portable_evidence', title: 'Inspect portable evidence', description: 'Validate a frozen CMI evidence bundle manifest, artifact inventory, paths, and digests without writing project state. Bundles are not authenticated backups.', inputSchema: { type: 'object', required: ['bundlePath'], properties: { bundlePath: { type: 'string', maxLength: 2000 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
 ];
 const writeTools = [
+  { name: 'freeze_portable_evidence', title: 'Freeze portable evidence', description: 'Create a bounded digest-verified portable evidence directory outside the project. Requires explicit MCP write opt-in and rejects blocked or sensitive evidence.', inputSchema: { type: 'object', required: ['bundlePath'], properties: { bundlePath: { type: 'string', maxLength: 2000 } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: 'restore_portable_evidence', title: 'Restore portable evidence', description: 'Restore a verified frozen bundle only after source-content, repository, and revision compatibility checks pass. Existing evidence is never overwritten. Requires explicit MCP write opt-in.', inputSchema: { type: 'object', required: ['bundlePath'], properties: { bundlePath: { type: 'string', maxLength: 2000 } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: 'rebind_portable_evidence', title: 'Rebind portable evidence', description: 'Explicitly rebind a verified frozen bundle to a relocated compatible checkout and record original identity, requested operation, and verification provenance. Requires explicit MCP write opt-in.', inputSchema: { type: 'object', required: ['bundlePath'], properties: { bundlePath: { type: 'string', maxLength: 2000 } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
   { name: 'scan_project_intelligence', title: 'Scan project intelligence', description: 'Refresh repository structure, workspaces, import graph, symbol intelligence, and durable generated caches. Requires explicit MCP write opt-in. Uses incremental reuse unless full is true.', inputSchema: { type: 'object', properties: { full: { type: 'boolean' } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'start_change_record', title: 'Start change intelligence record', description: 'Start a durable BEFORE record from the current pre-change brief and relevant historical evidence. Requires explicit MCP write opt-in.', inputSchema: { type: 'object', required: ['goal'], properties: { goal: { type: 'string', maxLength: 500 }, limit: { type: 'integer', minimum: 1, maximum: 30 }, depth: { type: 'integer', minimum: 1, maximum: 8 }, workspace: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
   { name: 'observe_change_record', title: 'Observe change progress', description: 'Capture DURING evidence from Git plus optional explicit project-relative file paths without storing diffs or source contents.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' }, files: { type: 'array', items: { type: 'string' }, maxItems: 160 } } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
@@ -211,6 +241,7 @@ const resources = [
   { uri: 'cmi://project/baseline', name: 'Repository baseline', title: 'Repository Baseline', description: 'Bounded Git baseline without absolute local paths.', mimeType: 'application/json' },
   { uri: 'cmi://project/boundaries', name: 'Inferred project boundaries', title: 'Inferred Project Boundaries', description: 'Advisory boundary map with confidence and provenance.', mimeType: 'application/json' },
   { uri: 'cmi://project/change-history', name: 'Change history', title: 'Project Change History', description: 'Bounded summaries of durable BEFORE/DURING/AFTER change records.', mimeType: 'application/json' },
+  { uri: 'cmi://project/provenance', name: 'Executable provenance', title: 'Executable Provenance', description: 'Observable runtime, package, source-checkout, and multi-install candidate diagnostics.', mimeType: 'application/json' },
 ];
 
 async function readResource(uri) {
@@ -241,6 +272,9 @@ async function readResource(uri) {
   }
   if (uri === 'cmi://project/change-history') {
     return { uri, mimeType: 'application/json', text: JSON.stringify(await listChangeRecords(root, { limit: 50 }), null, 2) };
+  }
+  if (uri === 'cmi://project/provenance') {
+    return { uri, mimeType: 'application/json', text: JSON.stringify(await collectExecutableProvenance({ projectRoot: root }), null, 2) };
   }
   throw new Error(`Unknown resource: ${uri}`);
 }
@@ -278,7 +312,7 @@ async function handle(message) {
     lifecycle = 'initializing';
     const requested = String(params?.protocolVersion || '');
     negotiatedProtocol = MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSION;
-    send({ jsonrpc: '2.0', id, result: { protocolVersion: negotiatedProtocol, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: 'codex-memory-intelligence', title: 'Codex Memory Intelligence', version: VERSION }, instructions: `Local-first project intelligence with incremental scanning, workspace-aware retrieval, active-memory lifecycle filtering, evidence-labeled pre-change briefs, and historical change intelligence. Inferred boundaries, co-change patterns, and learning candidates are advisory. Durable project writes, including generated scan caches, are ${writeEnabled ? 'enabled' : 'disabled by default'}.` } });
+    send({ jsonrpc: '2.0', id, result: { protocolVersion: negotiatedProtocol, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: 'codex-memory-intelligence', title: 'Codex Memory Intelligence', version: VERSION }, instructions: `Local-first project intelligence with incremental scanning, workspace-aware retrieval, portable evidence freeze/restore/rebind, and executable provenance diagnostics. Inferred boundaries, co-change patterns, and learning candidates are advisory. Portable evidence is digest-verified but not authenticated. Durable project writes, including generated scan caches, are ${writeEnabled ? 'enabled' : 'disabled by default'}.` } });
     return;
   }
   if (method === 'notifications/initialized') { if (lifecycle === 'initializing') lifecycle = 'ready'; return; }

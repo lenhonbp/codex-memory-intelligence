@@ -62,6 +62,8 @@ Existing read/default tools include:
 - `get_project_graph` — compact graph statistics;
 - `analyze_project_impact` — reverse-dependency impact analysis that returns blocked when graph freshness cannot be established;
 - `check_stale_memory` — active-memory stale/review audit, blocked-file diagnostics, and inactive lifecycle inventory.
+- `get_executable_provenance` — actual runtime/script, resolved package root/version, source-checkout revision, install kind, candidates, ambiguity, and limitations.
+- `inspect_portable_evidence` — validate a frozen evidence bundle's manifest, bounded artifact inventory, safe paths, and digests without writing project state.
 
 Evaluation read tools add:
 
@@ -88,6 +90,10 @@ Safe/default MCP never creates or refreshes generated caches. If the graph/index
 ## Write-enabled tools
 
 When the server starts with `CMI_WRITE_ENABLED=1`, existing write tools include:
+
+- `freeze_portable_evidence` — create a bounded digest-verified evidence bundle outside the project;
+- `restore_portable_evidence` — restore only after source-content/repository/revision compatibility checks;
+- `rebind_portable_evidence` — perform the same verified restore as an explicit relocation request and record the original identity plus verification provenance;
 
 - `scan_project_intelligence` — incrementally/full scans the repository and writes generated project index/graph/architecture caches;
 - `start_change_record`;
@@ -192,6 +198,7 @@ Existing resources:
 - `cmi://project/baseline`
 - `cmi://project/boundaries`
 - `cmi://project/change-history`
+- `cmi://project/provenance`
 
 Evaluation resources:
 
@@ -204,6 +211,8 @@ Session-continuation resources:
 - `cmi://project/findings`
 
 The baseline resource does not expose absolute local repository paths. Change/session history is bounded and does not automatically store source diffs. Raw memory remains reviewable Markdown and may contain inactive lifecycle history; ranked memory search excludes inactive knowledge by default.
+
+`cmi://project/provenance` is intentionally diagnostic and may contain absolute executable/package paths because distinguishing multiple installations is its purpose. Portable evidence reports are digest-verified but not authenticated.
 
 ## Prompts
 
@@ -265,6 +274,8 @@ read evidence
 ```
 
 Bulk memory refresh remains separately guarded even in a write-enabled process.
+
+Portable evidence mutations are also write-gated. The read-only MCP surface exposes provenance and bundle inspection only; direct calls to hidden freeze/restore/rebind operations still fail before any filesystem mutation. Restore/rebind validate all bundle paths and digests, reject symlink/traversal/oversized/corrupt input, refuse blocked evidence and conflicting destinations, and do not promote stale or source-current memory into semantic `reviewed-current` knowledge.
 
 ## Longitudinal evaluation
 
