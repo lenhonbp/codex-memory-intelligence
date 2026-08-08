@@ -1,0 +1,117 @@
+name: Validate MCP-Parity v0.9.x Candidate on Public Repositories
+
+on:
+  push:
+    branches:
+      - validation/v09x-public-field-mcp-20260808
+    paths:
+      - .github/workflows/v09x-public-field-mcp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  field-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact product candidate
+        uses: actions/checkout@v6
+        with:
+          ref: afb6dd1d2ac66433e3cbe9a6fc816fba4b6cb059
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.9.0
+          package-manager-cache: false
+      - name: Verify exact candidate before field use
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "afb6dd1d2ac66433e3cbe9a6fc816fba4b6cb059"
+          npm run verify
+          npm run package:smoke
+      - name: Run observational external-real evaluations
+        shell: bash
+        run: |
+          set -euo pipefail
+          CMI_ROOT="$GITHUB_WORKSPACE"
+          RESULTS="$RUNNER_TEMP/cmi-public-field"
+          mkdir -p "$RESULTS/records"
+
+          run_eval() {
+            local key="$1"
+            local repo="$2"
+            local target="$RUNNER_TEMP/target-$key"
+            git clone --depth 1 "$repo" "$target" >/dev/null 2>&1
+            (
+              cd "$target"
+              test -z "$(git status --porcelain)"
+              node "$CMI_ROOT/src/cli-entry.js" scan . --json > "$RESULTS/$key-scan.json"
+              node "$CMI_ROOT/src/cli-entry.js" session start "read-only public repository evaluation" --json > "$RESULTS/$key-session-start.json"
+              node "$CMI_ROOT/src/cli-entry.js" session close latest --outcome investigated --accomplished "Completed bounded read-only repository evaluation." --json > "$RESULTS/$key-session-close.json"
+              node "$CMI_ROOT/src/cli-entry.js" evaluate capture \
+                --source-kind external-real \
+                --protocol observational \
+                --repository-class library \
+                --task-kind audit \
+                --json > "$RESULTS/records/$key.json"
+              rm -rf .codex-memory
+              test -z "$(git status --porcelain)"
+            )
+          }
+
+          run_eval express https://github.com/expressjs/express.git
+          run_eval click https://github.com/pallets/click.git
+          run_eval cobra https://github.com/spf13/cobra.git
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { buildEvaluationReport, validateEvaluationRecord } from './src/evaluation.js';
+
+          const candidate = 'afb6dd1d2ac66433e3cbe9a6fc816fba4b6cb059';
+          const base = path.join(process.env.RUNNER_TEMP, 'cmi-public-field');
+          const recordDir = path.join(base, 'records');
+          const corpus = path.join(base, 'corpus');
+          fs.mkdirSync(path.join(corpus, '.codex-memory', 'evaluations'), { recursive: true });
+          const names = fs.readdirSync(recordDir).filter((name) => name.endsWith('.json')).sort();
+          if (names.length !== 3) throw new Error(`expected 3 field records, got ${names.length}`);
+          const fingerprints = new Set();
+          const forbidden = /expressjs|pallets|spf13|github\.com|\/home\/runner|read-only public repository evaluation/i;
+          for (const name of names) {
+            const text = fs.readFileSync(path.join(recordDir, name), 'utf8');
+            const record = JSON.parse(text);
+            if (!validateEvaluationRecord(record)) throw new Error(`${name}: runtime evaluation validation failed`);
+            if (record.subject.version !== '0.9.0' || record.subject.sourceRevision !== candidate) throw new Error(`${name}: subject provenance does not match exact candidate`);
+            if (record.source.kind !== 'external-real' || record.source.independent !== true) throw new Error(`${name}: source classification drifted`);
+            if (record.protocol.kind !== 'observational') throw new Error(`${name}: protocol classification drifted`);
+            if (record.review.outcome !== 'unreviewed' || record.review.provenance !== 'unreviewed' || record.review.reviewedAt !== null) throw new Error(`${name}: unreviewed provenance drifted`);
+            if (forbidden.test(text)) throw new Error(`${name}: retained evaluation leaked repository/session identity`);
+            fingerprints.add(record.repository.fingerprint);
+            fs.copyFileSync(path.join(recordDir, name), path.join(corpus, '.codex-memory', 'evaluations', `${record.id}.json`));
+          }
+          if (fingerprints.size !== 3) throw new Error(`expected 3 repository fingerprints, got ${fingerprints.size}`);
+          const report = await buildEvaluationReport(corpus);
+          fs.writeFileSync(path.join(base, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+          if (report.corpus.externalReal.records !== 3 || report.corpus.externalReal.observationalRecords !== 3 || report.corpus.externalReal.controlledStressRecords !== 0) throw new Error('external protocol aggregation drifted');
+          if (report.corpus.externalReal.observationalUniqueRepositories !== 3) throw new Error('expected 3 observational repositories');
+          if (report.corpus.sourceRevisionsPresent !== 3) throw new Error('candidate revision was not retained on all records');
+          if (report.coverage.state !== 'external-multi-repository') throw new Error(`unexpected coverage state: ${report.coverage.state}`);
+          if (report.coverage.hasMultipleExternalTaskKinds !== false) throw new Error('audit-only field run must not claim multi-task coverage');
+          if (report.coverage.hasReviewedExternalEvidence || report.coverage.hasHumanReviewedExternalEvidence) throw new Error('unreviewed field runs became reviewed evidence');
+          if (report.reviewedUsefulness.reviewedExternalRecords !== 0 || report.reviewedUsefulness.provenance.human !== 0 || report.reviewedUsefulness.provenance.agent !== 0) throw new Error('review usefulness must stay empty');
+          if (Object.hasOwn(report, 'productionValidated')) throw new Error('report must not synthesize production-validation claims');
+          NODE
+      - name: Show bounded aggregate evidence
+        shell: bash
+        run: |
+          node -e "const r=require(process.env.RUNNER_TEMP+'/cmi-public-field/report.json'); console.log(JSON.stringify({coverage:r.coverage, corpus:r.corpus, observedMetrics:r.observedMetrics, reviewedUsefulness:r.reviewedUsefulness}, null, 2))"
+      - name: Upload anonymized exact-candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v09x-public-field-evidence-afb6dd1d
+          path: |
+            ${{ runner.temp }}/cmi-public-field/records/*.json
+            ${{ runner.temp }}/cmi-public-field/report.json
+          if-no-files-found: error
+          retention-days: 30
