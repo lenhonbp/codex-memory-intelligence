@@ -86,6 +86,10 @@ function isCmiInternalPath(value) {
   const normalized = slash(value).replace(/^\.\/+/, '');
   return normalized === '.codex-memory' || normalized.startsWith('.codex-memory/');
 }
+function isUntrackedGitStatus(status) {
+  const value = String(status || '');
+  return value[0] === '?' && value[1] === '?';
+}
 function humanize(value) {
   if (value === 'root') return 'Root source';
   return String(value).replace(/[-_.]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -192,7 +196,10 @@ export async function getRepositoryBaseline(root) {
       committedAt = await runGit(resolvedRoot, ['log', '-1', '--format=%cI']);
     } catch {}
     const porcelain = await runGit(resolvedRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']);
-    const allChanges = parseGitStatusPorcelainZ(porcelain).filter((item) => !isCmiInternalPath(item.path) && !isCmiInternalPath(item.originalPath));
+    const allChanges = parseGitStatusPorcelainZ(porcelain).filter((item) => {
+      const cmiInternal = isCmiInternalPath(item.path) || isCmiInternalPath(item.originalPath);
+      return !(cmiInternal && isUntrackedGitStatus(item.status));
+    });
     return {
       available: true,
       projectPath,

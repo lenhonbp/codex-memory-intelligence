@@ -4,10 +4,12 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+This section describes current `main` / unreleased v0.10.0 work. It is not part of the published npm `v0.9.2` package; see the `[0.9.2]` section for the public release contents.
+
 ### Fixed
 
 - Made fresh-project `cmi doctor` diagnostics fail closed with an actionable `cmi init`/`cmi scan` recovery path, and made human `cmi status` use the same trust-critical blocked exit code as JSON mode.
-- Kept generated `.codex-memory/` state out of repository-baseline dirty-change summaries while preserving real project changes.
+- Kept only untracked local `.codex-memory/` state out of repository-baseline dirty-change summaries while preserving tracked, staged, renamed, and ordinary project changes.
 - Added a structured, non-mutating next action to portable-evidence mismatch errors and surfaced that action in human CLI output.
 
 ### Added
