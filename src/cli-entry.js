@@ -35,10 +35,21 @@ if (!['session', 'finding', 'evaluate'].includes(command)) {
 }
 
 const json = args.includes('--json');
+const VALUE_FLAGS = new Set([
+  '--file','--note','--accomplished','--blocker','--decision','--question','--outcome','--status','--limit','--reason','--changed-by','--superseded-by',
+  '--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings',
+  '--next-action-rating','--handoff-rating','--reconstruction-rating','--follow-up-outcome','--verification-choice-outcome','--history-rating','--stress-scenario',
+  '--stress-expected','--stress-passed','--stress-failed','--subject-version','--since-days',
+]);
 function hasFlag(name) { return args.includes(name); }
 function optionValues(name) {
   const output = [];
-  for (let index = 0; index < args.length; index += 1) if (args[index] === name && args[index + 1]) output.push(args[index + 1]);
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== name) continue;
+    const next = args[index + 1];
+    if (!next || next.startsWith('--')) throw new Error(`${name} requires a value.`);
+    output.push(next);
+  }
   return output;
 }
 function optionNumber(name, fallback) { const value = Number(optionValues(name)[0]); return Number.isFinite(value) ? value : fallback; }
@@ -53,6 +64,48 @@ function positional(valueOptions = []) {
     output.push(value);
   }
   return output;
+}
+function actionName() {
+  const values = positional([...VALUE_FLAGS]);
+  return values[0] || null;
+}
+function allowedFlags() {
+  const action = actionName();
+  if (command === 'session') {
+    const commonObservation = ['--file','--note','--accomplished','--blocker','--decision','--question','--outcome','--json'];
+    const map = {
+      start: ['--file','--note','--accomplished','--blocker','--decision','--question','--json'],
+      observe: commonObservation.filter((item) => item !== '--outcome'),
+      status: ['--json'], close: commonObservation, show: ['--json'], list: ['--status','--limit','--json'], handoff: ['--json'],
+    };
+    return new Set(map[action] || []);
+  }
+  if (command === 'finding') {
+    const map = { list: ['--status','--limit','--json'], show: ['--json'], state: ['--reason','--changed-by','--superseded-by','--json'] };
+    return new Set(map[action] || []);
+  }
+  const capture = ['--source-kind','--protocol','--repository-class','--task-kind','--session','--stress-scenario','--stress-expected','--stress-passed','--stress-failed','--json'];
+  const review = ['--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--reconstruction-rating','--follow-up-outcome','--verification-choice-outcome','--history-rating','--json'];
+  const filters = ['--source-kind','--task-kind','--subject-version','--since-days'];
+  const map = {
+    capture,
+    review,
+    list: [...filters,'--limit','--json'],
+    show: ['--json'],
+    report: [...filters,'--json'],
+    export: [...filters,'--json'],
+    import: ['--json'],
+  };
+  return new Set(map[action] || []);
+}
+function validateFlags() {
+  if (hasFlag('--help') || hasFlag('-h') || args[0] === 'help') return;
+  const allowed = allowedFlags();
+  for (const value of args) {
+    if (!value.startsWith('--')) continue;
+    if (!allowed.has(value)) throw new Error(`Unknown option for ${command} ${actionName() || ''}: ${value}`.trim());
+  }
+  for (const value of allowed) if (VALUE_FLAGS.has(value) && args.includes(value)) optionValues(value);
 }
 function sessionOptions() {
   return {
@@ -94,8 +147,13 @@ function groupHelp(name) {
   if (name === 'finding') return 'Usage: cmi finding <list|show|state> ...\n\nInspect and explicitly review persistent project findings.';
   return 'Usage: cmi evaluate <capture|review|list|show|report> ...\n       cmi evaluate <export|import> ...\n\nSource kinds: external-real | self-host | synthetic.\nCollect anonymized field evidence, explicit longitudinal human/agent judgments, and portable local bundles without mixing provenance classes.';
 }
+function emitError(error) {
+  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message } }));
+  else console.error(`CMI error: ${error.message}`);
+}
 
 try {
+  validateFlags();
   if (hasFlag('--help') || hasFlag('-h') || args[0] === 'help') {
     console.log(groupHelp(command));
   } else if (command === 'session') {
@@ -147,7 +205,7 @@ try {
       throw new Error('Usage: cmi finding <list|show|state> ...');
     }
   } else {
-    const values = positional(['--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--reconstruction-rating','--follow-up-outcome','--verification-choice-outcome','--history-rating','--stress-scenario','--stress-expected','--stress-passed','--stress-failed','--subject-version','--since-days','--limit']);
+    const values = positional([...VALUE_FLAGS]);
     const action = values.shift();
     if (action === 'capture') {
       if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id] [--stress-scenario scenario --stress-expected N --stress-passed N --stress-failed N]');
@@ -182,7 +240,6 @@ try {
     }
   }
 } catch (error) {
-  console.error(`CMI error: ${error.message}`);
-  if (hasFlag('--json')) console.error(JSON.stringify({ error: error.message }));
+  emitError(error);
   process.exitCode = 1;
 }
