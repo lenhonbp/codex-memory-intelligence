@@ -54,6 +54,10 @@ function validateSchemaContracts() {
   if (memory.properties?.schemaVersion?.const !== MEMORY_SCHEMA_VERSION) errors.push('memory schemaVersion differs from runtime contract');
   if (!sameValues(memory.properties?.lifecycle?.properties?.state?.enum, MEMORY_LIFECYCLE_STATES)) errors.push('memory lifecycle enum differs from runtime contract');
   if (session.properties?.schemaVersion?.const !== SESSION_SCHEMA_VERSION) errors.push('session schemaVersion differs from runtime contract');
+  if (session.properties?.id?.format !== 'uuid') errors.push('session id schema must use canonical UUID format');
+  if (session.$defs?.finding?.properties?.id?.format !== 'uuid') errors.push('session finding id schema must use canonical UUID format');
+  if (!(session.$defs?.finding?.required || []).includes('occurrences')) errors.push('session finding schema must require occurrences like runtime');
+  if (session.$defs?.handoff?.properties?.sessionId?.format !== 'uuid') errors.push('session handoff sessionId schema must use canonical UUID format');
   if (!sameValues(session.properties?.close?.anyOf?.[1]?.properties?.outcome?.enum, SESSION_OUTCOMES)) errors.push('session outcome enum differs from runtime contract');
   if (!sameValues(session.$defs?.finding?.properties?.state?.enum, FINDING_STATES)) errors.push('session finding states differ from runtime contract');
   if (!sameValues(session.$defs?.finding?.properties?.severity?.enum, FINDING_SEVERITIES)) errors.push('session finding severities differ from runtime contract');
@@ -61,6 +65,8 @@ function validateSchemaContracts() {
   if (!sameValues(session.$defs?.recommendation?.properties?.priority?.enum, RECOMMENDATION_PRIORITIES)) errors.push('session recommendation priorities differ from runtime contract');
   if (!sameValues(session.$defs?.recommendation?.properties?.confidence?.enum, CONFIDENCE_LEVELS)) errors.push('session recommendation confidence differs from runtime contract');
   if (findings.properties?.schemaVersion?.const !== FINDINGS_SCHEMA_VERSION) errors.push('findings schemaVersion differs from runtime contract');
+  if (findings.properties?.findings?.items?.properties?.id?.format !== 'uuid') errors.push('findings registry id schema must use canonical UUID format');
+  if (!(findings.properties?.findings?.items?.required || []).includes('occurrences')) errors.push('findings registry must require occurrences like runtime');
   if (!sameValues(findings.properties?.findings?.items?.properties?.state?.enum, FINDING_STATES)) errors.push('findings registry states differ from runtime contract');
   if (!sameValues(findings.properties?.findings?.items?.properties?.severity?.enum, FINDING_SEVERITIES)) errors.push('findings registry severities differ from runtime contract');
   if (!sameValues(findings.properties?.findings?.items?.properties?.evidenceType?.enum, EVIDENCE_TYPES)) errors.push('findings registry evidence types differ from runtime contract');

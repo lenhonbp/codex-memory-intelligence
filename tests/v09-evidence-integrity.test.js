@@ -115,7 +115,8 @@ test('invalid versioned memory lifecycle metadata is not trusted as reviewed-cur
 
 test('session runtime validation rejects malformed nested observation evidence', () => {
   const now = new Date().toISOString();
-  const base = { schemaVersion: 1, id: '12345678-abcd', revision: 1, status: 'active', goal: 'validate nested evidence', createdAt: now, updatedAt: now, start: {}, close: null };
+  const base = { schemaVersion: 1, id: '12345678-1234-4123-8123-123456789abc', revision: 1, status: 'active', goal: 'validate nested evidence', createdAt: now, updatedAt: now, start: {}, close: null };
+  assert.equal(validateSessionRecord({ ...base, id: '12345678-abcd', observations: [] }), false);
   assert.equal(validateSessionRecord({ ...base, observations: [{ observedAt: now, files: [] }] }), false);
   assert.equal(validateSessionRecord({ ...base, observations: [{ observedAt: now, files: [], notes: [], accomplished: [], blockers: [], decisions: [], questions: [] }] }), true);
 });

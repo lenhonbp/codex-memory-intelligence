@@ -36,6 +36,8 @@ CMI keeps JSON Schemas human/tool-readable, but v0.9 also validates trust-critic
 - findings, recommendations, guardrails, and handoffs;
 - persistent findings registry.
 
+Durable memory, session, handoff, and finding identities use canonical UUIDs in both runtime validation and their versioned JSON Schemas. Required trust fields such as finding occurrence counts are also parity-checked.
+
 Critical schema versions and enums are checked during repository quality validation, so a runtime/schema mismatch is a CI failure rather than documentation drift.
 
 Legacy memory metadata remains readable for compatibility. New/versioned metadata is held to the current contract. Invalid versioned metadata is treated as untracked evidence instead of reviewed-current knowledge.

@@ -114,7 +114,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "maxLength": 100
+              "format": "uuid"
             },
             "maxItems": 50
           },

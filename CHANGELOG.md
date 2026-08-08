@@ -9,7 +9,7 @@ All notable changes are documented here.
 - Unified Evidence Health Model with explicit healthy/degraded/blocked states, per-domain usability, capability status, reasons, and deterministic recovery actions.
 - Git-history continuity evidence for change/session attribution so rebase/reset/history rewrites are detected before committed paths are attributed.
 - Runtime durable contracts for versioned memory metadata, session records, findings, recommendations, guardrails, handoffs, and the persistent findings registry.
-- `schemas/findings-registry.schema.json` plus CI-enforced schema/runtime enum and version parity.
+- `schemas/findings-registry.schema.json` plus CI-enforced schema/runtime identity, required-field, enum, and version parity.
 
 ### Changed
 

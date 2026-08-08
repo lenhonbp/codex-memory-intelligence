@@ -12,7 +12,7 @@ export const CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
 function object(value) { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 function text(value, max = Infinity) { return typeof value === 'string' && value.trim().length > 0 && value.length <= max; }
 function iso(value) { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
-function uuidLike(value) { return typeof value === 'string' && /^[0-9a-f]{8,}(?:-[0-9a-f-]+)?$/i.test(value); }
+function uuidLike(value) { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 function arrayOfText(value, maxItems, maxLength = Infinity) { return Array.isArray(value) && value.length <= maxItems && value.every((item) => typeof item === 'string' && item.length <= maxLength); }
 function add(errors, condition, message) { if (!condition) errors.push(message); }
 
