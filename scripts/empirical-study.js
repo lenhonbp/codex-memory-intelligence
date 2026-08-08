@@ -9,6 +9,14 @@ import {
   validateStudyLedger,
 } from '../src/empirical-study.js';
 
+const COMMAND_OPTIONS = {
+  init: new Set(['out', 'study-id', 'pair-id', 'repository-study-id', 'revision', 'repo-class', 'task-class', 'order', 'agent-configuration', 'task-reference', 'acceptance-reference', 'negative-control']),
+  record: new Set(['file', 'condition', 'input']),
+  validate: new Set(['file']),
+  report: new Set(['file', 'json']),
+  aggregate: new Set(['file', 'json']),
+};
+
 function usage() {
   console.log(`CMI empirical study harness
 
@@ -33,6 +41,7 @@ function parseArgs(argv) {
     }
     const key = token.slice(2);
     if (key === 'negative-control' || key === 'json') {
+      if (Object.hasOwn(values, key)) throw new Error(`Duplicate option --${key}`);
       values[key] = true;
       continue;
     }
@@ -48,6 +57,19 @@ function parseArgs(argv) {
     }
   }
   return { command, values };
+}
+
+function validateCommandOptions(command, values) {
+  const allowed = COMMAND_OPTIONS[command];
+  if (!allowed) throw new Error(`Unknown command: ${command}`);
+  if (values._.length) throw new Error(`Unexpected positional argument: ${values._[0]}`);
+  for (const key of Object.keys(values)) {
+    if (key === '_') continue;
+    if (!allowed.has(key)) throw new Error(`Unknown option --${key} for ${command}`);
+  }
+  if (command !== 'aggregate' && Array.isArray(values.file) && values.file.length > 1) {
+    throw new Error('Duplicate option --file');
+  }
 }
 
 function requireValue(values, key) {
@@ -98,6 +120,7 @@ try {
     usage();
     process.exit(0);
   }
+  validateCommandOptions(command, values);
 
   if (command === 'init') {
     const output = requireValue(values, 'out');
@@ -134,8 +157,6 @@ try {
     const files = Array.isArray(values.file) ? values.file : values.file ? [values.file] : [];
     if (!files.length) throw new Error('At least one --file is required');
     printReport(aggregateStudyLedgers(files.map(readJson)), Boolean(values.json));
-  } else {
-    throw new Error(`Unknown command: ${command}`);
   }
 } catch (error) {
   console.error(`Error: ${error.message}`);
