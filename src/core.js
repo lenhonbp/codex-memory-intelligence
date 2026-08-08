@@ -14,6 +14,7 @@ import { detectWorkspaces, formatWorkspaces } from './workspaces.js';
 import { loadMemory } from './search.js';
 import { withMemoryWriteLock } from './memory-lock.js';
 import { VERSION } from './version.js';
+import { buildEvidenceHealth } from './evidence-health.js';
 
 const exec = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -251,9 +252,10 @@ export async function status(root) {
   let directory = null;
   try { directory = await ensureSafeMemoryRoot(root, { create: false }); }
   catch (error) {
-    return { initialized: true, healthy: false, storageHealth: { safe: false, reason: error.message }, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
+    const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: false, indexAvailable: false, graphHealth: null, memoryHealth: null });
+    return { initialized: true, healthy: false, evidenceHealth, storageHealth: { safe: false, reason: error.message }, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
   }
-  if (!directory) return { initialized: false };
+  if (!directory) return { initialized: false, healthy: false, evidenceHealth: buildEvidenceHealth({ initialized: false, storageSafe: true, indexAvailable: false, graphHealth: null, memoryHealth: null }) };
   const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true }).catch(() => null);
   const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true }).catch(() => null);
   const snapshots = await safeListMemoryDir(root, 'snapshots').catch(() => []);
@@ -261,9 +263,11 @@ export async function status(root) {
   const memoryHealth = await checkStaleMemory(root);
   const loaded = await loadMemory(root, { withHealth: true });
   const graphHealth = loaded.graphHealth;
+  const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: true, indexAvailable: Boolean(index), graphHealth, memoryHealth: memoryHealth.counts });
   return {
     initialized: true,
-    healthy: Boolean(index && graph && graphHealth.healthy && memoryHealth.counts.stale === 0 && memoryHealth.counts.review === 0 && memoryHealth.counts.untracked === 0),
+    healthy: evidenceHealth.healthy,
+    evidenceHealth,
     storageHealth: { safe: true },
     index,
     graph: graph?.summary || null,
@@ -299,6 +303,7 @@ export async function doctor(root) {
     const projectStatus = await status(root);
     add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
     add('graph-health', projectStatus.graphHealth?.healthy ? 'pass' : 'warn', projectStatus.graphHealth?.healthy ? 'Project graph is current and complete within configured coverage.' : `Project graph is degraded (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, truncated=${Boolean(projectStatus.graphHealth?.truncated)}). Run cmi scan or raise graph limits.`);
+    add('evidence-health', projectStatus.evidenceHealth?.healthy ? 'pass' : 'warn', projectStatus.evidenceHealth?.healthy ? 'Current project evidence is healthy.' : `Evidence state is ${projectStatus.evidenceHealth?.state || 'unknown'}; inspect status --json before relying on degraded evidence.`);
     const memoryCurrent = projectStatus.memoryHealth?.stale === 0 && projectStatus.memoryHealth?.review === 0 && projectStatus.memoryHealth?.untracked === 0;
     add('memory-health', memoryCurrent ? 'pass' : 'warn', memoryCurrent ? 'Tracked memory is current.' : 'Run cmi stale to review memory health.');
     add('workspaces', 'pass', `${projectStatus.workspaces?.count || 0} configured workspace(s) detected.`);

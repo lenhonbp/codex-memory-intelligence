@@ -6,7 +6,7 @@
   "required": ["schemaVersion", "id", "revision", "status", "goal", "createdAt", "updatedAt", "start", "observations", "close"],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "id": { "type": "string", "minLength": 8 },
+    "id": { "type": "string", "format": "uuid" },
     "revision": { "type": "integer", "minimum": 1 },
     "status": { "enum": ["active", "closed"] },
     "goal": { "type": "string", "minLength": 1, "maxLength": 500 },
@@ -59,9 +59,9 @@
   "$defs": {
     "finding": {
       "type": "object",
-      "required": ["id", "key", "state", "category", "severity", "title", "detail", "confidence", "evidenceType"],
+      "required": ["id", "key", "state", "category", "severity", "title", "detail", "confidence", "evidenceType", "occurrences"],
       "properties": {
-        "id": { "type": "string" },
+        "id": { "type": "string", "format": "uuid" },
         "key": { "type": "string" },
         "state": { "enum": ["open", "resolved", "accepted", "dismissed", "superseded"] },
         "category": { "type": "string" },
@@ -72,6 +72,7 @@
         "evidenceType": { "enum": ["observed", "reviewed", "historical-correlation", "inferred"] },
         "evidence": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
         "relatedFiles": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+        "sessions": { "type": "array", "items": { "type": "string", "format": "uuid" }, "maxItems": 50 },
         "occurrences": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": true
@@ -106,7 +107,7 @@
       "required": ["schemaVersion", "sessionId", "generatedAt", "objective", "outcome", "repository", "sessionScope", "accomplished", "decisions", "openQuestions", "completedChanges", "activeChanges", "openFindings", "nextActions", "nextAction", "guardrails", "knowledgeCandidates", "agentInstruction"],
       "properties": {
         "schemaVersion": { "const": 1 },
-        "sessionId": { "type": "string" },
+        "sessionId": { "type": "string", "format": "uuid" },
         "generatedAt": { "type": "string", "format": "date-time" },
         "objective": { "type": "string" },
         "outcome": { "enum": ["succeeded", "partial", "blocked", "investigated", "abandoned", "unknown"] },

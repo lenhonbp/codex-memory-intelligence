@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { checkStaleMemory } from './stale.js';
 import { safeReadMemoryFile, safeReadMemoryJson } from './storage.js';
+import { buildEvidenceHealth } from './evidence-health.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
 const STOP = new Set(['the','and','for','with','that','this','from','into','cua','cho','voi','nhung','mot','cac','trong','duoc']);
@@ -242,6 +243,7 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
 
 export async function buildContextPack(root, query, limit = 8, options = {}) {
   const loaded = await loadMemory(root, { withHealth: true });
+  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true }).catch(() => null);
   const results = await searchMemory(root, query, limit, options);
   const decisions = results.filter((item) => item.source === 'decisions.md');
   const risks = results.filter((item) => item.source === 'mistakes.md');
@@ -255,7 +257,11 @@ export async function buildContextPack(root, query, limit = 8, options = {}) {
     query,
     workspace: options.workspace || null,
     evidencePolicy: { stalePolicy: options.stalePolicy || 'demote', includeInactive: Boolean(options.includeInactive), staleResults, reviewResults, inactiveResults },
-    health: { memory: loaded.memoryHealth?.counts || null, graph: loaded.graphHealth },
+    health: {
+      memory: loaded.memoryHealth?.counts || null,
+      graph: loaded.graphHealth,
+      overall: buildEvidenceHealth({ initialized: true, storageSafe: true, indexAvailable: Boolean(index), graphHealth: loaded.graphHealth, memoryHealth: loaded.memoryHealth?.counts || null }),
+    },
     summary: {
       results: results.length,
       decisions: decisions.length,

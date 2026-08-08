@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { initProject } from './core.js';
-import { prepareChangeBrief, getRepositoryBaseline, mapProjectBoundaries } from './advisor.js';
+import { prepareChangeBrief, getRepositoryBaseline, mapProjectBoundaries, inspectGitHistoryContinuity } from './advisor.js';
 import { tokenize } from './search.js';
 import { looksSensitive } from './sensitive.js';
 import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
@@ -266,14 +266,15 @@ function sanitizeChangeBaseline(baseline) {
 async function committedFilesSince(root, beforeBaseline, currentBaseline) {
   const startHead = beforeBaseline?.fullHead;
   const currentHead = currentBaseline?.fullHead;
-  if (!/^[0-9a-f]{40}$/i.test(startHead || '') || !/^[0-9a-f]{40}$/i.test(currentHead || '') || startHead === currentHead) return [];
+  const continuity = await inspectGitHistoryContinuity(root, startHead, currentHead);
+  if (!continuity.safeForCommittedAttribution || continuity.state === 'same-head') return { files: [], continuity };
   const output = await runGit(root, ['diff', '--name-only', '--relative', startHead, currentHead, '--']);
-  if (!output) return [];
+  if (!output) return { files: [], continuity };
   const files = output.split(/\r?\n/)
     .filter(Boolean)
     .map(normalizeRelativeFile)
     .filter((file) => !isCmiInternalPath(file));
-  return bounded(unique(files), MAX_PATHS);
+  return { files: bounded(unique(files), MAX_PATHS), continuity };
 }
 
 function predictedFilesFromBrief(brief) {
@@ -571,7 +572,10 @@ export async function observeChangeRecord(root, selector, options = {}) {
   if (record.status !== 'active') throw new Error('Completed change records are immutable. Start a new record for additional work.');
   const baseline = sanitizeChangeBaseline(await getRepositoryBaseline(root));
   const explicitFiles = normalizeExplicitFiles(options.files || []);
-  const committed = baseline?.available ? await committedFilesSince(root, record.before?.baseline, baseline) : [];
+  const committedEvidence = baseline?.available
+    ? await committedFilesSince(root, record.before?.baseline, baseline)
+    : { files: [], continuity: { available: false, state: 'unavailable', safeForCommittedAttribution: false, reason: 'Git baseline unavailable.' } };
+  const committed = committedEvidence.files;
   const initialDirty = new Set((record.before?.baseline?.changes || [])
     .map((item) => normalizeRelativeFile(item.path))
     .filter((file) => !isCmiInternalPath(file)));
@@ -586,10 +590,17 @@ export async function observeChangeRecord(root, selector, options = {}) {
   const comparison = compareScopes(record.before?.predicted?.files || [], observedChangedFiles);
   const predictedBoundaryIds = new Set((record.before?.predicted?.boundaries || []).map((item) => item.id));
   const unexpectedBoundaries = boundaryReport.boundaries.filter((item) => !predictedBoundaryIds.has(item.id));
+  const continuityLimited = baseline?.available && !committedEvidence.continuity?.safeForCommittedAttribution;
+  const attribution = !baseline?.available
+    ? 'explicit-files-only'
+    : continuityLimited
+      ? (['rewritten', 'unrelated'].includes(committedEvidence.continuity?.state) ? 'limited-history-rewrite' : 'limited-git-history')
+      : (record.before?.baseline?.clean ? 'strong' : 'limited-preexisting-worktree');
   const observation = {
     observedAt: new Date().toISOString(),
     baseline,
-    attribution: baseline?.available ? (record.before?.baseline?.clean ? 'strong' : 'limited-preexisting-worktree') : 'explicit-files-only',
+    attribution,
+    gitContinuity: committedEvidence.continuity,
     observedChangedFiles,
     committedFilesSinceStart: committed,
     explicitFiles,
@@ -624,6 +635,14 @@ export async function completeChangeRecord(root, selector, options = {}) {
       status: 'proposal',
       evidence: finalObservation.comparison.missedByPrediction,
       proposal: 'Review why these changed paths were outside the predicted scope and whether a durable dependency or architecture rule should be recorded.',
+    });
+  }
+  if (['rewritten', 'unrelated'].includes(finalObservation?.gitContinuity?.state)) {
+    learningCandidates.push({
+      type: 'git-history-rewrite',
+      status: 'proposal',
+      evidence: [finalObservation.gitContinuity],
+      proposal: 'Review committed-path attribution manually because the change-start HEAD is no longer an ancestor of current HEAD. Do not convert the start-to-current diff into causal change history.',
     });
   }
   const failedChecks = verifications.filter((item) => item.status === 'failed').map((item) => item.name);
@@ -666,7 +685,7 @@ export function formatChangeRecord(record) {
   const changed = latest?.observedChangedFiles || [];
   const missed = latest?.comparison?.missedByPrediction || [];
   const verification = record.completion?.verifications || [];
-  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${record.completion?.outcome || 'not completed'}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
+  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${record.completion?.outcome || 'not completed'}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
 }
 
 export function formatChangeInsights(result) {
