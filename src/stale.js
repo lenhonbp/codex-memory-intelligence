@@ -55,6 +55,35 @@ function boundedText(value, fallback, limit) {
   const clean = String(value || fallback || '').trim();
   return clean.slice(0, limit);
 }
+function memoryReadDiagnostic(file, error) {
+  const code = String(error?.code || 'CMI_MEMORY_READ_FAILED');
+  return {
+    file,
+    code,
+    reason: `Durable memory file could not be safely read: ${file} (${code}).`,
+  };
+}
+async function readTrackedMemoryFiles(root) {
+  const entries = [];
+  const contents = new Map();
+  const fileErrors = [];
+  for (const file of MEMORY_FILES) {
+    try {
+      const content = await safeReadMemoryFile(root, file);
+      contents.set(file, content);
+      entries.push(...parseEntries(content, file));
+    } catch (error) {
+      fileErrors.push(memoryReadDiagnostic(file, error));
+    }
+  }
+  return { entries, contents, fileErrors };
+}
+function blockedMemoryError(fileErrors) {
+  const error = new Error(`Durable memory is blocked because ${fileErrors.length} required file${fileErrors.length === 1 ? '' : 's'} could not be safely read. Run cmi stale --json for diagnostics before mutating memory.`);
+  error.code = 'CMI_MEMORY_BLOCKED';
+  error.diagnostics = fileErrors;
+  return error;
+}
 async function uniqueTrackedEntry(root, selector) {
   const raw = String(selector || '').trim().toLowerCase();
   if (!raw || !/^[0-9a-f-]+$/.test(raw)) throw new Error('A valid memory ID or prefix is required.');
@@ -67,7 +96,6 @@ async function uniqueTrackedEntry(root, selector) {
   return matches[0];
 }
 async function replaceMetadata(root, target, updater) {
-  const filePath = path.join(root, '.codex-memory', target.file);
   const content = await safeReadMemoryFile(root, target.file);
   const entries = parseEntries(content, target.file);
   const current = entries.find((entry) => entry.metadata?.id === target.metadata?.id);
@@ -81,20 +109,21 @@ async function replaceMetadata(root, target, updater) {
   return nextMetadata;
 }
 export async function loadTrackedMemory(root) {
-  const directory = path.join(root, '.codex-memory');
-  const entries = [];
-  for (const file of MEMORY_FILES) try { entries.push(...parseEntries(await safeReadMemoryFile(root, file), file)); } catch {}
-  return entries;
+  const state = await readTrackedMemoryFiles(root);
+  if (state.fileErrors.length) throw blockedMemoryError(state.fileErrors);
+  return state.entries;
 }
 export async function checkStaleMemory(root) {
-  const directory = path.join(root, '.codex-memory');
   const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
   const config = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
   const staleAfterDays = Number(config.staleAfterDays) || 90;
   const now = Date.now();
-  const entries = await loadTrackedMemory(root);
+  const tracked = await readTrackedMemoryFiles(root);
   const results = [];
-  for (const entry of entries) {
+  for (const diagnostic of tracked.fileErrors) {
+    results.push({ id: null, file: diagnostic.file, heading: null, text: '', status: 'blocked', lifecycleState: 'unknown', reasons: [diagnostic.reason], diagnostic });
+  }
+  for (const entry of tracked.entries) {
     const meta = entry.metadata;
     if (!meta) {
       const reasons = entry.metadataValidation?.length
@@ -106,7 +135,7 @@ export async function checkStaleMemory(root) {
     const lifecycle = lifecycleOf(meta);
     if (lifecycle.state !== 'active') {
       const reason = lifecycle.reason ? ` ${lifecycle.reason}` : '';
-      results.push({ id: meta.id || null, type: meta.type || entry.file.replace('.md', ''), file: entry.file, heading: entry.heading, text: entry.text, sources: Array.isArray(meta.sources) ? meta.sources : [], ageDays: null, status: 'inactive', lifecycleState: lifecycle.state, lifecycle, reasons: [`Memory is ${lifecycle.state}.${reason}`], reviewedBy: meta.reviewedBy || null, reviewReason: meta.reviewReason || null });
+      results.push({ id: meta.id || null, type: meta.type || entry.file.replace('.md', ''), file: entry.file, heading: entry.heading, text: entry.text, sources: Array.isArray(meta.sources) ? meta.sources : [], ageDays: null, status: 'inactive', lifecycleState: lifecycle.state, lifecycle, reasons: [`Memory is ${lifecycle.state}.${reason}`], reviewedAt: meta.reviewedAt || null, reviewedBy: meta.reviewedBy || null, reviewReason: meta.reviewReason || null, sourceRefreshedAt: meta.sourceRefreshedAt || null });
       continue;
     }
     const reasons = [];
@@ -126,25 +155,24 @@ export async function checkStaleMemory(root) {
     const baseline = Date.parse(meta.reviewedAt || meta.createdAt || entry.heading);
     const ageDays = Number.isFinite(baseline) ? Math.floor((now - baseline) / 86_400_000) : null;
     if (status === 'fresh' && ageDays !== null && ageDays > staleAfterDays) { status = 'review'; reasons.push(`Memory has not been reviewed for ${ageDays} days.`); }
-    results.push({ id: meta.id || null, type: meta.type || entry.file.replace('.md', ''), file: entry.file, heading: entry.heading, text: entry.text, sources, ageDays, status, lifecycleState: 'active', lifecycle, reasons, reviewedBy: meta.reviewedBy || null, reviewReason: meta.reviewReason || null });
+    results.push({ id: meta.id || null, type: meta.type || entry.file.replace('.md', ''), file: entry.file, heading: entry.heading, text: entry.text, sources, ageDays, status, lifecycleState: 'active', lifecycle, reasons, reviewedAt: meta.reviewedAt || null, reviewedBy: meta.reviewedBy || null, reviewReason: meta.reviewReason || null, sourceRefreshedAt: meta.sourceRefreshedAt || null });
   }
-  const counts = { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0 };
+  const counts = { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0, blocked: 0 };
   for (const item of results) counts[item.status] += 1;
-  return { generatedAt: new Date().toISOString(), projectHash: index?.hash || null, staleAfterDays, counts, entries: results };
+  return { generatedAt: new Date().toISOString(), projectHash: index?.hash || null, staleAfterDays, counts, entries: results, fileErrors: tracked.fileErrors };
 }
 export async function refreshMemory(root, selector = 'all', options = {}) {
   return withMemoryWriteLock(root, async () => {
-    const directory = path.join(root, '.codex-memory');
     const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
+    const preflight = await readTrackedMemoryFiles(root);
+    if (preflight.fileErrors.length) throw blockedMemoryError(preflight.fileErrors);
     let updated = 0;
     const refreshedBy = boundedText(options.refreshedBy || options.reviewedBy, 'human', 100) || 'human';
     const refreshReason = boundedText(options.reason, 'Source fingerprints refreshed against the current project.', 500) || 'Source fingerprints refreshed against the current project.';
     const target = selector === 'all' ? null : await uniqueTrackedEntry(root, selector);
     if (target && lifecycleOf(target.metadata).state !== 'active') throw new Error(`Cannot refresh ${lifecycleOf(target.metadata).state} memory. Reactivate it explicitly first.`);
     for (const file of MEMORY_FILES) {
-      const filePath = path.join(directory, file);
-      let content;
-      try { content = await safeReadMemoryFile(root, file); } catch { continue; }
+      const content = preflight.contents.get(file);
       const entries = parseEntries(content, file).reverse();
       let next = content;
       for (const entry of entries) {
@@ -199,10 +227,10 @@ export async function setMemoryLifecycle(root, selector, state, options = {}) {
   });
 }
 export function formatStaleReport(report) {
-  const header = `# Memory health\n\n- Fresh: ${report.counts.fresh}\n- Stale: ${report.counts.stale}\n- Review: ${report.counts.review}\n- Untracked: ${report.counts.untracked}\n- Inactive: ${report.counts.inactive || 0}`;
+  const header = `# Memory health\n\n- Fresh: ${report.counts.fresh}\n- Stale: ${report.counts.stale}\n- Review: ${report.counts.review}\n- Untracked: ${report.counts.untracked}\n- Blocked files: ${report.counts.blocked || 0}\n- Inactive: ${report.counts.inactive || 0}`;
   const attention = report.entries.filter((entry) => !['fresh', 'inactive'].includes(entry.status));
   const inactive = report.entries.filter((entry) => entry.status === 'inactive');
-  const attentionSection = attention.length ? `\n\n## Needs attention\n${attention.map((entry) => { const id = entry.id ? `\`${entry.id.slice(0, 8)}\`` : '`untracked`'; const reasons = entry.reasons.map((reason) => `  - ${reason}`).join('\n'); return `- ${id} **${entry.status}** · ${entry.file} · ${entry.text.slice(0, 120)}\n${reasons}`; }).join('\n')}` : '\n\nAll active tracked memory is current.';
+  const attentionSection = attention.length ? `\n\n## Needs attention\n${attention.map((entry) => { const id = entry.id ? `\`${entry.id.slice(0, 8)}\`` : entry.status === 'blocked' ? '`blocked-file`' : '`untracked`'; const reasons = entry.reasons.map((reason) => `  - ${reason}`).join('\n'); return `- ${id} **${entry.status}** · ${entry.file} · ${entry.text.slice(0, 120)}\n${reasons}`; }).join('\n')}` : '\n\nAll active tracked memory is current.';
   const inactiveSection = inactive.length ? `\n\n## Inactive knowledge\n${inactive.map((entry) => `- \`${entry.id?.slice(0, 8) || 'unknown'}\` **${entry.lifecycleState}** · ${entry.file} · ${entry.text.slice(0, 120)}`).join('\n')}` : '';
   return `${header}${attentionSection}${inactiveSection}`;
 }
