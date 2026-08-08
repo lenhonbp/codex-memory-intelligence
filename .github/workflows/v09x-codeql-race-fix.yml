@@ -1,0 +1,120 @@
+name: Validate portable bundle race fix
+
+on:
+  push:
+    branches:
+      - v0.9x/longitudinal-human-evaluation
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v0.9x/longitudinal-human-evaluation
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Remove pre-open file-system race
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/evaluation.js')
+          t=p.read_text()
+          old="""async function readPortableBundle(filePath) {
+            const target = path.resolve(String(filePath || '').trim());
+            if (!String(filePath || '').trim()) throw new Error('Evaluation bundle path is required.');
+            const before = await fs.lstat(target);
+            if (before.isSymbolicLink() || !before.isFile()) throw new Error('Evaluation bundle must be a regular non-symlink file.');
+            if (before.size > MAX_BUNDLE_BYTES) throw new Error(`Evaluation bundle exceeds ${MAX_BUNDLE_BYTES} bytes.`);
+            const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+            let handle;
+            try { handle = await fs.open(target, fsConstants.O_RDONLY | noFollow); }
+            catch (error) {
+              if (!noFollow || !['EINVAL', 'ENOTSUP'].includes(error?.code)) throw error;
+              handle = await fs.open(target, fsConstants.O_RDONLY);
+            }
+            try {
+              const opened = await handle.stat();
+              if (!opened.isFile() || opened.size > MAX_BUNDLE_BYTES || before.dev !== opened.dev || before.ino !== opened.ino) throw new Error('Evaluation bundle changed or is unsafe while opening.');
+              return JSON.parse(await handle.readFile('utf8'));
+            } finally { await handle?.close().catch(() => {}); }
+          }
+          """
+          new="""async function readPortableBundle(filePath) {
+            const rawPath = String(filePath || '').trim();
+            if (!rawPath) throw new Error('Evaluation bundle path is required.');
+            const target = path.resolve(rawPath);
+            const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+            let handle;
+            let usedNoFollow = false;
+            try {
+              handle = await fs.open(target, fsConstants.O_RDONLY | noFollow);
+              usedNoFollow = Boolean(noFollow);
+            } catch (error) {
+              if (!noFollow || !['EINVAL', 'ENOTSUP'].includes(error?.code)) throw error;
+              handle = await fs.open(target, fsConstants.O_RDONLY);
+            }
+            try {
+              const opened = await handle.stat();
+              if (!opened.isFile() || opened.size > MAX_BUNDLE_BYTES) throw new Error('Evaluation bundle must be a bounded regular file.');
+              if (!usedNoFollow) {
+                const current = await fs.lstat(target);
+                if (current.isSymbolicLink() || !current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) throw new Error('Evaluation bundle changed or is unsafe while opening.');
+              }
+              return JSON.parse(await handle.readFile('utf8'));
+            } finally { await handle?.close().catch(() => {}); }
+          }
+          """
+          if old not in t:
+            raise SystemExit('portable bundle reader anchor not found')
+          p.write_text(t.replace(old,new,1))
+          PY
+      - name: Add symlink regression
+        run: |
+          cat >> tests/evaluation-longitudinal.test.js <<'EOF'
+
+          test('portable evaluation bundle import rejects symlink inputs before reading evidence', async (t) => {
+            const source = await fixture('cmi-longitudinal-symlink-source-');
+            const target = await fixture('cmi-longitudinal-symlink-target-');
+            await captureSession(source, 'review');
+            const bundleDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-evaluation-symlink-'));
+            const bundle = path.join(bundleDir, 'corpus.json');
+            const link = path.join(bundleDir, 'corpus-link.json');
+            await exportEvaluations(source, bundle);
+            try { await fs.symlink(bundle, link); }
+            catch (error) {
+              if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error?.code)) { t.skip(`symlink unavailable: ${error.code}`); return; }
+              throw error;
+            }
+            await assert.rejects(() => importEvaluations(target, link));
+          });
+          EOF
+      - name: Remove temporary workflow from product diff
+        run: rm -f .github/workflows/v09x-codeql-race-fix.yml
+      - name: Verify repository
+        run: npm run verify
+      - name: Benchmark smoke
+        run: npm run benchmark:smoke
+      - name: Packed installation smoke
+        run: npm run package:smoke
+      - name: Preserve unreleased discipline
+        run: |
+          test "$(node -p "require('./package.json').version")" = "0.9.0"
+          grep -q '^## \[Unreleased\]' CHANGELOG.md
+      - name: Commit validated fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/evaluation.js tests/evaluation-longitudinal.test.js
+          git add -A .github/workflows/v09x-codeql-race-fix.yml
+          git diff --cached --check
+          git commit -m "fix: harden portable evaluation bundle open"
+      - name: Push validated fix
+        run: git push origin HEAD:v0.9x/longitudinal-human-evaluation
