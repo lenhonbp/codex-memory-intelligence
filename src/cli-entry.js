@@ -65,10 +65,12 @@ function sessionOptions() {
 function evaluationOptions() {
   return {
     sourceKind: optionValues('--source-kind')[0],
+    protocolKind: optionValues('--protocol')[0],
     repositoryClass: optionValues('--repository-class')[0],
     taskKind: optionValues('--task-kind')[0],
     session: optionValues('--session')[0],
     reviewOutcome: optionValues('--review-outcome')[0],
+    reviewProvenance: optionValues('--review-provenance')[0],
     falsePositiveFindings: optionValues('--false-positive-findings')[0],
     missedFindings: optionValues('--missed-findings')[0],
     nextActionRating: optionValues('--next-action-rating')[0],
@@ -134,10 +136,10 @@ try {
       throw new Error('Usage: cmi finding <list|show|state> ...');
     }
   } else {
-    const values = positional(['--source-kind','--repository-class','--task-kind','--session','--review-outcome','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--limit']);
+    const values = positional(['--source-kind','--protocol','--repository-class','--task-kind','--session','--review-outcome','--review-provenance','--false-positive-findings','--missed-findings','--next-action-rating','--handoff-rating','--limit']);
     const action = values.shift();
     if (action === 'capture') {
-      if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--repository-class class] [--task-kind kind] [--session latest|none|id]');
+      if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id]');
       const record = await captureEvaluation(process.cwd(), evaluationOptions());
       print(record, formatEvaluationRecord(record));
     } else if (action === 'list') {

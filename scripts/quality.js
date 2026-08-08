@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { MEMORY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, FINDINGS_SCHEMA_VERSION, MEMORY_LIFECYCLE_STATES, SESSION_OUTCOMES, FINDING_STATES, FINDING_SEVERITIES, EVIDENCE_TYPES, RECOMMENDATION_PRIORITIES, CONFIDENCE_LEVELS } from '../src/durable-contracts.js';
-import { EVALUATION_SCHEMA_VERSION, EVALUATION_SOURCE_KINDS, EVALUATION_REPOSITORY_CLASSES, EVALUATION_TASK_KINDS, EVALUATION_REVIEW_OUTCOMES, EVALUATION_UTILITY_RATINGS } from '../src/evaluation-contracts.js';
+import { EVALUATION_SCHEMA_VERSION, EVALUATION_SOURCE_KINDS, EVALUATION_PROTOCOL_KINDS, EVALUATION_REPOSITORY_CLASSES, EVALUATION_TASK_KINDS, EVALUATION_REVIEW_OUTCOMES, EVALUATION_REVIEW_PROVENANCE, EVALUATION_UTILITY_RATINGS } from '../src/evaluation-contracts.js';
 
 const allowed = new Set(['.js','.md','.json','.yml','.yaml']);
 const ignored = new Set(['.git','node_modules']);
@@ -75,9 +75,12 @@ function validateSchemaContracts() {
   if (evaluation.properties?.schemaVersion?.const !== EVALUATION_SCHEMA_VERSION) errors.push('evaluation schemaVersion differs from runtime contract');
   if (evaluation.properties?.id?.format !== 'uuid') errors.push('evaluation id schema must use canonical UUID format');
   if (!sameValues(evaluation.properties?.source?.properties?.kind?.enum, EVALUATION_SOURCE_KINDS)) errors.push('evaluation source kinds differ from runtime contract');
+  if (!sameValues(evaluation.properties?.protocol?.properties?.kind?.enum, EVALUATION_PROTOCOL_KINDS)) errors.push('evaluation protocol kinds differ from runtime contract');
+  if (evaluation.properties?.subject?.properties?.sourceRevision?.pattern !== '^[0-9a-f]{40}$') errors.push('evaluation subject revision schema differs from runtime contract');
   if (!sameValues(evaluation.properties?.repository?.properties?.class?.enum, EVALUATION_REPOSITORY_CLASSES)) errors.push('evaluation repository classes differ from runtime contract');
   if (!sameValues(evaluation.properties?.task?.properties?.kind?.enum, EVALUATION_TASK_KINDS)) errors.push('evaluation task kinds differ from runtime contract');
   if (!sameValues(evaluation.properties?.review?.properties?.outcome?.enum, EVALUATION_REVIEW_OUTCOMES)) errors.push('evaluation review outcomes differ from runtime contract');
+  if (!sameValues(evaluation.properties?.review?.properties?.provenance?.enum, EVALUATION_REVIEW_PROVENANCE)) errors.push('evaluation review provenance differs from runtime contract');
   if (!sameValues(evaluation.properties?.review?.properties?.nextActionRating?.enum, EVALUATION_UTILITY_RATINGS)) errors.push('evaluation next-action ratings differ from runtime contract');
   if (!sameValues(evaluation.properties?.review?.properties?.handoffRating?.enum, EVALUATION_UTILITY_RATINGS)) errors.push('evaluation handoff ratings differ from runtime contract');
 }

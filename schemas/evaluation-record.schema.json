@@ -3,11 +3,20 @@
   "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/evaluation-record.schema.json",
   "title": "CMI Real-Repository Evaluation Record",
   "type": "object",
-  "required": ["schemaVersion", "id", "recordedAt", "source", "repository", "task", "measurements", "review", "policy"],
+  "required": ["schemaVersion", "id", "recordedAt", "subject", "source", "protocol", "repository", "task", "measurements", "review", "policy"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "id": { "type": "string", "format": "uuid" },
     "recordedAt": { "type": "string", "format": "date-time" },
+    "subject": {
+      "type": "object",
+      "required": ["version", "sourceRevision"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$" },
+        "sourceRevision": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+      },
+      "additionalProperties": false
+    },
     "source": {
       "type": "object",
       "required": ["kind", "independent"],
@@ -15,6 +24,12 @@
         "kind": { "enum": ["external-real", "self-host", "synthetic"] },
         "independent": { "type": "boolean" }
       },
+      "additionalProperties": false
+    },
+    "protocol": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": { "kind": { "enum": ["observational", "controlled-stress"] } },
       "additionalProperties": false
     },
     "repository": {
@@ -94,8 +109,10 @@
     },
     "review": {
       "type": "object",
-      "required": ["outcome", "falsePositiveFindings", "missedFindings", "nextActionRating", "handoffRating"],
+      "required": ["provenance", "reviewedAt", "outcome", "falsePositiveFindings", "missedFindings", "nextActionRating", "handoffRating"],
       "properties": {
+        "provenance": { "enum": ["human", "agent", "unreviewed"] },
+        "reviewedAt": { "type": ["string", "null"], "format": "date-time" },
         "outcome": { "enum": ["pass", "partial", "fail", "unreviewed"] },
         "falsePositiveFindings": { "type": ["integer", "null"], "minimum": 0 },
         "missedFindings": { "type": ["integer", "null"], "minimum": 0 },
@@ -104,7 +121,7 @@
       },
       "additionalProperties": false
     },
-    "policy": { "type": "string", "minLength": 20, "maxLength": 1000 }
+    "policy": { "type": "string", "minLength": 20, "maxLength": 1200 }
   },
   "additionalProperties": false
 }

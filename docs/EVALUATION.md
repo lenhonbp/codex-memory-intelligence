@@ -14,7 +14,7 @@ Every retained evaluation record must be explicitly classified:
 - `self-host` — the CMI repository evaluating itself. Useful for regression and dogfooding, but never counted as independent evidence.
 - `synthetic` — deterministic fixtures or generated repositories. Useful for regression, never counted as real-repository validation.
 
-There is no automatic promotion between these classes.
+There is no automatic promotion between these classes. Each record also carries a protocol: `observational` for ordinary field use or `controlled-stress` for deliberately induced edge cases. Controlled-stress records are visible in reports but do not inflate ordinary observational coverage.
 
 ## Capture
 
@@ -33,7 +33,7 @@ cmi evaluate capture \
 
 Use `--session none` for project-only evidence when no closed work session should be associated.
 
-Review metadata is explicit and optional. An unreviewed record cannot assert usefulness or false-positive/missed-finding counts:
+Review metadata is explicit and optional. An unreviewed record cannot assert usefulness or false-positive/missed-finding counts. A reviewed record must also declare whether the reviewer was a `human` or an `agent`; those metrics are aggregated separately:
 
 ```bash
 cmi evaluate capture \
@@ -41,6 +41,7 @@ cmi evaluate capture \
   --repository-class service \
   --task-kind debugging \
   --review-outcome partial \
+  --review-provenance human \
   --false-positive-findings 0 \
   --missed-findings 1 \
   --next-action-rating useful \
@@ -59,7 +60,7 @@ Evaluation records live under `.codex-memory/evaluations/` and intentionally omi
 - recommendation text;
 - source contents and diffs.
 
-Runs are grouped using a one-way SHA-256 repository fingerprint derived from the Git origin when available, otherwise from the local root. The digest is useful for grouping repeated runs but is not a security boundary or an anonymization guarantee against an attacker who already knows the candidate repository identity.
+Runs are grouped using a one-way SHA-256 repository fingerprint derived from the Git origin when available, otherwise from the local root. The digest is useful for grouping repeated runs but is not a security boundary or an anonymization guarantee against an attacker who already knows the candidate repository identity. Every record also stores the CMI semantic version and, when CMI is running from a Git checkout, its exact source revision so evidence from different candidates is not silently mixed.
 
 ## Reporting
 
@@ -81,7 +82,7 @@ The report keeps source classes separate and exposes descriptive coverage states
 
 These states describe corpus coverage only. They do not mean "validated", "production ready", or "v1.0 ready".
 
-Usefulness rates are reported only from explicitly reviewed `external-real` records. Behavioral confidence thresholds are not recalibrated automatically from evaluation data.
+Usefulness rates are reported only from explicitly reviewed observational `external-real` records. Human-reviewed and agent-reviewed rates remain separate. Behavioral confidence thresholds are not recalibrated automatically from evaluation data.
 
 ## Runtime contract
 

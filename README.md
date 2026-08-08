@@ -217,7 +217,7 @@ cmi evaluate report
 cmi evaluate report --source-kind external-real
 ```
 
-Only `external-real` contributes to independent-repository counts. `self-host` and `synthetic` remain useful evidence classes but cannot silently inflate real-world coverage. Evaluation records store a one-way repository fingerprint and bounded measurements, not repository names, remotes, absolute paths, session/finding/recommendation text, source contents, or diffs. Reviewed usefulness metrics require explicit review metadata and the report never declares production or v1.0 readiness automatically. See [Real-Repository Evaluation](docs/EVALUATION.md).
+Only `external-real` contributes to independent-repository counts. Observational runs drive ordinary field-coverage state, while `controlled-stress` remains visible but cannot inflate that state. `self-host` and `synthetic` cannot silently inflate real-world coverage. Evaluation records bind measurements to the CMI semantic version and, when available, exact source revision; they store a one-way repository fingerprint rather than repository names, remotes, absolute paths, session/finding/recommendation text, source contents, or diffs. Human and agent review provenance is explicit and aggregated separately, and the report never declares production or v1.0 readiness automatically. See [Real-Repository Evaluation](docs/EVALUATION.md).
 
 ## Monorepos and workspaces
 
@@ -285,7 +285,7 @@ cmi session handoff <id|latest> [--json]
 cmi finding list [--status open|resolved|accepted|dismissed|superseded] [--limit N] [--json]
 cmi finding show <id> [--json]
 cmi finding state <id> <open|resolved|accepted|dismissed|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
-cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--repository-class class] [--task-kind kind] [--session latest|none|id] [--review-outcome pass|partial|fail|unreviewed] [--false-positive-findings N] [--missed-findings N] [--next-action-rating useful|not-useful|unknown] [--handoff-rating useful|not-useful|unknown] [--json]
+cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id] [--review-outcome pass|partial|fail|unreviewed] [--review-provenance human|agent|unreviewed] [--false-positive-findings N] [--missed-findings N] [--next-action-rating useful|not-useful|unknown] [--handoff-rating useful|not-useful|unknown] [--json]
 cmi evaluate list [--source-kind external-real|self-host|synthetic] [--limit N] [--json]
 cmi evaluate show <id> [--json]
 cmi evaluate report [--source-kind external-real|self-host|synthetic] [--json]

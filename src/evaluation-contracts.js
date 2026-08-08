@@ -2,9 +2,11 @@ import { SESSION_OUTCOMES, EVIDENCE_TYPES, RECOMMENDATION_PRIORITIES, CONFIDENCE
 
 export const EVALUATION_SCHEMA_VERSION = 1;
 export const EVALUATION_SOURCE_KINDS = ['external-real', 'self-host', 'synthetic'];
+export const EVALUATION_PROTOCOL_KINDS = ['observational', 'controlled-stress'];
 export const EVALUATION_REPOSITORY_CLASSES = ['application', 'service', 'library', 'cli-tool', 'tooling', 'monorepo', 'unknown'];
 export const EVALUATION_TASK_KINDS = ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'no-code-investigation', 'unknown'];
 export const EVALUATION_REVIEW_OUTCOMES = ['pass', 'partial', 'fail', 'unreviewed'];
+export const EVALUATION_REVIEW_PROVENANCE = ['human', 'agent', 'unreviewed'];
 export const EVALUATION_UTILITY_RATINGS = ['useful', 'not-useful', 'unknown'];
 export const EVALUATION_EVIDENCE_STATES = ['healthy', 'degraded', 'blocked', 'uninitialized'];
 export const EVALUATION_CALIBRATION_CONFIDENCE = ['high', 'medium', 'low', 'insufficient-evidence'];
@@ -24,10 +26,17 @@ export function validateEvaluationRecordContract(record) {
   const fail = (condition, message) => { if (!condition) errors.push(message); };
   fail(isObject(record), 'record must be an object');
   if (!isObject(record)) return { valid: false, errors };
-  fail(hasOnlyKeys(record, new Set(['schemaVersion', 'id', 'recordedAt', 'source', 'repository', 'task', 'measurements', 'review', 'policy'])), 'record has unsupported top-level fields');
+  fail(hasOnlyKeys(record, new Set(['schemaVersion', 'id', 'recordedAt', 'subject', 'source', 'protocol', 'repository', 'task', 'measurements', 'review', 'policy'])), 'record has unsupported top-level fields');
   fail(record.schemaVersion === EVALUATION_SCHEMA_VERSION, 'unsupported schemaVersion');
   fail(validUuid(record.id), 'id must be a canonical UUID');
   fail(validIso(record.recordedAt), 'recordedAt must be an ISO timestamp');
+
+  const subject = record.subject;
+  fail(hasOnlyKeys(subject, new Set(['version', 'sourceRevision'])), 'subject shape is invalid');
+  if (isObject(subject)) {
+    fail(typeof subject.version === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(subject.version), 'subject.version must be semantic');
+    fail(subject.sourceRevision === null || (typeof subject.sourceRevision === 'string' && /^[0-9a-f]{40}$/.test(subject.sourceRevision)), 'subject.sourceRevision must be null or a 40-character Git SHA');
+  }
 
   const source = record.source;
   fail(hasOnlyKeys(source, new Set(['kind', 'independent'])), 'source shape is invalid');
@@ -36,6 +45,10 @@ export function validateEvaluationRecordContract(record) {
     fail(typeof source.independent === 'boolean', 'source.independent must be boolean');
     if (validEnum(source.kind, EVALUATION_SOURCE_KINDS)) fail(source.independent === (source.kind === 'external-real'), 'source.independent must be true only for external-real evidence');
   }
+
+  const protocol = record.protocol;
+  fail(hasOnlyKeys(protocol, new Set(['kind'])), 'protocol shape is invalid');
+  if (isObject(protocol)) fail(validEnum(protocol.kind, EVALUATION_PROTOCOL_KINDS), 'protocol.kind is invalid');
 
   const repository = record.repository;
   fail(hasOnlyKeys(repository, new Set(['fingerprint', 'fingerprintBasis', 'class'])), 'repository shape is invalid');
@@ -80,9 +93,7 @@ export function validateEvaluationRecordContract(record) {
       fail(nullableEnum(continuation.nextActionPriority, RECOMMENDATION_PRIORITIES), 'continuation nextActionPriority is invalid');
       fail(nullableEnum(continuation.nextActionEvidenceType, EVIDENCE_TYPES), 'continuation nextActionEvidenceType is invalid');
       fail(nullableEnum(continuation.nextActionConfidence, CONFIDENCE_LEVELS), 'continuation nextActionConfidence is invalid');
-      if (!continuation.sessionPresent) {
-        fail(continuation.outcome === null && continuation.sessionScopeCount === 0 && !continuation.handoffPresent, 'session-absent continuation metrics must remain empty');
-      }
+      if (!continuation.sessionPresent) fail(continuation.outcome === null && continuation.sessionScopeCount === 0 && !continuation.handoffPresent, 'session-absent continuation metrics must remain empty');
     }
 
     const history = measurements.changeHistory;
@@ -95,19 +106,25 @@ export function validateEvaluationRecordContract(record) {
   }
 
   const review = record.review;
-  fail(hasOnlyKeys(review, new Set(['outcome', 'falsePositiveFindings', 'missedFindings', 'nextActionRating', 'handoffRating'])), 'review shape is invalid');
+  fail(hasOnlyKeys(review, new Set(['provenance', 'reviewedAt', 'outcome', 'falsePositiveFindings', 'missedFindings', 'nextActionRating', 'handoffRating'])), 'review shape is invalid');
   if (isObject(review)) {
+    fail(validEnum(review.provenance, EVALUATION_REVIEW_PROVENANCE), 'review provenance is invalid');
+    fail(review.reviewedAt === null || validIso(review.reviewedAt), 'review reviewedAt must be null or ISO timestamp');
     fail(validEnum(review.outcome, EVALUATION_REVIEW_OUTCOMES), 'review outcome is invalid');
     fail(nullableNonNegativeInteger(review.falsePositiveFindings), 'review falsePositiveFindings must be non-negative integer or null');
     fail(nullableNonNegativeInteger(review.missedFindings), 'review missedFindings must be non-negative integer or null');
     fail(validEnum(review.nextActionRating, EVALUATION_UTILITY_RATINGS), 'review nextActionRating is invalid');
     fail(validEnum(review.handoffRating, EVALUATION_UTILITY_RATINGS), 'review handoffRating is invalid');
     if (review.outcome === 'unreviewed') {
+      fail(review.provenance === 'unreviewed' && review.reviewedAt === null, 'unreviewed outcome requires unreviewed provenance and null reviewedAt');
       fail(review.falsePositiveFindings === null && review.missedFindings === null, 'unreviewed records cannot assert finding-error counts');
       fail(review.nextActionRating === 'unknown' && review.handoffRating === 'unknown', 'unreviewed records cannot assert usefulness ratings');
+    } else {
+      fail(['human', 'agent'].includes(review.provenance), 'reviewed outcome requires explicit human or agent provenance');
+      fail(validIso(review.reviewedAt), 'reviewed outcome requires reviewedAt');
     }
   }
 
-  fail(typeof record.policy === 'string' && record.policy.length > 20 && record.policy.length <= 1000, 'policy must be bounded explanatory text');
+  fail(typeof record.policy === 'string' && record.policy.length > 20 && record.policy.length <= 1200, 'policy must be bounded explanatory text');
   return { valid: errors.length === 0, errors };
 }
