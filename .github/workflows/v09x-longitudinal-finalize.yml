@@ -1,0 +1,89 @@
+name: Finalize v0.9.x longitudinal evaluation
+
+on:
+  push:
+    branches:
+      - v0.9x/longitudinal-human-evaluation
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v0.9x/longitudinal-human-evaluation
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Harden report-function patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/.v09x_longitudinal.py')
+          t=p.read_text()
+          start=t.index('old_report_fmt = """')
+          end=t.index('# CLI: imports', start)
+          replacement=r'''# Replace the terminal report formatter by function boundary instead of brittle exact formatting.
+          report_path = Path('src/evaluation.js')
+          report_text = report_path.read_text()
+          report_start = report_text.find('export function formatEvaluationReport(report) {')
+          if report_start < 0:
+              raise SystemExit('formatEvaluationReport start not found')
+          new_report_fmt = """export function formatEvaluationReport(report) {
+            const external = report.corpus.externalReal;
+            const usefulness = report.reviewedUsefulness;
+            const longitudinal = report.longitudinal;
+            return `# CMI real-repository evaluation\\n\\nCoverage: ${report.coverage.state}\\nRecords: ${report.corpus.totalRecords} · external-real ${external.records} · observational ${external.observationalRecords} · controlled-stress ${external.controlledStressRecords}\\nIndependent repositories: ${external.uniqueRepositories} · observational repositories ${external.observationalUniqueRepositories}\\nRepository classes: ${Object.keys(external.repositoryClasses).length} · observational task kinds: ${Object.keys(external.observationalTaskKinds).length}\\nControlled stress: ${report.controlledStress.records} records · ${Object.keys(report.controlledStress.scenarios).length} scenarios · record pass rate ${report.controlledStress.passRate ?? 'n/a'} · invariant pass rate ${report.controlledStress.invariantPassRate ?? 'n/a'}\\nReviewed observational external records: ${usefulness.reviewedExternalRecords} · human ${usefulness.provenance.human} · agent ${usefulness.provenance.agent}\\nHuman next-action useful rate: ${usefulness.human.nextActionUsefulRate ?? 'n/a'}\\nHuman handoff useful rate: ${usefulness.human.handoffUsefulRate ?? 'n/a'}\\nRepeated external repositories: ${longitudinal.repeatedRepositories} · repeated records ${longitudinal.repeatedRecords} · multi-task repeated repositories ${longitudinal.repeatedRepositoriesWithMultipleTaskKinds}\\nHuman reconstruction reduced rate: ${longitudinal.human.reconstructionReducedRate ?? 'n/a'}\\nHuman follow-up not-needed rate: ${longitudinal.human.followUpNotNeededRate ?? 'n/a'}\\nHuman history useful rate: ${longitudinal.human.historyUsefulRate ?? 'n/a'}\\nHuman verification-choice improved rate: ${longitudinal.human.verificationChoiceImprovedRate ?? 'n/a'}\\nEvidence diagnostics: ${report.evidenceDiagnostics.state}\\n${report.evidenceDiagnostics.gaps.length ? report.evidenceDiagnostics.gaps.map((item) => `- GAP: ${item}`).join('\\n') : '- No structural evidence dimension is currently missing; statistical sufficiency still requires human judgment.'}\\nAgent next-action useful rate: ${usefulness.agent.nextActionUsefulRate ?? 'n/a'}\\nObservational project healthy rate: ${report.observedMetrics.observationalProjectHealthyRate ?? 'n/a'}\\nObservational handoff presence rate: ${report.observedMetrics.observationalHandoffPresenceRate ?? 'n/a'}\\n\\n## Evidence limits\\n${report.limitations.map((item) => `- ${item}`).join('\\n')}\\n\\n${report.policy}`;
+          }
+          """
+          report_path.write_text(report_text[:report_start] + new_report_fmt)
+          
+          '''
+          p.write_text(t[:start] + replacement + '\n' + t[end:])
+          PY
+      - name: Apply longitudinal implementation
+        run: python3 scripts/.v09x_longitudinal.py
+      - name: Preserve compatibility wording and help prefix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/evaluation.js'); t=p.read_text()
+          t=t.replace(
+            "CMI reports what the retained corpus supports and keeps source classes, protocols, reviewer provenance, repeated-repository evidence, and longitudinal outcome judgments separate.",
+            "CMI reports what the retained corpus supports, keeps reviewer provenance separate, and keeps source classes, protocols, repeated-repository evidence, and longitudinal outcome judgments distinct."
+          )
+          p.write_text(t)
+          p=Path('src/cli-entry.js'); t=p.read_text()
+          t=t.replace(
+            "Usage: cmi evaluate <capture|review|list|show|report|export|import> ...\\n\\nCollect anonymized field evidence, explicit longitudinal human/agent judgments, and portable local bundles without mixing provenance classes.",
+            "Usage: cmi evaluate <capture|review|list|show|report> ...\\n       cmi evaluate <export|import> ...\\n\\nCollect anonymized field evidence, explicit longitudinal human/agent judgments, and portable local bundles without mixing provenance classes."
+          )
+          p.write_text(t)
+          PY
+      - name: Remove temporary implementation helpers
+        run: rm -f scripts/.v09x_longitudinal.py .github/workflows/v09x-longitudinal-apply.yml .github/workflows/v09x-longitudinal-recover.yml .github/workflows/v09x-longitudinal-finalize.yml
+      - name: Verify repository
+        run: npm run verify
+      - name: Benchmark smoke
+        run: npm run benchmark:smoke
+      - name: Packed installation smoke
+        run: npm run package:smoke
+      - name: Preserve unreleased version discipline
+        run: |
+          test "$(node -p "require('./package.json').version")" = "0.9.0"
+          grep -q '^## \[Unreleased\]' CHANGELOG.md
+      - name: Commit validated product tree
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md README.md ROADMAP.md docs/EVALUATION.md docs/MCP.md schemas/evaluation-record.schema.json schemas/evaluation-bundle.schema.json scripts/quality.js src/evaluation-contracts.js src/evaluation.js src/cli-entry.js src/mcp-entry.js tests/evaluation-longitudinal.test.js tests/evaluation-mcp.test.js
+          git diff --cached --check
+          git commit -m "feat: add longitudinal human-reviewed evaluation"
+      - name: Push validated product tree
+        run: git push origin HEAD:v0.9x/longitudinal-human-evaluation
