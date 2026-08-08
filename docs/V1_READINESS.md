@@ -2,14 +2,15 @@
 
 Phase 2 operational UX, repository hygiene, and compatibility audit. This document records the state of the repository at the Phase 2 baseline and is not a v1.0 declaration.
 
-Audit date: 2026-08-08 (Asia/Ho_Chi_Minh)
+Audit date: 2026-08-09 (Asia/Ho_Chi_Minh)
 Baseline: `c2732a96a0aa4ea0ae9b0b19a14dfc297fde461a` (`main`)
+Remediation code head: `324da70`
 Public/package version: `0.9.2`
 Phase 2 target: `v0.10.0` readiness review; no tag, publish, or release is authorized by this audit.
 
 ## Executive disposition
 
-There is no known engineering P0 or P1 blocker within the audited Phase 2 scope. The bounded fixes in this branch make fresh-project diagnostics, blocked status recovery, generated-state baselines, and portable mismatch handling more actionable without weakening fail-closed behavior. The recommendation remains `READY_FOR_TECH_LEAD_REVIEW`, subject to the hosted checks and review gates recorded in the pull request.
+There is no known engineering P0 or P1 blocker within the audited Phase 2 scope. The bounded fixes in this branch make fresh-project diagnostics, tracked/untracked CMI baselines, durable-state compatibility wording, public-release boundaries, and portable mismatch handling more actionable without weakening fail-closed behavior. The remediation recommendation is `READY_FOR_TECH_LEAD_REREVIEW`.
 
 This is not a claim of production readiness, v1.0 readiness, statistical sufficiency, or CMI productivity value. Empirical studies remain explicitly classified below, and the incomplete repository-side records are not converted into positive product evidence.
 
@@ -28,7 +29,7 @@ This is not a claim of production readiness, v1.0 readiness, statistical suffici
 | Security and parser safety | Ready for audited scope | Symlink/path/TOCTOU and strict JSON regression coverage; CodeQL is a supporting hosted gate | Heuristic parsers remain advisory, not compiler-grade |
 | Performance | Non-blocking follow-up | Incremental scan and benchmark smoke paths exist; no material regression observed in this audit | Record a reproducible baseline if performance becomes a v1 claim |
 | Release/package hygiene | Ready for current public line | npm latest and package metadata remain `0.9.2`; publish workflow has successful trusted-publish runs for the public line | No `v0.10.0` release is part of Phase 2 |
-| Cross-platform hosted verification | Pending remediation-head checks | Prior Phase 2 PR checks passed; this remediation head requires a fresh Ubuntu/macOS/Windows × Node 22/24 run and CodeQL | Fresh remediation-head checks must pass before final readiness recommendation |
+| Cross-platform hosted verification | Ready for audited scope | Remediation head `324da70` passed CI runs `31269662717` and `31269664555` across Ubuntu/macOS/Windows × Node 22/24; CodeQL analyze run `31269664567` and check `93133490326` passed | Preserve this gate on subsequent code changes |
 | Empirical product value | Not yet evidenced | Study 002 is descriptive-only and complete; Studies 001 and 003 have incomplete repository-side records | Do not claim productivity impact or v1 readiness from these studies |
 
 Status meanings: `Ready for audited scope` means the current contract has direct evidence and no known in-scope blocker; `Not yet evidenced` means a future v1 gate is still open, not that a failure was found; `Non-blocking follow-up` is useful operational work outside the Phase 2 release gate.
