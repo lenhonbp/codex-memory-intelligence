@@ -78,6 +78,19 @@ test('repository baseline parses rename destinations and origins without arrow p
   assert.ok(!JSON.stringify(baseline).includes(root));
 });
 
+test('repository baseline ignores CMI-generated state but preserves project changes', async (context) => {
+  const root = await fixture();
+  if (!await initializeGit(root, context)) return;
+  await fs.writeFile(path.join(root, '.codex-memory', 'phase2-generated.json'), '{}\n');
+  let baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.clean, true);
+  await fs.appendFile(path.join(root, 'src', 'api', 'checkout.js'), 'export const projectChange = true;\n');
+  baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.clean, false);
+  assert.ok(baseline.changes.some((item) => item.path === 'src/api/checkout.js'));
+  assert.ok(!baseline.changes.some((item) => item.path.startsWith('.codex-memory')));
+});
+
 test('repository baseline remains usable in detached HEAD state', async (context) => {
   const root = await fixture();
   if (!await initializeGit(root, context)) return;

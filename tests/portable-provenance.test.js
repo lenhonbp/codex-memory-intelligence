@@ -320,6 +320,16 @@ test('CLI JSON success and trust-critical failure contracts are machine-readable
   assert.equal(error.ok, false);
   assert.equal(error.error.code, 'CMI_EVIDENCE_MISMATCH');
   assert.ok(error.error.details.mismatches.length > 0);
+  assert.deepEqual(error.error.details.recommendedAction, {
+    id: 'reconcile-portable-mismatch',
+    command: null,
+    mutatesCmiState: false,
+    reason: 'Review the listed source, revision, policy, or worktree mismatches and reconcile them before retrying. No CMI evidence was written.',
+  });
+
+  const humanMismatch = await run(['evidence', 'restore', bundlePath], root);
+  assert.equal(humanMismatch.code, 1);
+  assert.match(humanMismatch.stderr, /Next safe action: review the diagnostic details \(mutates CMI state: no\)/i);
 });
 
 test('canonical executable provenance resolves the invoked source checkout and exposes candidate ambiguity safely', async () => {

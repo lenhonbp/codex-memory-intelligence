@@ -82,6 +82,10 @@ const TOPIC_RULES = [
 function slash(value) { return String(value || '').replace(/\\/g, '/'); }
 function unique(values) { return [...new Set(values.filter(Boolean))]; }
 function bounded(values, limit = 50) { return values.slice(0, Math.max(0, limit)); }
+function isCmiInternalPath(value) {
+  const normalized = slash(value).replace(/^\.\/+/, '');
+  return normalized === '.codex-memory' || normalized.startsWith('.codex-memory/');
+}
 function humanize(value) {
   if (value === 'root') return 'Root source';
   return String(value).replace(/[-_.]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -188,7 +192,7 @@ export async function getRepositoryBaseline(root) {
       committedAt = await runGit(resolvedRoot, ['log', '-1', '--format=%cI']);
     } catch {}
     const porcelain = await runGit(resolvedRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']);
-    const allChanges = parseGitStatusPorcelainZ(porcelain);
+    const allChanges = parseGitStatusPorcelainZ(porcelain).filter((item) => !isCmiInternalPath(item.path) && !isCmiInternalPath(item.originalPath));
     return {
       available: true,
       projectPath,

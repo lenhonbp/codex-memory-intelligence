@@ -4,11 +4,18 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made fresh-project `cmi doctor` diagnostics fail closed with an actionable `cmi init`/`cmi scan` recovery path, and made human `cmi status` use the same trust-critical blocked exit code as JSON mode.
+- Kept generated `.codex-memory/` state out of repository-baseline dirty-change summaries while preserving real project changes.
+- Added a structured, non-mutating next action to portable-evidence mismatch errors and surfaced that action in human CLI output.
+
 ### Added
 
 - Added digest-verified, path-independent portable evidence freeze/inspect/restore/rebind workflows with explicit exact, compatible-relocated, compatible-git-checkout, compatible-content-only, and mismatch outcomes; frozen manifests now bind a bounded scan/ignore policy and resolver/workspace inputs.
 - Added canonical executable provenance diagnostics for actual script/runtime, package root/version, source checkout revision, install kind, and multi-install ambiguity, with CLI and MCP parity.
 - Added adversarial portable-evidence and provenance regression coverage, including corruption, traversal, symlink, revision mismatch, blocked evidence, destination conflict, relocation, worktree, CLI JSON, MCP gating, and package-install fixtures.
+- Added the Phase 2 [v1 readiness audit](docs/V1_READINESS.md), including CLI/MCP contract parity, compatibility policy, dogfood evidence, and explicit empirical-evidence dispositions.
 
 ## [0.9.2] - 2026-08-08
 

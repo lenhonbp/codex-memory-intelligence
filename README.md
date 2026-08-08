@@ -26,7 +26,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.9.1` is the current release line for **Evidence Integrity + Real-Repository Evaluation**. It includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange. The npm badge above remains the authoritative indicator of the version currently published to the registry.
+`v0.9.2` is the current public release line for **Evidence Integrity + Real-Repository Evaluation**. It includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, portable anonymized evaluation corpus exchange, portable project evidence, and executable provenance diagnostics. The npm badge above remains the authoritative indicator of the version currently published to the registry.
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
@@ -55,6 +55,7 @@ Requires Node.js 22 or newer.
 ## Quick start
 
 ```bash
+# A fresh project is intentionally blocked until it has durable state and a scan.
 cmi doctor
 cmi init
 cmi scan
@@ -208,7 +209,7 @@ CMI can auto-resolve deterministic health findings when their measured condition
 
 ## Real-repository evaluation
 
-v0.9.1 adds the real-repository evaluation foundation while keeping field evidence separate from ordinary regression tests and exposing the same contract through CLI plus the session-aware MCP adapter. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
+The v0.9.x line adds the real-repository evaluation foundation while keeping field evidence separate from ordinary regression tests and exposing the same contract through CLI plus the session-aware MCP adapter. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
 
 ```bash
 cmi evaluate capture --source-kind self-host --repository-class cli-tool --task-kind audit

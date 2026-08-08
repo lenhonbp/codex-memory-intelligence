@@ -311,7 +311,9 @@ export async function doctor(root) {
   const config = await readConfig(root);
   const matcher = await createIgnoreMatcher(root, config);
   add('ignore-rules', 'pass', `${matcher.rules.length} custom ignore rule(s) loaded.`);
-  if (initialized) {
+  if (!initialized) {
+    add('evidence-health', 'fail', 'Evidence state is uninitialized. Run cmi init, then cmi scan before relying on project intelligence.');
+  } else {
     const projectStatus = await status(root);
     add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
     const graphBlocked = projectStatus.evidenceHealth?.capabilities?.impactAnalysis === 'blocked';

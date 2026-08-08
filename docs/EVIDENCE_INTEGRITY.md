@@ -12,6 +12,14 @@ Portable evidence is not an authenticated backup: SHA-256 detects corruption but
 
 `cmi provenance --json` is the canonical executable diagnostic. It reports the actual invoked script/runtime, resolved package root/version, install/invocation kind, source checkout revision and dirty state when observable, project-local candidates, and ambiguity limitations. Unknown values remain unknown, and the collector never infers the running package from the current working directory's package metadata.
 
+## Diagnostic and recovery contracts
+
+Fresh-project diagnostics are intentionally conservative. Before `cmi init`, `cmi status` reports `uninitialized`, recommends `cmi init`, and exits with a blocked status in both human and `--json` modes. After initialization, `cmi scan` is required before graph or impact claims are current. `cmi doctor` exits nonzero whenever overall evidence or a trust-critical domain is blocked; warnings do not become a healthy result merely because the command completed.
+
+Blocked JSON output keeps the normal machine-readable error envelope (`{ "ok": false, "error": { "code", "message", "details" } }`) or the structured success payload used by commands such as `status` and `impact`. Recovery recommendations identify the next safe command where one exists. A recommendation is guidance, not proof that the command will succeed.
+
+Portable restore/rebind mismatches include `details.recommendedAction` with `mutatesCmiState: false` and no automatic command. This deliberately requires review of the listed source, revision, policy, or worktree mismatch before retrying; the failed operation writes no CMI evidence. Human CLI output renders the same non-mutating review instruction without replacing the structured JSON details.
+
 ## Evidence health
 
 `status --json` and context packs expose a versioned Evidence Health Model with:

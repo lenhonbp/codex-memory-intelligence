@@ -86,6 +86,25 @@ test('JSON mode emits one machine-readable error object', async () => {
   assert.match(parsed.error.message, /usage: cmi search/i);
 });
 
+test('status and doctor expose uninitialized recovery and trust-critical exit codes', async () => {
+  const root = await fixture();
+  let result = await run(['status'], root);
+  assert.equal(result.code, 2);
+  assert.match(result.stdout, /Memory is not initialized/i);
+  assert.match(result.stdout, /Next safe action: cmi init/i);
+
+  result = await run(['status', '--json'], root);
+  assert.equal(result.code, 2);
+  const status = JSON.parse(result.stdout);
+  assert.equal(status.evidenceHealth.state, 'uninitialized');
+  assert.equal(status.evidenceHealth.capabilities.graphContext, 'blocked');
+
+  result = await run(['doctor'], root);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /CMI .* blocked/i);
+  assert.match(result.stdout, /Run cmi init, then cmi scan/i);
+});
+
 test('blocked impact is structured success output with a nonzero blocked exit code', async () => {
   const root = await fixture();
   const result = await run(['impact', 'src/a.js', '--json'], root);
