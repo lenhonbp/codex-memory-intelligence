@@ -1,0 +1,32 @@
+name: Debug v0.9.x real field validation
+on:
+  push:
+    paths:
+      - '.github/workflows/v09x-real-field-debug.yml'
+permissions:
+  contents: read
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 3eb6e42848c98e1982c4fdd9cb821495834fcd31
+          fetch-depth: 20
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Fetch current validation script
+        run: |
+          git fetch origin validation/v09x-stress-task-diversity-20260808 --depth=1
+          git show FETCH_HEAD:scripts/v09x-real-field-validation.sh > "$RUNNER_TEMP/v09x-real-field-validation.sh"
+          chmod +x "$RUNNER_TEMP/v09x-real-field-validation.sh"
+      - name: Trace field validation script
+        env:
+          CMI_ROOT: ${{ github.workspace }}
+        shell: bash
+        run: |
+          export PS4='+ line ${LINENO}: '
+          bash -x "$RUNNER_TEMP/v09x-real-field-validation.sh"
