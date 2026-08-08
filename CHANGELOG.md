@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.9.1] - 2026-08-08
+
 - Added longitudinal evaluation outcomes for reconstruction effort, user follow-up need, historical-evidence usefulness, and verification-choice influence with explicit human/agent provenance and applicability checks.
 - Added repeated-repository longitudinal aggregation, bounded time/task/version report filters, and structural evidence-gap diagnostics that never claim statistical sufficiency or auto-recalibrate thresholds.
 - Added portable, anonymized, bounded evaluation bundle export/import with runtime validation, no-overwrite export, dedupe, and conflict fail-closed semantics for local multi-repository corpus aggregation.
@@ -21,6 +25,11 @@ All notable changes are documented here.
 - Descriptive corpus coverage states and reviewed usefulness metrics that never count self-host/synthetic runs as independent real-repository evidence or automatically declare production/v1.0 readiness.
 - Evaluation subject provenance (CMI version + source revision when available), observational vs controlled-stress protocol classification, and explicit human vs agent review provenance so field coverage and usefulness evidence cannot be silently mixed.
 - Session-aware MCP parity for evaluation list/show/report plus write-gated capture and `cmi://project/evaluation-report`, using the same runtime evidence contract as the CLI.
+
+### Fixed
+
+- Hardened portable evaluation bundle imports against path/file TOCTOU races by opening the descriptor first, using `O_NOFOLLOW` when available, validating the opened regular file and bounded size before reading, and using post-open identity checks on fallback platforms.
+- Added regression coverage that rejects symlinked portable evaluation bundles before evidence is read.
 
 ## [0.9.0] - 2026-08-08
 

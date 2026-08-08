@@ -26,7 +26,7 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.9.0` is the current source release line for **Evidence Integrity**. It adds unified evidence health, Git-history continuity guardrails for change/session attribution, runtime durable-contract validation, and CI-enforced schema/runtime parity on top of the v0.8 trust hardening, Behavioral Change Intelligence, and Session Continuation layers. The npm badge above remains the authoritative indicator of the version currently published to the registry.
+`v0.9.1` is the current release line for **Evidence Integrity + Real-Repository Evaluation**. It includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange. The npm badge above remains the authoritative indicator of the version currently published to the registry.
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
@@ -208,7 +208,7 @@ CMI can auto-resolve deterministic health findings when their measured condition
 
 ## Real-repository evaluation
 
-The unreleased v0.9.x evaluation foundation keeps field evidence separate from ordinary regression tests and exposes the same contract through CLI plus the session-aware MCP adapter. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
+v0.9.1 adds the real-repository evaluation foundation while keeping field evidence separate from ordinary regression tests and exposing the same contract through CLI plus the session-aware MCP adapter. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
 
 ```bash
 cmi evaluate capture --source-kind self-host --repository-class cli-tool --task-kind audit
