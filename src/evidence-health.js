@@ -8,13 +8,14 @@ function memoryDomain(counts = {}) {
   const review = finiteCount(counts.review);
   const untracked = finiteCount(counts.untracked);
   const inactive = finiteCount(counts.inactive);
-  const attention = stale + review + untracked;
-  const state = stale > 0 ? 'stale' : (review + untracked) > 0 ? 'review-required' : 'healthy';
+  const blocked = finiteCount(counts.blocked);
+  const attention = stale + review + untracked + blocked;
+  const state = blocked > 0 ? 'blocked' : stale > 0 ? 'stale' : (review + untracked) > 0 ? 'review-required' : 'healthy';
   return {
     state,
     healthy: attention === 0,
-    usable: true,
-    counts: { stale, review, untracked, inactive },
+    usable: blocked === 0,
+    counts: { stale, review, untracked, inactive, blocked },
     attention,
   };
 }
@@ -33,6 +34,11 @@ function graphDomain(graphHealth) {
     staleNodes: finiteCount(graphHealth.staleNodes),
     missingNodes: finiteCount(graphHealth.missingNodes),
     truncated: Boolean(graphHealth.truncated),
+    sourceSetChanged: Boolean(graphHealth.sourceSetChanged),
+    resolverInputsChanged: Boolean(graphHealth.resolverInputsChanged),
+    workspaceInputsChanged: Boolean(graphHealth.workspaceInputsChanged),
+    scanConfigChanged: Boolean(graphHealth.scanConfigChanged),
+    freshnessUnknown: Boolean(graphHealth.freshnessUnknown),
   };
 }
 
@@ -61,13 +67,23 @@ export function buildEvidenceHealth(input = {}) {
     reasons.push('Project graph is missing.');
     if (!recommendations.some((item) => item.command === 'cmi scan')) recommendations.push({ id: 'scan-graph', command: 'cmi scan', reason: 'Build the project graph before relying on graph or impact evidence.' });
   } else if (graph.state === 'stale') {
-    reasons.push(`Project graph is stale (${graph.staleNodes} stale, ${graph.missingNodes} missing node(s)).`);
-    recommendations.push({ id: 'refresh-graph', command: 'cmi scan', reason: 'Refresh source fingerprints before relying on graph or impact evidence.' });
+    const drift = [
+      graph.sourceSetChanged ? 'source-set drift' : null,
+      graph.resolverInputsChanged ? 'resolver-config drift' : null,
+      graph.workspaceInputsChanged ? 'workspace-manifest drift' : null,
+      graph.scanConfigChanged ? 'scan/ignore-config drift' : null,
+      graph.freshnessUnknown ? 'unverified discovery state' : null,
+    ].filter(Boolean);
+    reasons.push(`Project graph is stale (${graph.staleNodes} stale, ${graph.missingNodes} missing node(s)${drift.length ? `; ${drift.join(', ')}` : ''}).`);
+    recommendations.push({ id: 'refresh-graph', command: 'cmi scan', reason: 'Refresh repository discovery, resolver inputs, and source fingerprints before relying on graph or impact evidence.' });
   } else if (graph.state === 'incomplete') {
     reasons.push('Project graph is current but incomplete because configured graph coverage was truncated.');
     recommendations.push({ id: 'expand-graph', command: 'cmi scan', reason: 'Raise graph coverage limits or narrow scope before treating impact evidence as complete.' });
   }
-  if (memory.state === 'stale') {
+  if (memory.state === 'blocked') {
+    reasons.push(`${memory.counts.blocked} durable memory file${memory.counts.blocked === 1 ? '' : 's'} could not be safely read or validated.`);
+    recommendations.push({ id: 'repair-memory-storage', command: 'cmi stale', reason: 'Repair or recover unreadable durable memory before relying on or mutating project knowledge.' });
+  } else if (memory.state === 'stale') {
     reasons.push(`${memory.counts.stale} durable memory entr${memory.counts.stale === 1 ? 'y is' : 'ies are'} stale.`);
     recommendations.push({ id: 'review-stale-memory', command: 'cmi stale', reason: 'Review source-linked memory before treating it as current project truth.' });
   } else if (memory.state === 'review-required') {
@@ -77,11 +93,11 @@ export function buildEvidenceHealth(input = {}) {
 
   let state = 'healthy';
   if (!initialized) state = 'uninitialized';
-  else if (!storageSafe || !indexAvailable || graph.state === 'missing' || graph.state === 'stale') state = 'blocked';
+  else if (!storageSafe || !indexAvailable || graph.state === 'missing' || graph.state === 'stale' || memory.state === 'blocked') state = 'blocked';
   else if (graph.state === 'incomplete' || !memory.healthy) state = 'degraded';
 
   const capabilities = {
-    durableMemory: !initialized || !storageSafe ? 'unavailable' : memory.healthy ? 'current' : 'degraded',
+    durableMemory: !initialized || !storageSafe ? 'unavailable' : !memory.usable ? 'blocked' : memory.healthy ? 'current' : 'degraded',
     graphContext: !graph.usable ? 'blocked' : graph.complete ? 'current' : 'partial',
     impactAnalysis: !graph.usable ? 'blocked' : graph.complete ? 'current' : 'partial',
     historicalRecords: initialized && storageSafe ? 'available' : 'unavailable',
