@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { resolveProjectFile, slash } from './paths.js';
 import { workspaceForPath } from './workspaces.js';
-import { safeReadMemoryJson } from './storage.js';
+import { safeReadMemoryJson, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 
 const SOURCE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx',
@@ -319,7 +319,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
 }
 
 export async function loadProjectGraph(root) {
-  try { return await safeReadMemoryJson(root, 'project-graph.json', { optional: true }); } catch { return null; }
+  try { return await safeReadMemoryJson(root, 'project-graph.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }); } catch { return null; }
 }
 
 function graphFingerprintMatches(stat, fingerprint) {

@@ -74,6 +74,7 @@ test('read-only MCP exposes evaluation reads/report resource without durable cap
     assert.ok(tools.some((tool) => tool.name === 'get_project_evaluation'));
     assert.ok(tools.some((tool) => tool.name === 'get_project_evaluation_report'));
     assert.ok(!tools.some((tool) => tool.name === 'capture_project_evaluation'));
+    assert.ok(!tools.some((tool) => tool.name === 'review_project_evaluation'));
 
     server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_project_evaluation_report', arguments: {} } });
     const report = await server.waitFor((message) => message.id === 3);
@@ -99,6 +100,7 @@ test('write-enabled MCP captures evaluation evidence without weakening provenanc
     server.send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
     const tools = (await server.waitFor((message) => message.id === 2)).result.tools;
     assert.ok(tools.some((tool) => tool.name === 'capture_project_evaluation'));
+    assert.ok(tools.some((tool) => tool.name === 'review_project_evaluation'));
 
     server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'capture_project_evaluation', arguments: {
       sourceKind: 'synthetic', protocolKind: 'observational', repositoryClass: 'tooling', taskKind: 'verification', session: 'none',
@@ -129,5 +131,19 @@ test('write-enabled MCP captures evaluation evidence without weakening provenanc
     const invalidReview = await server.waitFor((message) => message.id === 7);
     assert.equal(invalidReview.result.isError, true);
     assert.match(invalidReview.result.content[0].text, /review-provenance human or agent/i);
+
+    server.send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'review_project_evaluation', arguments: {
+      id: captured.result.structuredContent.id.slice(0, 12), reviewOutcome: 'pass', reviewProvenance: 'agent', nextActionRating: 'useful',
+    } } });
+    const reviewed = await server.waitFor((message) => message.id === 8);
+    assert.equal(reviewed.result.structuredContent.review.provenance, 'agent');
+    assert.equal(reviewed.result.structuredContent.review.nextActionRating, 'useful');
+
+    server.send({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'review_project_evaluation', arguments: {
+      id: captured.result.structuredContent.id, reviewOutcome: 'pass', reviewProvenance: 'human',
+    } } });
+    const duplicateReview = await server.waitFor((message) => message.id === 9);
+    assert.equal(duplicateReview.result.isError, true);
+    assert.match(duplicateReview.result.content[0].text, /already reviewed/i);
   } finally { stop(server); }
 });

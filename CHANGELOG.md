@@ -4,6 +4,9 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+- Fixed large generated graph caches being unreadable through the 1 MB durable-record ceiling; generated project caches now use a separate finite read ceiling.
+- Added one-time post-hoc evaluation review so human/agent usefulness can be rated after capture without mutating captured measurements or overwriting reviewer provenance.
+
 - Added controlled real-repository stress evaluation with explicit scenario taxonomy, derived invariant outcomes, separate aggregate stress metrics, and CLI/MCP parity without inflating observational coverage.
 
 ### Added

@@ -18,6 +18,7 @@ import {
 import {
   captureEvaluation,
   getEvaluation,
+  reviewEvaluation,
   listEvaluations,
   buildEvaluationReport,
   formatEvaluationRecord,
@@ -85,7 +86,7 @@ function print(value, formatted) { console.log(json ? JSON.stringify(value, null
 function groupHelp(name) {
   if (name === 'session') return 'Usage: cmi session <start|observe|status|close|show|list|handoff> ...\n\nTrack project work, persist findings, and produce an evidence-based handoff/next action.';
   if (name === 'finding') return 'Usage: cmi finding <list|show|state> ...\n\nInspect and explicitly review persistent project findings.';
-  return 'Usage: cmi evaluate <capture|list|show|report> ...\n\nCollect anonymized field evidence while keeping external-real, self-host, and synthetic records separate.';
+  return 'Usage: cmi evaluate <capture|review|list|show|report> ...\n\nCollect anonymized field evidence while keeping external-real, self-host, and synthetic records separate. Reviews are explicit post-hoc attestations and are not inferred from capture.';
 }
 
 try {
@@ -146,6 +147,11 @@ try {
       if (!optionValues('--source-kind')[0]) throw new Error('Usage: cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id] [--stress-scenario scenario --stress-expected N --stress-passed N --stress-failed N]');
       const record = await captureEvaluation(process.cwd(), evaluationOptions());
       print(record, formatEvaluationRecord(record));
+    } else if (action === 'review') {
+      const selector = values[0];
+      if (!selector) throw new Error('Usage: cmi evaluate review <id> --review-outcome <pass|partial|fail> --review-provenance <human|agent> [usefulness options]');
+      const record = await reviewEvaluation(process.cwd(), selector, evaluationOptions());
+      print(record, formatEvaluationRecord(record));
     } else if (action === 'list') {
       const result = await listEvaluations(process.cwd(), { sourceKind: optionValues('--source-kind')[0], limit: optionNumber('--limit', 50) });
       print(result, formatEvaluationList(result));
@@ -156,7 +162,7 @@ try {
       const report = await buildEvaluationReport(process.cwd(), { sourceKind: optionValues('--source-kind')[0] });
       print(report, formatEvaluationReport(report));
     } else {
-      throw new Error('Usage: cmi evaluate <capture|list|show|report> ...');
+      throw new Error('Usage: cmi evaluate <capture|review|list|show|report> ...');
     }
   }
 } catch (error) {

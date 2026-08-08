@@ -99,6 +99,8 @@ Evaluation write tools add:
 
 - `capture_project_evaluation` — persist one bounded evaluation record with explicit source kind, protocol, task/repository class, optional closed-session association, and review provenance. It is absent unless `CMI_WRITE_ENABLED=1`.
 
+Evaluation write tools add `capture_project_evaluation` and one-time `review_project_evaluation` when write mode is enabled.
+
 Session-continuation write tools add:
 
 - `start_work_session` — start durable tracking for implementation, debugging, audit, review, research, verification, or no-code investigation;

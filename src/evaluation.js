@@ -9,6 +9,7 @@ import { getRepositoryBaseline } from './advisor.js';
 import { buildChangeInsights } from './change-intelligence.js';
 import { getSession, getSessionHandoff, listFindings } from './session-intelligence.js';
 import { ensureSafeMemoryRoot, safeEnsureMemoryDir, safeListMemoryDir, safeReadMemoryJson, safeWriteMemoryFile } from './storage.js';
+import { withLeaseLock } from './lease-lock.js';
 import {
   EVALUATION_SCHEMA_VERSION,
   EVALUATION_SOURCE_KINDS,
@@ -225,6 +226,23 @@ function resolveEvaluation(records, selector) {
 export async function getEvaluation(root, selector) {
   const { records } = await readEvaluationRecords(root);
   return resolveEvaluation(records, selector);
+}
+
+export async function reviewEvaluation(root, selector, options = {}) {
+  const review = normalizeReview(options);
+  if (review.outcome === 'unreviewed') throw new Error('Evaluation review requires --review-outcome pass, partial, or fail with --review-provenance human or agent.');
+  const snapshots = await safeEnsureMemoryDir(root, 'snapshots');
+  return withLeaseLock(path.join(snapshots, 'evaluation-review.lock'), async () => {
+    const { records } = await readEvaluationRecords(root);
+    const record = resolveEvaluation(records, selector);
+    if (record.review.outcome !== 'unreviewed') throw new Error('Evaluation record is already reviewed. Capture a new evaluation for a distinct review rather than overwriting provenance.');
+    const updated = { ...record, review };
+    const validation = validateEvaluationRecordContract(updated);
+    if (!validation.valid) throw new Error(`Invalid reviewed evaluation record: ${validation.errors.join(' ')}`);
+    await safeWriteMemoryFile(root, `${EVALUATION_DIR}/${record.id}.json`, `${JSON.stringify(updated, null, 2)}
+`);
+    return updated;
+  });
 }
 
 export async function listEvaluations(root, options = {}) {

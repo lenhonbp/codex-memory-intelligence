@@ -112,7 +112,7 @@ test('CLI exposes evaluation protocol and reviewer provenance contracts', async 
   const cli = path.resolve('src/cli-entry.js');
   const help = spawnSync(process.execPath, [cli, 'evaluate', '--help'], { encoding: 'utf8' });
   assert.equal(help.status, 0, help.stderr);
-  assert.match(help.stdout, /evaluate <capture\|list\|show\|report>/i);
+  assert.match(help.stdout, /evaluate <capture\|review\|list\|show\|report>/i);
   assert.match(help.stdout, /external-real/i);
   const top = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8' });
   assert.equal(top.status, 0, top.stderr);

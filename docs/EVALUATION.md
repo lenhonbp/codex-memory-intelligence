@@ -105,6 +105,24 @@ cmi evaluate capture \
 
 `pass`, `partial`, or `fail` is derived from the invariant counts; callers cannot supply a more favorable stress outcome. Observational records reject stress fields. Reports aggregate stress scenario coverage and invariant pass rate separately from ordinary field coverage.
 
+## Post-hoc usefulness review
+
+Capture and review are separate operations. Field runs should normally be captured as `unreviewed`, then rated later by an explicit reviewer:
+
+```bash
+cmi evaluate review <id> \
+  --review-outcome pass \
+  --review-provenance human \
+  --next-action-rating useful \
+  --handoff-rating useful \
+  --false-positive-findings 0 \
+  --missed-findings 0
+```
+
+A review is one-time. CMI serializes competing review writers with an owner-tagged lease and refuses to overwrite an existing review. The review operation changes only the `review` block; captured repository measurements, source/protocol class, stress evidence, subject revision, and task identity remain immutable. Human and agent review metrics continue to aggregate separately.
+
+Generated project index/graph caches use a larger bounded read ceiling than 1 MB durable evaluation/change/session records. This prevents large repositories from writing a graph that CMI cannot subsequently read while preserving finite cache reads.
+
 ## Runtime contract
 
 `schemas/evaluation-record.schema.json` documents the durable format and repository quality checks keep trust-critical enums/version fields aligned with the runtime validator.

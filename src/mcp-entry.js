@@ -22,6 +22,7 @@ import {
 import {
   captureEvaluation,
   getEvaluation,
+  reviewEvaluation,
   listEvaluations,
   buildEvaluationReport,
   formatEvaluationRecord,
@@ -96,6 +97,15 @@ const evaluationWriteTools = [
     stressExpected: { type: 'integer', minimum: 1 },
     stressPassed: { type: 'integer', minimum: 0 },
     stressFailed: { type: 'integer', minimum: 0 },
+  } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
+  { name: 'review_project_evaluation', title: 'Review project evaluation', description: 'Attach one explicit human or agent post-hoc review to an unreviewed evaluation record without changing its captured measurements, source/protocol class, or stress evidence. Requires MCP write opt-in.', inputSchema: { type: 'object', required: ['id', 'reviewOutcome', 'reviewProvenance'], properties: {
+    id: { type: 'string' },
+    reviewOutcome: { type: 'string', enum: ['pass', 'partial', 'fail'] },
+    reviewProvenance: { type: 'string', enum: ['human', 'agent'] },
+    falsePositiveFindings: { type: 'integer', minimum: 0 },
+    missedFindings: { type: 'integer', minimum: 0 },
+    nextActionRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    handoffRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
   } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
 ];
 const evaluationResources = [
@@ -173,6 +183,11 @@ async function callSessionTool(name, args = {}) {
   if (name === 'capture_project_evaluation') {
     writable();
     const result = await captureEvaluation(root, args);
+    return textResult(formatEvaluationRecord(result), result);
+  }
+  if (name === 'review_project_evaluation') {
+    writable();
+    const result = await reviewEvaluation(root, args.id || '', args);
     return textResult(formatEvaluationRecord(result), result);
   }
   throw new Error(`Unknown session/evaluation tool: ${name}`);
