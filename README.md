@@ -302,9 +302,37 @@ cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]
 cmi snapshot [label]
 cmi status [path] [--json]
 cmi doctor [path] [--json]
+cmi provenance [--json]
+cmi evidence freeze <bundle-path> [--json]
+cmi evidence inspect <bundle-path> [--json]
+cmi evidence restore <bundle-path> [--json]
+cmi evidence rebind <bundle-path> [--json]
 cmi mcp-config [--write] [--bulk-refresh]
 cmi --version
 ```
+
+## Portable evidence and executable provenance
+
+Freeze the current `.codex-memory` state into a bounded directory bundle whose manifest contains path-independent source-content identity, Git repository/revision evidence when observable, CMI version/source provenance, a deterministic artifact inventory, and SHA-256 digests:
+
+```bash
+cmi evidence freeze ../cmi-evidence-freeze --json
+cmi evidence inspect ../cmi-evidence-freeze --json
+cmi evidence restore ../cmi-evidence-freeze --json
+cmi evidence rebind ../cmi-evidence-freeze --json
+```
+
+Restore and rebind verify the frozen source/scan policy before writing. A same-state restore is `exact`; a compatible checkout at another path is `compatible-relocated`; a clean checkout proven by exact Git repository/revision evidence with bounded LF compatibility is `compatible-git-checkout`; a destination with unavailable Git identity may be reported as `compatible-content-only`. Mismatches, policy drift, dirty-worktree evidence, corrupted manifests/artifacts, unsafe paths, symlinks, blocked evidence, and existing conflicting destinations fail closed. Existing evidence is never silently overwritten. Rebind records the original identity, requested operation, and verification result in `.codex-memory/portable-provenance.json` without changing semantic memory-review provenance.
+
+Portable evidence is a local, digest-verified transport format, not an authenticated backup or proof of source authorship. CMI does not export source files, but it refuses to freeze obvious credential-like content in intended evidence files. The manifest freezes a bounded, validated scan/ignore policy plus resolver/workspace inputs so a clean checkout without `.codex-memory` can reproduce the same source boundary. Source identity is byte-exact unless exact Git repository/revision and clean-worktree evidence justify the narrower UTF-8 LF checkout-compatibility identity; content-only destinations reject newline-only byte changes.
+
+To diagnose which installation is actually running:
+
+```bash
+cmi provenance --json
+```
+
+The report identifies the runtime executable/script, resolved package root/version, install and invocation kind, source checkout revision/dirty state when observable, project-local candidates, and ambiguity/limitations. It never substitutes the current working directory's `package.json` for the invoked package.
 
 ## MCP integration
 

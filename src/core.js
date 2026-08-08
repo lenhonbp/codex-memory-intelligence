@@ -255,7 +255,19 @@ export async function status(root) {
     const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: false, indexAvailable: false, graphHealth: null, memoryHealth: null });
     return { initialized: true, healthy: false, evidenceHealth, storageHealth: { safe: false, reason: error.message }, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
   }
-  if (!directory) return { initialized: false, healthy: false, evidenceHealth: buildEvidenceHealth({ initialized: false, storageSafe: true, indexAvailable: false, graphHealth: null, memoryHealth: null }) };
+  if (!directory) return {
+    initialized: false,
+    healthy: false,
+    evidenceHealth: buildEvidenceHealth({ initialized: false, storageSafe: true, indexAvailable: false, graphHealth: null, memoryHealth: null }),
+    storageHealth: { safe: true },
+    index: null,
+    graph: null,
+    graphHealth: null,
+    workspaces: null,
+    entries: { facts: 0, decisions: 0, mistakes: 0 },
+    memoryHealth: { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0, blocked: 0 },
+    snapshots: 0,
+  };
   const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
   const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
   const snapshots = await safeListMemoryDir(root, 'snapshots').catch(() => []);

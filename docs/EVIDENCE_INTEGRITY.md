@@ -2,6 +2,16 @@
 
 CMI v0.9 introduces a shared evidence-integrity layer. The goal is not to make CMI appear more certain; it is to make every current-evidence claim carry the same explicit health and attribution rules.
 
+## Portable evidence and executable provenance
+
+`cmi evidence freeze` exports only the intended `.codex-memory` evidence boundary into a directory bundle with a deterministic, path-independent identity. The manifest records CMI version/source information, source-content identity, observable Git repository identity and revision, evidence/cache format, sorted artifact inventory, and SHA-256 content digests. Freeze metadata such as time and diagnostic location is excluded from the identity digest.
+
+`cmi evidence inspect` validates the manifest and every bounded artifact. `restore` and `rebind` verify source-content compatibility before any write. They distinguish `exact`, `compatible-relocated`, `compatible-git-checkout`, and `compatible-content-only` states from `mismatch`; mismatches, unsafe paths, symlinks, unsupported schemas, digest failures, blocked evidence, policy drift, dirty-worktree evidence, and destination conflicts fail closed. Rebind is an explicit user request, not a trust override, and records original identity plus verification in `.codex-memory/portable-provenance.json` without fabricating semantic review.
+
+Portable evidence is not an authenticated backup: SHA-256 detects corruption but does not authenticate the bundle or prove source authorship. The manifest freezes a bounded, validated scan/ignore policy and content identities for resolver/workspace inputs. Source identity is byte-exact by default; only exact Git repository/revision plus clean-worktree evidence may use the narrower UTF-8 LF checkout-compatibility identity. Absolute paths are diagnostic only.
+
+`cmi provenance --json` is the canonical executable diagnostic. It reports the actual invoked script/runtime, resolved package root/version, install/invocation kind, source checkout revision and dirty state when observable, project-local candidates, and ambiguity limitations. Unknown values remain unknown, and the collector never infers the running package from the current working directory's package metadata.
+
 ## Evidence health
 
 `status --json` and context packs expose a versioned Evidence Health Model with:
