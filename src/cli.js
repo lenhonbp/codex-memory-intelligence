@@ -102,8 +102,25 @@ function validateFlags() {
   for (const value of allowed) if (VALUE_FLAGS.has(value) && args.includes(value)) optionValues(value);
 }
 function emitError(error) {
-  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message, ...(error?.details === undefined ? {} : { details: error.details }) } }));
-  else console.error(`Error: ${error.message}`);
+  const payload = { ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message, ...(error?.details === undefined ? {} : { details: error.details }) } };
+  if (json) console.error(JSON.stringify(payload));
+  else {
+    console.error(`Error: ${error.message}`);
+    if (error?.details?.recommendedAction) {
+      const action = error.details.recommendedAction;
+      console.error(`Next safe action: ${action.command || 'review the diagnostic details'}${action.mutatesCmiState === undefined ? '' : ` (mutates CMI state: ${action.mutatesCmiState ? 'yes' : 'no'})`}`);
+    }
+  }
+}
+
+function formatStatus(result) {
+  if (!result.initialized) {
+    const action = result.evidenceHealth?.recommendations?.[0];
+    return `Memory is not initialized. Run cmi init.${action ? ` Next safe action: ${action.command} — ${action.reason}` : ''}`;
+  }
+  const summary = `Evidence ${result.evidenceHealth?.state || (result.healthy ? 'healthy' : 'needs-attention')} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.blocked || 0} blocked · ${result.memoryHealth.inactive || 0} inactive · graph ${result.evidenceHealth?.capabilities?.graphContext || 'unknown'} · impact ${result.evidenceHealth?.capabilities?.impactAnalysis || 'unknown'} · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots`;
+  const action = result.evidenceHealth?.recommendations?.[0];
+  return action ? `${summary}\nNext safe action: ${action.command || 'review status --json'} — ${action.reason}` : summary;
 }
 
 try {
@@ -246,8 +263,8 @@ try {
   else if (cmd === 'snapshot') console.log(`Created ${await snapshot(process.cwd(), positional().join(' ') || 'snapshot')}`);
   else if (cmd === 'status') {
     const result = await status(commandRoot());
-    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Evidence ${result.evidenceHealth?.state || (result.healthy ? 'healthy' : 'needs-attention')} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.blocked || 0} blocked · ${result.memoryHealth.inactive || 0} inactive · graph ${result.evidenceHealth?.capabilities?.graphContext || 'unknown'} · impact ${result.evidenceHealth?.capabilities?.impactAnalysis || 'unknown'} · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
-    if (json && result.evidenceHealth?.blocked) process.exitCode = 2;
+    console.log(json ? JSON.stringify(result, null, 2) : formatStatus(result));
+    if (result.evidenceHealth?.blocked) process.exitCode = 2;
   }
   else if (cmd === 'doctor') {
     const result = await doctor(commandRoot());

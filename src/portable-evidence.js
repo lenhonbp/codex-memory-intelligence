@@ -631,7 +631,15 @@ export async function restorePortableEvidence(root, bundlePath, options = {}) {
   const bundle = await readManifest(bundlePath);
   const artifacts = await readBundleArtifacts(bundle);
   const comparison = await compareProject(bundle.manifest, root);
-  if (comparison.mismatches.length) throw error('CMI_EVIDENCE_MISMATCH', `Portable evidence ${operation} failed closed: ${comparison.mismatches.map((item) => item.reason).join(' ')}`, comparison);
+  if (comparison.mismatches.length) throw error('CMI_EVIDENCE_MISMATCH', `Portable evidence ${operation} failed closed: ${comparison.mismatches.map((item) => item.reason).join(' ')}`, {
+    ...comparison,
+    recommendedAction: {
+      id: 'reconcile-portable-mismatch',
+      command: null,
+      mutatesCmiState: false,
+      reason: 'Review the listed source, revision, policy, or worktree mismatches and reconcile them before retrying. No CMI evidence was written.',
+    },
+  });
   const destination = comparison.projectRoot;
   let existing;
   try { existing = await fs.lstat(path.join(destination, '.codex-memory')); } catch (cause) { if (cause?.code !== 'ENOENT') throw cause; }

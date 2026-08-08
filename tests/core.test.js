@@ -204,8 +204,9 @@ test('symbolic links are skipped and cannot be tracked as sources', async (conte
 test('doctor and snapshots report project readiness', async () => {
   const root = await fixture();
   let report = await doctor(root);
-  assert.equal(report.healthy, true);
+  assert.equal(report.healthy, false);
   assert.ok(report.checks.some((check) => check.name === 'memory' && check.status === 'warn'));
+  assert.ok(report.checks.some((check) => check.name === 'evidence-health' && check.status === 'fail' && /cmi init.*cmi scan/i.test(check.detail)));
   await scanProject(root);
   report = await doctor(root);
   assert.ok(report.checks.some((check) => check.name === 'index' && check.status === 'pass'));

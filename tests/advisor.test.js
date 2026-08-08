@@ -78,6 +78,48 @@ test('repository baseline parses rename destinations and origins without arrow p
   assert.ok(!JSON.stringify(baseline).includes(root));
 });
 
+test('repository baseline ignores untracked CMI state but preserves project changes', async (context) => {
+  const root = await fixture();
+  if (!await initializeGit(root, context)) return;
+  await fs.writeFile(path.join(root, '.codex-memory', 'local-untracked.json'), '{}\n');
+  let baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.clean, true);
+  await fs.appendFile(path.join(root, 'src', 'api', 'checkout.js'), 'export const projectChange = true;\n');
+  baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.clean, false);
+  assert.ok(baseline.changes.some((item) => item.path === 'src/api/checkout.js'));
+  assert.ok(!baseline.changes.some((item) => item.path.startsWith('.codex-memory')));
+});
+
+test('repository baseline preserves tracked durable and configuration changes', async (context) => {
+  const root = await fixture();
+  if (!await initializeGit(root, context)) return;
+  await fs.appendFile(path.join(root, '.codex-memory', 'memory.md'), '\nTracked durable edit.\n');
+  await fs.appendFile(path.join(root, '.codex-memory', 'config.json'), '\n');
+  const baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.clean, false);
+  assert.ok(baseline.changes.some((item) => item.path === '.codex-memory/memory.md'));
+  assert.ok(baseline.changes.some((item) => item.path === '.codex-memory/config.json'));
+});
+
+test('repository baseline preserves staged CMI additions and tracked renames', async (context) => {
+  const root = await fixture();
+  if (!await initializeGit(root, context)) return;
+  const stagedPath = path.join(root, '.codex-memory', 'durable-record.json');
+  await fs.writeFile(stagedPath, '{"kind":"reviewed-record"}\n');
+  await execFileAsync('git', ['add', '.codex-memory/durable-record.json'], { cwd: root });
+  let baseline = await getRepositoryBaseline(root);
+  assert.equal(baseline.clean, false);
+  assert.ok(baseline.changes.some((item) => item.path === '.codex-memory/durable-record.json' && item.status[0] === 'A'));
+
+  await execFileAsync('git', ['mv', '.codex-memory/memory.md', '.codex-memory/memory-renamed.md'], { cwd: root });
+  baseline = await getRepositoryBaseline(root);
+  const rename = baseline.changes.find((item) => item.status.includes('R'));
+  assert.ok(rename);
+  assert.equal(rename.path, '.codex-memory/memory-renamed.md');
+  assert.equal(rename.originalPath, '.codex-memory/memory.md');
+});
+
 test('repository baseline remains usable in detached HEAD state', async (context) => {
   const root = await fixture();
   if (!await initializeGit(root, context)) return;
