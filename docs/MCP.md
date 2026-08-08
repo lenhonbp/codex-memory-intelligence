@@ -1,6 +1,6 @@
 # MCP integration
 
-CMI exposes local project, change, and session-continuation intelligence over MCP stdio.
+CMI exposes local project, change, session-continuation, and real-repository evaluation intelligence over MCP stdio.
 
 ## Configuration
 
@@ -10,9 +10,9 @@ Safe default:
 cmi mcp-config
 ```
 
-This keeps durable project writes disabled. Read-only durable history, memory search, graph intelligence, advisory pre-change analysis, change history, session reports, handoffs, and persistent findings remain available.
+This keeps durable project writes disabled. Read-only durable history, memory search, graph intelligence, advisory pre-change analysis, change history, session reports, handoffs, persistent findings, and evaluation reports remain available.
 
-Enable durable project writes explicitly when a connected agent should create project memory, review memory/finding lifecycle, create BEFORE/DURING/AFTER change records, or track/finalize work sessions:
+Enable durable project writes explicitly when a connected agent should create project memory, review memory/finding lifecycle, create BEFORE/DURING/AFTER change records, track/finalize work sessions, or capture a reviewed/anonymized evaluation record:
 
 ```bash
 cmi mcp-config --write
@@ -39,7 +39,7 @@ The server echoes a supported requested version and otherwise responds with `202
 
 The transport is newline-delimited UTF-8 JSON-RPC over stdin/stdout. Logs are written only to stderr.
 
-The installed `cmi-mcp` entrypoint is session-aware: it preserves the existing MCP server as the core protocol surface and augments it with continuation tools, resources, prompts, and server instructions.
+The installed `cmi-mcp` entrypoint is session-aware and evaluation-aware: it preserves the existing MCP server as the core protocol surface and augments it with continuation/evaluation tools, resources, prompts, and server instructions.
 
 ## Read/default tools
 
@@ -61,6 +61,12 @@ Existing read/default tools include:
 - `get_project_graph` — compact graph statistics;
 - `analyze_project_impact` — reverse-dependency impact analysis;
 - `check_stale_memory` — active-memory stale/review audit plus inactive lifecycle inventory.
+
+Evaluation read tools add:
+
+- `list_project_evaluations` — list bounded anonymized records with source/protocol/review provenance;
+- `get_project_evaluation` — read one evaluation record by ID/prefix;
+- `get_project_evaluation_report` — aggregate corpus coverage and reviewed usefulness while keeping evidence classes separate.
 
 Session-continuation read tools add:
 
@@ -88,6 +94,10 @@ When the server starts with `CMI_WRITE_ENABLED=1`, existing write tools include:
 - `remember_project_knowledge`;
 - `refresh_project_memory`;
 - `set_project_memory_state`.
+
+Evaluation write tools add:
+
+- `capture_project_evaluation` — persist one bounded evaluation record with explicit source kind, protocol, task/repository class, optional closed-session association, and review provenance. It is absent unless `CMI_WRITE_ENABLED=1`.
 
 Session-continuation write tools add:
 
@@ -176,6 +186,10 @@ Existing resources:
 - `cmi://project/boundaries`
 - `cmi://project/change-history`
 
+Evaluation resources:
+
+- `cmi://project/evaluation-report`
+
 Session-continuation resources:
 
 - `cmi://project/session/latest`
@@ -213,6 +227,14 @@ They are bounded, local, human-reviewable evidence. Explicit paths must be proje
 Session records do not prove that every meaningful action in an external agent environment was captured. CMI combines observable repository state with explicit session observations and says when evidence is incomplete.
 
 See [Session Continuation Intelligence](SESSION_INTELLIGENCE.md).
+
+## Evaluation trust model
+
+Evaluation records live under `.codex-memory/evaluations/`. Read/list/report are available in safe MCP mode; durable capture is write-gated. MCP uses the same runtime contract as the CLI, including explicit `external-real|self-host|synthetic` source class, `observational|controlled-stress` protocol, CMI version/source revision, and `human|agent|unreviewed` review provenance.
+
+The evaluation report never promotes self-host/synthetic runs into independent repository evidence, never lets controlled-stress inflate ordinary observational coverage, and never combines agent-reviewed usefulness with human-reviewed usefulness. MCP does not make an evaluation judgment merely because an agent calls the report tool.
+
+See [Real-Repository Evaluation](EVALUATION.md).
 
 ## Durable mutation boundary
 

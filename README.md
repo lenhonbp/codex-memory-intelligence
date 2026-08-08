@@ -208,7 +208,7 @@ CMI can auto-resolve deterministic health findings when their measured condition
 
 ## Real-repository evaluation
 
-The unreleased v0.9.x evaluation foundation keeps field evidence separate from ordinary regression tests. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
+The unreleased v0.9.x evaluation foundation keeps field evidence separate from ordinary regression tests and exposes the same contract through CLI plus the session-aware MCP adapter. Capture explicitly classified runs after scanning and, when relevant, closing a work session:
 
 ```bash
 cmi evaluate capture --source-kind self-host --repository-class cli-tool --task-kind audit

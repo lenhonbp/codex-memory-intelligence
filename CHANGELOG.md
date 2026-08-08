@@ -11,6 +11,7 @@ All notable changes are documented here.
 - Runtime + JSON Schema validation for evaluation records and repository quality checks that keep trust-critical evaluation enums/version fields aligned.
 - Descriptive corpus coverage states and reviewed usefulness metrics that never count self-host/synthetic runs as independent real-repository evidence or automatically declare production/v1.0 readiness.
 - Evaluation subject provenance (CMI version + source revision when available), observational vs controlled-stress protocol classification, and explicit human vs agent review provenance so field coverage and usefulness evidence cannot be silently mixed.
+- Session-aware MCP parity for evaluation list/show/report plus write-gated capture and `cmi://project/evaluation-report`, using the same runtime evidence contract as the CLI.
 
 ## [0.9.0] - 2026-08-08
 
