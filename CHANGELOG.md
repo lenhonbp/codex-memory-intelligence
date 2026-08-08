@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+- Added longitudinal evaluation outcomes for reconstruction effort, user follow-up need, historical-evidence usefulness, and verification-choice influence with explicit human/agent provenance and applicability checks.
+- Added repeated-repository longitudinal aggregation, bounded time/task/version report filters, and structural evidence-gap diagnostics that never claim statistical sufficiency or auto-recalibrate thresholds.
+- Added portable, anonymized, bounded evaluation bundle export/import with runtime validation, no-overwrite export, dedupe, and conflict fail-closed semantics for local multi-repository corpus aggregation.
+
 - Fixed large generated graph caches being unreadable through the 1 MB durable-record ceiling; generated project caches now use a separate finite read ceiling.
 - Added one-time post-hoc evaluation review so human/agent usefulness can be rated after capture without mutating captured measurements or overwriting reviewer provenance.
 

@@ -256,3 +256,7 @@ read evidence
 ```
 
 Bulk memory refresh remains separately guarded even in a write-enabled process.
+
+## Longitudinal evaluation
+
+The session-aware MCP evaluation surface exposes explicit reconstruction, follow-up, history-usefulness, and verification-choice review fields plus bounded task/version/time filters on evaluation reads/reports. Human and agent provenance remains separate. Portable evaluation bundle file I/O is CLI-only to avoid granting arbitrary host-file import/export authority through MCP durable-write opt-in.

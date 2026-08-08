@@ -76,9 +76,9 @@ const sessionWriteTools = [
   { name: 'set_project_finding_state', title: 'Set project-finding state', description: 'Explicitly resolve, accept, dismiss, reopen, or supersede one persistent finding with a review reason.', inputSchema: { type: 'object', required: ['id', 'state', 'reason'], properties: { id: { type: 'string' }, state: { type: 'string', enum: ['open', 'resolved', 'accepted', 'dismissed', 'superseded'] }, reason: { type: 'string', minLength: 1, maxLength: 500 }, changedBy: { type: 'string', maxLength: 100 }, supersededBy: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } },
 ];
 const evaluationReadTools = [
-  { name: 'list_project_evaluations', title: 'List project evaluations', description: 'List bounded anonymized evaluation records with explicit source, protocol, CMI subject revision, repository/task class, and review provenance.', inputSchema: { type: 'object', properties: { sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] }, limit: { type: 'integer', minimum: 1, maximum: 200 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'list_project_evaluations', title: 'List project evaluations', description: 'List bounded anonymized evaluation records with explicit source, protocol, CMI subject revision, repository/task class, and review provenance.', inputSchema: { type: 'object', properties: { sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] }, taskKind: { type: 'string', enum: ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'refactor', 'migration', 'architecture-analysis', 'no-code-investigation', 'unknown'] }, subjectVersion: { type: 'string' }, sinceDays: { type: 'integer', minimum: 1, maximum: 3650 }, limit: { type: 'integer', minimum: 1, maximum: 200 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_project_evaluation', title: 'Get project evaluation', description: 'Read one durable anonymized evaluation record by ID or unique prefix.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
-  { name: 'get_project_evaluation_report', title: 'Get project evaluation report', description: 'Aggregate the retained evaluation corpus while keeping external-real/self-host/synthetic, observational/controlled-stress, and human/agent/unreviewed evidence separate.', inputSchema: { type: 'object', properties: { sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_project_evaluation_report', title: 'Get project evaluation report', description: 'Aggregate retained evaluation evidence with repeated-repository longitudinal metrics, explicit reviewer outcomes, filters, and structural evidence gaps while preserving provenance separation.', inputSchema: { type: 'object', properties: { sourceKind: { type: 'string', enum: ['external-real', 'self-host', 'synthetic'] }, taskKind: { type: 'string', enum: ['implementation', 'debugging', 'audit', 'review', 'research', 'verification', 'refactor', 'migration', 'architecture-analysis', 'no-code-investigation', 'unknown'] }, subjectVersion: { type: 'string' }, sinceDays: { type: 'integer', minimum: 1, maximum: 3650 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
 ];
 const evaluationWriteTools = [
   { name: 'capture_project_evaluation', title: 'Capture project evaluation', description: 'Persist one bounded anonymized evaluation record. Requires MCP write opt-in. Source class, protocol, and review provenance are explicit and are never auto-promoted.', inputSchema: { type: 'object', required: ['sourceKind'], properties: {
@@ -93,6 +93,10 @@ const evaluationWriteTools = [
     missedFindings: { type: 'integer', minimum: 0 },
     nextActionRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
     handoffRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    reconstructionRating: { type: 'string', enum: ['reduced', 'unchanged', 'increased', 'not-applicable', 'unknown'] },
+    followUpOutcome: { type: 'string', enum: ['not-needed', 'needed', 'not-applicable', 'unknown'] },
+    verificationChoiceOutcome: { type: 'string', enum: ['improved', 'unchanged', 'worse', 'not-applicable', 'unknown'] },
+    historyRating: { type: 'string', enum: ['useful', 'not-useful', 'not-applicable', 'unknown'] },
     stressScenario: { type: 'string', enum: ['rename-after-scan', 'history-rewrite', 'dirty-worktree', 'clock-skew', 'interrupted-session', 'concurrent-sessions', 'large-monorepo', 'corrupt-durable-record', 'stale-graph'] },
     stressExpected: { type: 'integer', minimum: 1 },
     stressPassed: { type: 'integer', minimum: 0 },
@@ -106,6 +110,10 @@ const evaluationWriteTools = [
     missedFindings: { type: 'integer', minimum: 0 },
     nextActionRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
     handoffRating: { type: 'string', enum: ['useful', 'not-useful', 'unknown'] },
+    reconstructionRating: { type: 'string', enum: ['reduced', 'unchanged', 'increased', 'not-applicable', 'unknown'] },
+    followUpOutcome: { type: 'string', enum: ['not-needed', 'needed', 'not-applicable', 'unknown'] },
+    verificationChoiceOutcome: { type: 'string', enum: ['improved', 'unchanged', 'worse', 'not-applicable', 'unknown'] },
+    historyRating: { type: 'string', enum: ['useful', 'not-useful', 'not-applicable', 'unknown'] },
   } }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } },
 ];
 const evaluationResources = [
@@ -169,7 +177,7 @@ async function callSessionTool(name, args = {}) {
     return textResult(`Finding ${result.id} is now ${result.state}.`, result);
   }
   if (name === 'list_project_evaluations') {
-    const result = await listEvaluations(root, { sourceKind: args.sourceKind, limit: args.limit || 50 });
+    const result = await listEvaluations(root, { sourceKind: args.sourceKind, taskKind: args.taskKind, subjectVersion: args.subjectVersion, sinceDays: args.sinceDays, limit: args.limit || 50 });
     return textResult(formatEvaluationList(result), result);
   }
   if (name === 'get_project_evaluation') {
@@ -177,7 +185,7 @@ async function callSessionTool(name, args = {}) {
     return textResult(formatEvaluationRecord(result), result);
   }
   if (name === 'get_project_evaluation_report') {
-    const result = await buildEvaluationReport(root, { sourceKind: args.sourceKind });
+    const result = await buildEvaluationReport(root, { sourceKind: args.sourceKind, taskKind: args.taskKind, subjectVersion: args.subjectVersion, sinceDays: args.sinceDays });
     return textResult(formatEvaluationReport(result), result);
   }
   if (name === 'capture_project_evaluation') {
@@ -235,7 +243,7 @@ input.on('line', (line) => {
     if (method === 'initialize') {
       lifecycle = 'initializing';
       forward(message, (response) => {
-        if (response?.result) response.result.instructions = `${response.result.instructions || ''} Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness.`.trim();
+        if (response?.result) response.result.instructions = `${response.result.instructions || ''} Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness. Longitudinal reconstruction, follow-up, history-usefulness, and verification-choice outcomes require explicit review; structural evidence diagnostics never imply statistical sufficiency or automatic threshold recalibration.`.trim();
         return response;
       });
       return;

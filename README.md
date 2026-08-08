@@ -214,10 +214,13 @@ The unreleased v0.9.x evaluation foundation keeps field evidence separate from o
 cmi evaluate capture --source-kind self-host --repository-class cli-tool --task-kind audit
 cmi evaluate capture --source-kind external-real --repository-class application --task-kind debugging
 cmi evaluate report
-cmi evaluate report --source-kind external-real
+cmi evaluate review <id> --review-outcome pass --review-provenance human --reconstruction-rating reduced --follow-up-outcome not-needed
+cmi evaluate report --source-kind external-real --since-days 90
+cmi evaluate export ./cmi-evidence.json --source-kind external-real
+cmi evaluate import ./other-project-evidence.json
 ```
 
-Only `external-real` contributes to independent-repository counts. Observational runs drive ordinary field-coverage state, while `controlled-stress` remains visible but cannot inflate that state. `self-host` and `synthetic` cannot silently inflate real-world coverage. Evaluation records bind measurements to the CMI semantic version and, when available, exact source revision; they store a one-way repository fingerprint rather than repository names, remotes, absolute paths, session/finding/recommendation text, source contents, or diffs. Human and agent review provenance is explicit and aggregated separately, and the report never declares production or v1.0 readiness automatically. See [Real-Repository Evaluation](docs/EVALUATION.md).
+Only `external-real` contributes to independent-repository counts. Observational runs drive ordinary field-coverage state, while `controlled-stress` remains visible but cannot inflate that state. `self-host` and `synthetic` cannot silently inflate real-world coverage. Evaluation records bind measurements to the CMI semantic version and, when available, exact source revision; they store a one-way repository fingerprint rather than repository names, remotes, absolute paths, session/finding/recommendation text, source contents, or diffs. Human and agent review provenance is explicit and aggregated separately. Longitudinal reports can measure repeated-repository reconstruction, follow-up, history-usefulness, and verification-choice judgments, while structural evidence diagnostics never declare statistical sufficiency, production readiness, v1.0 readiness, or automatic threshold recalibration. Portable bundles let separate repositories contribute validated anonymized records without a database or cloud service. See [Real-Repository Evaluation](docs/EVALUATION.md).
 
 ## Monorepos and workspaces
 
@@ -286,9 +289,12 @@ cmi finding list [--status open|resolved|accepted|dismissed|superseded] [--limit
 cmi finding show <id> [--json]
 cmi finding state <id> <open|resolved|accepted|dismissed|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
 cmi evaluate capture --source-kind <external-real|self-host|synthetic> [--protocol observational|controlled-stress] [--repository-class class] [--task-kind kind] [--session latest|none|id] [--review-outcome pass|partial|fail|unreviewed] [--review-provenance human|agent|unreviewed] [--false-positive-findings N] [--missed-findings N] [--next-action-rating useful|not-useful|unknown] [--handoff-rating useful|not-useful|unknown] [--json]
-cmi evaluate list [--source-kind external-real|self-host|synthetic] [--limit N] [--json]
+cmi evaluate review <id> --review-outcome <pass|partial|fail> --review-provenance <human|agent> [--reconstruction-rating reduced|unchanged|increased|not-applicable|unknown] [--follow-up-outcome not-needed|needed|not-applicable|unknown] [--history-rating useful|not-useful|not-applicable|unknown] [--verification-choice-outcome improved|unchanged|worse|not-applicable|unknown] [--json]
+cmi evaluate list [--source-kind external-real|self-host|synthetic] [--task-kind kind] [--subject-version version] [--since-days N] [--limit N] [--json]
 cmi evaluate show <id> [--json]
-cmi evaluate report [--source-kind external-real|self-host|synthetic] [--json]
+cmi evaluate report [--source-kind external-real|self-host|synthetic] [--task-kind kind] [--subject-version version] [--since-days N] [--json]
+cmi evaluate export <file> [--source-kind kind] [--task-kind kind] [--subject-version version] [--since-days N] [--json]
+cmi evaluate import <file> [--json]
 cmi remember <fact|decision|mistake> <text> [--source path ...]
 cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]
 cmi stale [path] [--fail-on stale|review|any] [--json]

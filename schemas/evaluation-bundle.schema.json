@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lenhonbp/codex-memory-intelligence/schemas/evaluation-bundle.schema.json",
+  "title": "CMI Portable Evaluation Bundle",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "exportedAt",
+    "records"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "cmi-evaluation-bundle"
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "records": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "$ref": "./evaluation-record.schema.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

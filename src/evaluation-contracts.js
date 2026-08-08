@@ -8,6 +8,12 @@ export const EVALUATION_TASK_KINDS = ['implementation', 'debugging', 'audit', 'r
 export const EVALUATION_REVIEW_OUTCOMES = ['pass', 'partial', 'fail', 'unreviewed'];
 export const EVALUATION_REVIEW_PROVENANCE = ['human', 'agent', 'unreviewed'];
 export const EVALUATION_UTILITY_RATINGS = ['useful', 'not-useful', 'unknown'];
+export const EVALUATION_RECONSTRUCTION_RATINGS = ['reduced', 'unchanged', 'increased', 'not-applicable', 'unknown'];
+export const EVALUATION_FOLLOW_UP_OUTCOMES = ['not-needed', 'needed', 'not-applicable', 'unknown'];
+export const EVALUATION_VERIFICATION_CHOICE_OUTCOMES = ['improved', 'unchanged', 'worse', 'not-applicable', 'unknown'];
+export const EVALUATION_HISTORY_RATINGS = ['useful', 'not-useful', 'not-applicable', 'unknown'];
+export const EVALUATION_BUNDLE_SCHEMA_VERSION = 1;
+export const EVALUATION_BUNDLE_KIND = 'cmi-evaluation-bundle';
 export const EVALUATION_STRESS_SCENARIOS = ['rename-after-scan', 'history-rewrite', 'dirty-worktree', 'clock-skew', 'interrupted-session', 'concurrent-sessions', 'large-monorepo', 'corrupt-durable-record', 'stale-graph'];
 export const EVALUATION_STRESS_OUTCOMES = ['not-applicable', 'pass', 'partial', 'fail'];
 export const EVALUATION_EVIDENCE_STATES = ['healthy', 'degraded', 'blocked', 'uninitialized'];
@@ -128,7 +134,7 @@ export function validateEvaluationRecordContract(record) {
   }
 
   const review = record.review;
-  fail(hasOnlyKeys(review, new Set(['provenance', 'reviewedAt', 'outcome', 'falsePositiveFindings', 'missedFindings', 'nextActionRating', 'handoffRating'])), 'review shape is invalid');
+  fail(hasOnlyKeys(review, new Set(['provenance', 'reviewedAt', 'outcome', 'falsePositiveFindings', 'missedFindings', 'nextActionRating', 'handoffRating', 'reconstructionRating', 'followUpOutcome', 'verificationChoiceOutcome', 'historyRating'])), 'review shape is invalid');
   if (isObject(review)) {
     fail(validEnum(review.provenance, EVALUATION_REVIEW_PROVENANCE), 'review provenance is invalid');
     fail(review.reviewedAt === null || validIso(review.reviewedAt), 'review reviewedAt must be null or ISO timestamp');
@@ -137,10 +143,19 @@ export function validateEvaluationRecordContract(record) {
     fail(nullableNonNegativeInteger(review.missedFindings), 'review missedFindings must be non-negative integer or null');
     fail(validEnum(review.nextActionRating, EVALUATION_UTILITY_RATINGS), 'review nextActionRating is invalid');
     fail(validEnum(review.handoffRating, EVALUATION_UTILITY_RATINGS), 'review handoffRating is invalid');
+    const reconstructionRating = review.reconstructionRating ?? 'unknown';
+    const followUpOutcome = review.followUpOutcome ?? 'unknown';
+    const verificationChoiceOutcome = review.verificationChoiceOutcome ?? 'unknown';
+    const historyRating = review.historyRating ?? 'unknown';
+    fail(validEnum(reconstructionRating, EVALUATION_RECONSTRUCTION_RATINGS), 'review reconstructionRating is invalid');
+    fail(validEnum(followUpOutcome, EVALUATION_FOLLOW_UP_OUTCOMES), 'review followUpOutcome is invalid');
+    fail(validEnum(verificationChoiceOutcome, EVALUATION_VERIFICATION_CHOICE_OUTCOMES), 'review verificationChoiceOutcome is invalid');
+    fail(validEnum(historyRating, EVALUATION_HISTORY_RATINGS), 'review historyRating is invalid');
     if (review.outcome === 'unreviewed') {
       fail(review.provenance === 'unreviewed' && review.reviewedAt === null, 'unreviewed outcome requires unreviewed provenance and null reviewedAt');
       fail(review.falsePositiveFindings === null && review.missedFindings === null, 'unreviewed records cannot assert finding-error counts');
       fail(review.nextActionRating === 'unknown' && review.handoffRating === 'unknown', 'unreviewed records cannot assert usefulness ratings');
+      fail(reconstructionRating === 'unknown' && followUpOutcome === 'unknown' && verificationChoiceOutcome === 'unknown' && historyRating === 'unknown', 'unreviewed records cannot assert longitudinal outcome judgments');
     } else {
       fail(['human', 'agent'].includes(review.provenance), 'reviewed outcome requires explicit human or agent provenance');
       fail(validIso(review.reviewedAt), 'reviewed outcome requires reviewedAt');
@@ -148,5 +163,28 @@ export function validateEvaluationRecordContract(record) {
   }
 
   fail(typeof record.policy === 'string' && record.policy.length > 20 && record.policy.length <= 1200, 'policy must be bounded explanatory text');
+  return { valid: errors.length === 0, errors };
+}
+
+export function validateEvaluationBundleContract(bundle) {
+  const errors = [];
+  const fail = (condition, message) => { if (!condition) errors.push(message); };
+  fail(hasOnlyKeys(bundle, new Set(['schemaVersion', 'kind', 'exportedAt', 'records'])), 'bundle shape is invalid');
+  if (!isObject(bundle)) return { valid: false, errors };
+  fail(bundle.schemaVersion === EVALUATION_BUNDLE_SCHEMA_VERSION, 'unsupported bundle schemaVersion');
+  fail(bundle.kind === EVALUATION_BUNDLE_KIND, 'bundle kind is invalid');
+  fail(validIso(bundle.exportedAt), 'bundle exportedAt must be an ISO timestamp');
+  fail(Array.isArray(bundle.records) && bundle.records.length <= 1000, 'bundle records must be an array with at most 1000 entries');
+  if (Array.isArray(bundle.records)) {
+    const ids = new Set();
+    for (const record of bundle.records) {
+      const validation = validateEvaluationRecordContract(record);
+      if (!validation.valid) errors.push(`bundle record invalid: ${validation.errors.join(' ')}`);
+      if (record?.id) {
+        if (ids.has(record.id)) errors.push(`bundle contains duplicate evaluation id: ${record.id}`);
+        ids.add(record.id);
+      }
+    }
+  }
   return { valid: errors.length === 0, errors };
 }
