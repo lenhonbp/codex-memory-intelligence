@@ -20,6 +20,8 @@ That directory is ignored by the CMI repository so local study data is not commi
 
 The harness never writes project memory, findings, sessions, changes, graph caches, or evaluation records. It records only the external paired-study ledger supplied by the evaluator.
 
+The harness is repository-maintainer/evaluator tooling and is run from a CMI source checkout with `node scripts/empirical-study.js`. It is deliberately not exposed as a runtime CMI command or npm package script, so it cannot accidentally become part of the agent-facing plain condition.
+
 Do not expose the harness output to the agent running the `plain` condition. Using evaluator-side bookkeeping does not make the plain condition a CMI condition as long as the agent itself receives only the tools allowed by the protocol.
 
 ## Phase 1 acceptance target
@@ -42,7 +44,7 @@ A complete pair can still be **protocol-ineligible** if isolation or equivalent-
 Example:
 
 ```bash
-npm run study -- init \
+node scripts/empirical-study.js init \
   --out .empirical-studies/repo-a-pair-001.json \
   --study-id study-001 \
   --pair-id pair-001 \
@@ -133,7 +135,7 @@ Create one JSON result file per condition. Example:
 Record it:
 
 ```bash
-npm run study -- record \
+node scripts/empirical-study.js record \
   --file .empirical-studies/repo-a-pair-001.json \
   --condition plain \
   --input /path/to/plain-result.json
@@ -208,10 +210,10 @@ Do not invent wall-clock measurements from chat timestamps or hidden reasoning.
 ## 5. Validate and report one pair
 
 ```bash
-npm run study -- validate \
+node scripts/empirical-study.js validate \
   --file .empirical-studies/repo-a-pair-001.json
 
-npm run study -- report \
+node scripts/empirical-study.js report \
   --file .empirical-studies/repo-a-pair-001.json \
   --json
 ```
@@ -238,7 +240,7 @@ claimDiscipline: descriptive-only
 ## 6. Aggregate multiple pairs
 
 ```bash
-npm run study -- aggregate \
+node scripts/empirical-study.js aggregate \
   --file .empirical-studies/repo-a-pair-001.json \
   --file .empirical-studies/repo-b-pair-001.json \
   --file .empirical-studies/repo-a-negative-001.json \
