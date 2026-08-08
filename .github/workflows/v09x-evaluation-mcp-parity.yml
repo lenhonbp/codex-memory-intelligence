@@ -1,0 +1,54 @@
+name: Validate v0.9.x Evaluation MCP Parity
+
+on:
+  push:
+    branches:
+      - v0.9x/real-repo-evaluation
+    paths:
+      - .github/workflows/v09x-evaluation-mcp-parity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.9.0
+          package-manager-cache: false
+      - name: Apply MCP parity patch
+        run: python3 scripts/_v09x_evaluation_mcp_patch.py
+      - name: Remove MCP parity helpers
+        run: rm -f scripts/_v09x_evaluation_mcp_patch.py .github/workflows/v09x-evaluation-mcp-parity.yml
+      - name: Verify repository
+        run: npm run verify
+      - name: Benchmark incremental intelligence
+        run: npm run benchmark:smoke
+      - name: Test packed installation
+        run: npm run package:smoke
+      - name: Validate unreleased diff discipline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(node -p "require('./package.json').version")" = "0.9.0"
+          grep -q '^## \[Unreleased\]' CHANGELOG.md
+          test ! -e scripts/_v09x_evaluation_mcp_patch.py
+          test ! -e .github/workflows/v09x-evaluation-mcp-parity.yml
+          test ! -e .codex-memory
+      - name: Commit validated MCP parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add evaluation MCP parity"
+      - name: Push validated MCP parity
+        shell: bash
+        run: git push origin HEAD:v0.9x/real-repo-evaluation
