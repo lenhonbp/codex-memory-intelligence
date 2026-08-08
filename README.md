@@ -324,7 +324,7 @@ cmi evidence rebind ../cmi-evidence-freeze --json
 
 Restore and rebind verify the project source identity before writing. A same-state restore is `exact`; a compatible checkout at another path is `compatible-relocated`; a destination with unavailable Git identity may be reported as `compatible-content-only`; mismatches, corrupted manifests/artifacts, unsafe paths, symlinks, blocked evidence, and existing conflicting destinations fail closed. Existing evidence is never silently overwritten. Rebind records the original identity, requested operation, and verification result in `.codex-memory/portable-provenance.json` without changing semantic memory-review provenance.
 
-Portable evidence is a local, digest-verified transport format, not an authenticated backup or proof of source authorship. CMI does not export source files, but it refuses to freeze obvious credential-like content in intended evidence files. The source identity is content-based rather than an absolute filesystem path, so relocation does not alone create a new project identity.
+Portable evidence is a local, digest-verified transport format, not an authenticated backup or proof of source authorship. CMI does not export source files, but it refuses to freeze obvious credential-like content in intended evidence files. The source identity is content-based rather than an absolute filesystem path, so relocation does not alone create a new project identity; valid UTF-8 source text is normalized to LF for identity comparison so clean Git checkouts remain portable across line-ending conventions, while binary content remains byte-exact.
 
 To diagnose which installation is actually running:
 

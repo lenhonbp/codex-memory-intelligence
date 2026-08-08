@@ -102,6 +102,7 @@ test('a clean Git worktree at the frozen revision is compatible after relocation
   await git(root, 'init');
   await git(root, 'config', 'user.email', 'cmi-test@example.invalid');
   await git(root, 'config', 'user.name', 'CMI Test');
+  await git(root, 'config', 'core.autocrlf', 'true');
   await git(root, 'add', 'package.json', 'src');
   await git(root, 'commit', '-m', 'base');
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-worktree-bundle-'));

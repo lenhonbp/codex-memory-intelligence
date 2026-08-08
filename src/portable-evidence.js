@@ -137,6 +137,12 @@ async function readTextForSecretCheck(content, label) {
   }
 }
 
+function canonicalSourceContent(content) {
+  const text = content.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(content)) return content;
+  return Buffer.from(text.replace(/\r\n?/g, '\n'), 'utf8');
+}
+
 async function evidenceFiles(root) {
   const memory = await ensureSafeMemoryRoot(root, { create: false });
   if (!memory) throw error('CMI_EVIDENCE_UNINITIALIZED', 'Project memory is not initialized; run cmi init and cmi scan before freezing evidence.');
@@ -170,7 +176,8 @@ async function sourceFiles(root) {
     const content = await readStableFile(file.full, MAX_SOURCE_FILE_BYTES, file.relative, root);
     totalBytes += content.byteLength;
     if (totalBytes > MAX_SOURCE_TOTAL_BYTES) throw error('CMI_PORTABLE_LIMIT', `Source content exceeds the ${MAX_SOURCE_TOTAL_BYTES}-byte identity limit.`);
-    records.push({ path: file.relative, size: content.byteLength, digest: digestText(content) });
+    const identityContent = canonicalSourceContent(content);
+    records.push({ path: file.relative, size: identityContent.byteLength, digest: digestText(identityContent) });
   }
   records.sort((left, right) => left.path.localeCompare(right.path));
   const material = records.map((item) => `${item.path}\0${item.size}\0${item.digest}\n`).join('');
