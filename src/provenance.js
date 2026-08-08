@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -22,11 +23,24 @@ async function realpathOrNull(value) {
 }
 
 async function readPackage(packageFile) {
+  let handle;
   try {
-    const stat = await fs.lstat(packageFile);
-    if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_PACKAGE_BYTES) return null;
-    const parsed = JSON.parse(await fs.readFile(packageFile, 'utf8'));
+    const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+    let noFollowUsed = Boolean(noFollow);
+    try { handle = await fs.open(packageFile, fsConstants.O_RDONLY | noFollow); }
+    catch (openError) {
+      if (!noFollow || !['EINVAL', 'ENOTSUP'].includes(openError?.code)) throw openError;
+      noFollowUsed = false;
+      handle = await fs.open(packageFile, fsConstants.O_RDONLY);
+    }
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_PACKAGE_BYTES) return null;
+    const parsed = JSON.parse(await handle.readFile('utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    if (!noFollowUsed) {
+      const after = await fs.lstat(packageFile);
+      if (after.isSymbolicLink() || !after.isFile() || after.dev !== stat.dev || after.ino !== stat.ino) return null;
+    }
     return {
       packageRoot: path.dirname(packageFile),
       packageFile,
@@ -35,6 +49,7 @@ async function readPackage(packageFile) {
       bin: parsed.bin || null,
     };
   } catch { return null; }
+  finally { await handle?.close().catch(() => {}); }
 }
 
 async function nearestPackage(start) {
