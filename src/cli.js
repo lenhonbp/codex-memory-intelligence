@@ -32,14 +32,20 @@ import { VERSION } from './version.js';
 const [cmd, ...args] = process.argv.slice(2);
 const pathCommands = new Set(['init','scan','status','graph','stale','doctor','workspaces','baseline','boundaries']);
 const json = args.includes('--json');
+const VALUE_FLAGS = new Set(['--fail-on','--limit','--workspace','--stale-policy','--depth','--file','--outcome','--verify','--unexpected','--note','--source','--reason','--changed-by','--superseded-by','--reviewed-by','--refreshed-by']);
 
 function help() {
-  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi session <start|observe|status|close|show|list|handoff> ...\n  cmi finding <list|show|state> ...\n  cmi evaluate <capture|list|show|report> ...\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nInactive memory is excluded from search/context by default; --include-inactive is an explicit historical-inspection mode.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including memory, change, session, and finding records, are disabled unless --write is explicitly requested.\n`);
+  console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi session <start|observe|status|close|show|list|handoff> ...\n  cmi finding <list|show|state> ...\n  cmi evaluate <capture|list|show|report> ...\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nInactive memory is excluded from search/context by default; --include-inactive is an explicit historical-inspection mode.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including generated scan caches, memory, change, session, and finding records, are disabled unless --write is explicitly requested.\n`);
 }
 
 function optionValues(name) {
   const output = [];
-  for (let index = 0; index < args.length; index += 1) if (args[index] === name && args[index + 1]) output.push(args[index + 1]);
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== name) continue;
+    const next = args[index + 1];
+    if (!next || next.startsWith('--')) throw new Error(`${name} requires a value.`);
+    output.push(next);
+  }
   return output;
 }
 function optionNumber(name, fallback) { const value = Number(optionValues(name)[0]); return Number.isFinite(value) ? value : fallback; }
@@ -67,8 +73,38 @@ function formatGraph(graph) {
   return `Project graph · ${graph.summary.sourceFiles} source files · ${graph.summary.localEdges} local edges · ${graph.summary.symbols} symbols · ${graph.summary.externalDependencies} external dependencies · ${graph.summary.reusedFiles || 0} reused\n\nHigh-impact files:\n${hubs.map((item) => `- ${item.path}: ${item.dependents} dependents${item.workspace ? ` · ${item.workspace}` : ''}`).join('\n') || '- None detected'}`;
 }
 function formatDoctor(result) { return [`CMI ${result.version} · ${result.healthy ? 'ready' : 'blocked'}`, ...result.checks.map((check) => `- ${check.status.toUpperCase()} ${check.name}: ${check.detail}`)].join('\n'); }
+function allowedFlagsForCommand() {
+  const simple = {
+    init: [], scan: ['--full','--json'], graph: ['--json'], workspaces: ['--json'], baseline: ['--json'], boundaries: ['--json'],
+    'explain-ignore': ['--directory','--json'], search: ['--limit','--workspace','--stale-policy','--include-inactive','--json'], context: ['--limit','--workspace','--stale-policy','--include-inactive','--json'],
+    prepare: ['--limit','--depth','--workspace','--json'], 'memory-gaps': ['--limit','--workspace','--json'], impact: ['--depth','--json'], remember: ['--source'],
+    'memory-state': ['--reason','--changed-by','--superseded-by','--json'], stale: ['--fail-on','--json'], 'refresh-memory': ['--reviewed-by','--refreshed-by','--reason'],
+    snapshot: [], status: ['--json'], doctor: ['--json'], 'mcp-config': ['--write','--bulk-refresh'],
+  };
+  if (cmd !== 'change') return new Set(simple[cmd] || []);
+  const action = positional(['--limit','--depth','--workspace','--file','--outcome','--verify','--unexpected','--note','--status'])[0];
+  const change = {
+    start: ['--limit','--depth','--workspace','--json'], observe: ['--file','--json'], complete: ['--outcome','--file','--verify','--unexpected','--note','--json'],
+    show: ['--json'], list: ['--status','--limit','--json'], history: ['--limit','--json'], help: ['--help'],
+  };
+  return new Set(change[action] || ['--help']);
+}
+function validateFlags() {
+  if (!cmd || ['--version','-v','version','help','--help','-h'].includes(cmd)) return;
+  const allowed = allowedFlagsForCommand();
+  for (const value of args) {
+    if (!value.startsWith('--')) continue;
+    if (!allowed.has(value)) throw new Error(`Unknown option for ${cmd}: ${value}`);
+  }
+  for (const value of allowed) if (VALUE_FLAGS.has(value) && args.includes(value)) optionValues(value);
+}
+function emitError(error) {
+  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message } }));
+  else console.error(`Error: ${error.message}`);
+}
 
 try {
+  validateFlags();
   if (cmd === '--version' || cmd === '-v' || cmd === 'version') console.log(VERSION);
   else if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') help();
   else if (cmd === 'init') console.log(`Initialized ${await initProject(commandRoot())}`);
@@ -128,6 +164,7 @@ try {
     if (!target) throw new Error('Usage: cmi impact <file-or-symbol> [--depth N]');
     const result = await impactAnalysis(process.cwd(), target, optionNumber('--depth', 3));
     console.log(json ? JSON.stringify(result, null, 2) : formatImpact(result));
+    if (result.blocked) process.exitCode = 2;
   }
   else if (cmd === 'change') {
     const values = positional(['--limit','--depth','--workspace','--file','--outcome','--verify','--unexpected','--note','--status']);
@@ -193,7 +230,7 @@ try {
     console.log(json ? JSON.stringify(result, null, 2) : formatStaleReport(result));
     const failOn = optionValues('--fail-on')[0];
     if (failOn === 'stale' && result.counts.stale > 0) process.exitCode = 2;
-    else if (failOn === 'review' && (result.counts.stale + result.counts.review + result.counts.untracked) > 0) process.exitCode = 2;
+    else if (failOn === 'review' && (result.counts.stale + result.counts.review + result.counts.untracked + (result.counts.blocked || 0)) > 0) process.exitCode = 2;
     else if (failOn === 'any' && result.entries.some((entry) => !['fresh','inactive'].includes(entry.status))) process.exitCode = 2;
     else if (failOn && !['stale','review','any'].includes(failOn)) throw new Error('--fail-on must be stale, review, or any');
   }
@@ -201,12 +238,13 @@ try {
     const selector = positional(['--reviewed-by','--refreshed-by','--reason'])[0];
     if (!selector) throw new Error('Usage: cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]');
     const result = await refreshMemory(process.cwd(), selector, { refreshedBy: optionValues('--refreshed-by')[0] || optionValues('--reviewed-by')[0], reason: optionValues('--reason')[0] });
-    console.log(`Refreshed ${result.updated} memory entr${result.updated === 1 ? 'y' : 'ies'}.`);
+    console.log(`Refreshed ${result.updated} memory entr${result.updated === 1 ? 'y' : 'ies'}; source fingerprints only, semantic review not attested.`);
   }
   else if (cmd === 'snapshot') console.log(`Created ${await snapshot(process.cwd(), positional().join(' ') || 'snapshot')}`);
   else if (cmd === 'status') {
     const result = await status(commandRoot());
-    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Evidence ${result.evidenceHealth?.state || (result.healthy ? 'healthy' : 'needs-attention')} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.inactive || 0} inactive · graph ${result.evidenceHealth?.capabilities?.graphContext || 'unknown'} · impact ${result.evidenceHealth?.capabilities?.impactAnalysis || 'unknown'} · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
+    console.log(json ? JSON.stringify(result, null, 2) : result.initialized ? `Evidence ${result.evidenceHealth?.state || (result.healthy ? 'healthy' : 'needs-attention')} · ${result.entries.facts} facts · ${result.entries.decisions} decisions · ${result.entries.mistakes} lessons · ${result.memoryHealth.stale} stale · ${result.memoryHealth.review} review · ${result.memoryHealth.blocked || 0} blocked · ${result.memoryHealth.inactive || 0} inactive · graph ${result.evidenceHealth?.capabilities?.graphContext || 'unknown'} · impact ${result.evidenceHealth?.capabilities?.impactAnalysis || 'unknown'} · ${result.graph?.symbols || 0} symbols · ${result.graph?.reusedFiles || 0} reused · ${result.workspaces?.count || 0} workspaces · ${result.snapshots} snapshots` : 'Memory is not initialized. Run cmi init.');
+    if (json && result.evidenceHealth?.blocked) process.exitCode = 2;
   }
   else if (cmd === 'doctor') {
     const result = await doctor(commandRoot());
@@ -225,6 +263,6 @@ try {
   }
   else { help(); process.exitCode = 1; }
 } catch (error) {
-  console.error(`Error: ${error.message}`);
+  emitError(error);
   process.exitCode = 1;
 }
