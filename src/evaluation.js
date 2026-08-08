@@ -304,21 +304,26 @@ function matchesEvaluationFilters(record, filters) {
     && (!filters.cutoff || record.recordedAt >= filters.cutoff);
 }
 async function readPortableBundle(filePath) {
-  const target = path.resolve(String(filePath || '').trim());
-  if (!String(filePath || '').trim()) throw new Error('Evaluation bundle path is required.');
-  const before = await fs.lstat(target);
-  if (before.isSymbolicLink() || !before.isFile()) throw new Error('Evaluation bundle must be a regular non-symlink file.');
-  if (before.size > MAX_BUNDLE_BYTES) throw new Error(`Evaluation bundle exceeds ${MAX_BUNDLE_BYTES} bytes.`);
+  const rawPath = String(filePath || '').trim();
+  if (!rawPath) throw new Error('Evaluation bundle path is required.');
+  const target = path.resolve(rawPath);
   const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
   let handle;
-  try { handle = await fs.open(target, fsConstants.O_RDONLY | noFollow); }
-  catch (error) {
+  let usedNoFollow = false;
+  try {
+    handle = await fs.open(target, fsConstants.O_RDONLY | noFollow);
+    usedNoFollow = Boolean(noFollow);
+  } catch (error) {
     if (!noFollow || !['EINVAL', 'ENOTSUP'].includes(error?.code)) throw error;
     handle = await fs.open(target, fsConstants.O_RDONLY);
   }
   try {
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size > MAX_BUNDLE_BYTES || before.dev !== opened.dev || before.ino !== opened.ino) throw new Error('Evaluation bundle changed or is unsafe while opening.');
+    if (!opened.isFile() || opened.size > MAX_BUNDLE_BYTES) throw new Error('Evaluation bundle must be a bounded regular file.');
+    if (!usedNoFollow) {
+      const current = await fs.lstat(target);
+      if (current.isSymbolicLink() || !current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) throw new Error('Evaluation bundle changed or is unsafe while opening.');
+    }
     return JSON.parse(await handle.readFile('utf8'));
   } finally { await handle?.close().catch(() => {}); }
 }

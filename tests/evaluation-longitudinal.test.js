@@ -128,3 +128,19 @@ test('CLI exposes explicit longitudinal review and portable corpus commands', as
   assert.equal(report.status, 0, report.stderr);
   assert.ok(Object.hasOwn(JSON.parse(report.stdout), 'longitudinal'));
 });
+
+test('portable evaluation bundle import rejects symlink inputs before reading evidence', async (t) => {
+  const source = await fixture('cmi-longitudinal-symlink-source-');
+  const target = await fixture('cmi-longitudinal-symlink-target-');
+  await captureSession(source, 'review');
+  const bundleDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-evaluation-symlink-'));
+  const bundle = path.join(bundleDir, 'corpus.json');
+  const link = path.join(bundleDir, 'corpus-link.json');
+  await exportEvaluations(source, bundle);
+  try { await fs.symlink(bundle, link); }
+  catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error?.code)) { t.skip(`symlink unavailable: ${error.code}`); return; }
+    throw error;
+  }
+  await assert.rejects(() => importEvaluations(target, link));
+});
