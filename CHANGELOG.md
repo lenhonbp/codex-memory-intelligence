@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.9.0] - 2026-08-08
+
 ### Added
 
 - Unified Evidence Health Model with explicit healthy/degraded/blocked states, per-domain usability, capability status, reasons, and deterministic recovery actions.
