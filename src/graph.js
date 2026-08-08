@@ -14,8 +14,8 @@ const SOURCE_EXTENSIONS = new Set([
 const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx'];
 const PARSER_VERSION = 4;
 const FRESHNESS_VERSION = 1;
-const RESOLVER_INPUT = /(^|\/)(?:tsconfig(?:\.[^/]+)?|jsconfig)\.json$|(^|\/)go\.mod$|(^|\/)Cargo\.toml$/;
-const WORKSPACE_INPUT = /(^|\/)(?:package\.json|pnpm-workspace\.yaml|go\.work|go\.mod|Cargo\.toml)$/;
+export const RESOLVER_INPUT = /(^|\/)(?:tsconfig(?:\.[^/]+)?|jsconfig)\.json$|(^|\/)go\.mod$|(^|\/)Cargo\.toml$/;
+export const WORKSPACE_INPUT = /(^|\/)(?:package\.json|pnpm-workspace\.yaml|go\.work|go\.mod|Cargo\.toml)$/;
 const DEFAULT_SCAN_CONFIG = {
   maxFileBytes: 1_000_000,
   maxSourceBytes: 512_000,

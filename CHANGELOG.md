@@ -6,7 +6,7 @@ All notable changes are documented here.
 
 ### Added
 
-- Added digest-verified, path-independent portable evidence freeze/inspect/restore/rebind workflows with explicit exact, compatible-relocated, compatible-content-only, and mismatch outcomes.
+- Added digest-verified, path-independent portable evidence freeze/inspect/restore/rebind workflows with explicit exact, compatible-relocated, compatible-git-checkout, compatible-content-only, and mismatch outcomes; frozen manifests now bind a bounded scan/ignore policy and resolver/workspace inputs.
 - Added canonical executable provenance diagnostics for actual script/runtime, package root/version, source checkout revision, install kind, and multi-install ambiguity, with CLI and MCP parity.
 - Added adversarial portable-evidence and provenance regression coverage, including corruption, traversal, symlink, revision mismatch, blocked evidence, destination conflict, relocation, worktree, CLI JSON, MCP gating, and package-install fixtures.
 

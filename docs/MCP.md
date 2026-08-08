@@ -92,8 +92,8 @@ Safe/default MCP never creates or refreshes generated caches. If the graph/index
 When the server starts with `CMI_WRITE_ENABLED=1`, existing write tools include:
 
 - `freeze_portable_evidence` — create a bounded digest-verified evidence bundle outside the project;
-- `restore_portable_evidence` — restore only after source-content/repository/revision compatibility checks;
-- `rebind_portable_evidence` — perform the same verified restore as an explicit relocation request and record the original identity plus verification provenance;
+- `restore_portable_evidence` — restore only after source-content, frozen policy, repository/revision, and relevant cleanliness compatibility checks;
+- `rebind_portable_evidence` — perform the same verified restore as an explicit relocation request and always create or validate rebind provenance, including when identical evidence is already present;
 
 - `scan_project_intelligence` — incrementally/full scans the repository and writes generated project index/graph/architecture caches;
 - `start_change_record`;
@@ -275,7 +275,7 @@ read evidence
 
 Bulk memory refresh remains separately guarded even in a write-enabled process.
 
-Portable evidence mutations are also write-gated. The read-only MCP surface exposes provenance and bundle inspection only; direct calls to hidden freeze/restore/rebind operations still fail before any filesystem mutation. Restore/rebind validate all bundle paths and digests, reject symlink/traversal/oversized/corrupt input, refuse blocked evidence and conflicting destinations, and do not promote stale or source-current memory into semantic `reviewed-current` knowledge.
+Portable evidence mutations are also write-gated. The read-only MCP surface exposes provenance and bundle inspection only; direct calls to hidden freeze/restore/rebind operations still fail before any filesystem mutation. Restore/rebind validate the frozen bounded identity policy, all bundle paths and digests, repository/revision/clean-worktree evidence where available, reject symlink/traversal/oversized/corrupt input, refuse blocked evidence and conflicting destinations, and do not promote stale or source-current memory into semantic `reviewed-current` knowledge.
 
 ## Longitudinal evaluation
 

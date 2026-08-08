@@ -79,12 +79,77 @@ test('restore is exact at the original location and compatible after relocation'
   assert.equal(provenance.trust.authenticated, false);
 });
 
+test('frozen scan and ignore policy reproduces custom config across clean relocation', async () => {
+  const root = await project('cmi-portable-policy-');
+  await fs.writeFile(path.join(root, 'ignored.js'), 'export const ignored = true;\n');
+  const configPath = path.join(root, '.codex-memory', 'config.json');
+  const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+  config.ignorePatterns = ['ignored.js'];
+  await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-policy-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  const destination = path.join(parent, 'destination');
+  await copyWithoutMemory(root, destination);
+  const restored = await restorePortableEvidence(destination, bundle.path, { rebind: true });
+  assert.equal(restored.state, 'compatible-relocated');
+  assert.equal(bundle.manifest.project.identityPolicy.scan.ignorePatterns[0], 'ignored.js');
+});
+
+test('frozen includeHidden policy reproduces hidden source boundaries across clean relocation', async () => {
+  const root = await project('cmi-portable-hidden-');
+  await fs.writeFile(path.join(root, '.hidden.js'), 'export const hidden = true;\n');
+  const configPath = path.join(root, '.codex-memory', 'config.json');
+  const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+  config.includeHidden = true;
+  await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-hidden-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  const destination = path.join(parent, 'destination');
+  await copyWithoutMemory(root, destination);
+  const restored = await restorePortableEvidence(destination, bundle.path, { rebind: true });
+  assert.equal(restored.state, 'compatible-relocated');
+  assert.equal(bundle.manifest.project.identityPolicy.scan.includeHidden, true);
+  assert.equal(bundle.manifest.project.sourceIdentity.fileCount, 3);
+});
+
+test('changed frozen identity policy and .cmiignore fail closed', async () => {
+  const root = await project('cmi-portable-policy-change-');
+  await fs.writeFile(path.join(root, 'ignored.js'), 'export const ignored = true;\n');
+  await fs.writeFile(path.join(root, '.cmiignore'), 'ignored.js\n');
+  const configPath = path.join(root, '.codex-memory', 'config.json');
+  const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+  config.ignorePatterns = ['ignored.js'];
+  await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-policy-change-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+
+  const changedConfig = path.join(parent, 'changed-config');
+  await copyWithoutMemory(root, changedConfig);
+  await fs.mkdir(path.join(changedConfig, '.codex-memory'), { recursive: true });
+  await fs.writeFile(path.join(changedConfig, '.codex-memory', 'config.json'), JSON.stringify({ ...config, ignorePatterns: [] }));
+  await assert.rejects(() => restorePortableEvidence(changedConfig, bundle.path), (cause) => {
+    assert.equal(cause.code, 'CMI_EVIDENCE_MISMATCH');
+    assert.ok(cause.details.mismatches.some((item) => item.dimension === 'identity-policy.scan-config'));
+    return true;
+  });
+
+  const changedIgnore = path.join(parent, 'changed-ignore');
+  await copyWithoutMemory(root, changedIgnore);
+  await fs.writeFile(path.join(changedIgnore, '.cmiignore'), 'different.js\n');
+  await assert.rejects(() => restorePortableEvidence(changedIgnore, bundle.path), (cause) => {
+    assert.equal(cause.code, 'CMI_EVIDENCE_MISMATCH');
+    assert.ok(cause.details.mismatches.some((item) => item.dimension === 'identity-policy.ignore-file'));
+    return true;
+  });
+});
+
 test('Git revision mismatch fails closed even when source content is unchanged', async () => {
   const root = await project('cmi-portable-git-');
   await git(root, 'init');
   await git(root, 'config', 'user.email', 'cmi-test@example.invalid');
   await git(root, 'config', 'user.name', 'CMI Test');
-  await git(root, 'add', 'package.json', 'src');
+  await fs.writeFile(path.join(root, '.gitignore'), '.codex-memory/\n');
+  await git(root, 'add', 'package.json', 'src', '.gitignore');
   await git(root, 'commit', '-m', 'base');
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-git-bundle-'));
   const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
@@ -103,16 +168,67 @@ test('a clean Git worktree at the frozen revision is compatible after relocation
   await git(root, 'config', 'user.email', 'cmi-test@example.invalid');
   await git(root, 'config', 'user.name', 'CMI Test');
   await git(root, 'config', 'core.autocrlf', 'true');
-  await git(root, 'add', 'package.json', 'src');
+  await git(root, 'remote', 'add', 'origin', 'https://example.invalid/cmi-portable.git');
+  await fs.writeFile(path.join(root, '.gitignore'), '.codex-memory/\n');
+  await git(root, 'add', 'package.json', 'src', '.gitignore');
   await git(root, 'commit', '-m', 'base');
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-worktree-bundle-'));
   const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
   const worktree = path.join(parent, 'worktree');
   await git(root, 'worktree', 'add', '--detach', worktree, 'HEAD');
   const restored = await restorePortableEvidence(worktree, bundle.path, { rebind: true });
-  assert.equal(restored.state, 'compatible-relocated');
+  assert.equal(restored.state, 'compatible-git-checkout');
   assert.equal(restored.verification.repository.revision, bundle.manifest.project.sourceRevision);
   assert.equal((await checkStaleMemory(worktree)).counts.blocked, 0);
+});
+
+test('content-only line-ending changes fail closed without Git proof', async () => {
+  const root = await project('cmi-portable-line-ending-');
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-line-ending-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  const destination = path.join(parent, 'destination');
+  await copyWithoutMemory(root, destination);
+  await fs.writeFile(path.join(destination, 'src', 'index.js'), 'export const value = 1;\r\n');
+  await assert.rejects(() => restorePortableEvidence(destination, bundle.path), (cause) => {
+    assert.equal(cause.code, 'CMI_EVIDENCE_MISMATCH');
+    assert.ok(cause.details.mismatches.some((item) => item.dimension === 'source-content'));
+    return true;
+  });
+});
+
+test('mode-only dirty Git worktree cannot be reported as exact clean state', async () => {
+  const root = await project('cmi-portable-mode-');
+  await git(root, 'init');
+  await git(root, 'config', 'user.email', 'cmi-test@example.invalid');
+  await git(root, 'config', 'user.name', 'CMI Test');
+  await git(root, 'config', 'core.filemode', 'true');
+  await git(root, 'remote', 'add', 'origin', 'https://example.invalid/cmi-portable.git');
+  await fs.writeFile(path.join(root, '.gitignore'), '.codex-memory/\n');
+  await git(root, 'add', 'package.json', 'src', '.gitignore');
+  await git(root, 'commit', '-m', 'base');
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-mode-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  await git(root, 'update-index', '--chmod=+x', 'src/index.js');
+  await assert.rejects(() => restorePortableEvidence(root, bundle.path), (cause) => {
+    assert.equal(cause.code, 'CMI_EVIDENCE_MISMATCH');
+    assert.ok(cause.details.mismatches.some((item) => item.dimension === 'worktree-cleanliness'));
+    return true;
+  });
+});
+
+test('explicit rebind with identical existing evidence always records provenance', async () => {
+  const root = await project('cmi-portable-existing-');
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-existing-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  const destination = path.join(parent, 'destination');
+  await fs.cp(root, destination, { recursive: true });
+  const rebound = await restorePortableEvidence(destination, bundle.path, { rebind: true });
+  assert.equal(rebound.alreadyPresent, true);
+  assert.equal(rebound.provenance.requested.operation, 'rebind');
+  const provenance = JSON.parse(await fs.readFile(path.join(destination, '.codex-memory', 'portable-provenance.json'), 'utf8'));
+  assert.equal(provenance.original.manifestIdentity, bundle.identity.digest);
+  assert.equal(provenance.verification.state, rebound.state);
+  assert.equal(provenance.trust.authenticated, false);
 });
 
 test('source content mismatch and corrupted artifacts fail closed without destination writes', async () => {

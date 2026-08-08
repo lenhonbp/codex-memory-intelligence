@@ -4,13 +4,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { VERSION } from './version.js';
 import { createIgnoreMatcher } from './ignore.js';
-import { readConfig, status as getProjectStatus } from './core.js';
+import { status as getProjectStatus } from './core.js';
+import { RESOLVER_INPUT, WORKSPACE_INPUT } from './graph.js';
 import { checkStaleMemory } from './stale.js';
 import { collectExecutableProvenance, collectRepositoryProvenance } from './provenance.js';
-import { ensureSafeMemoryRoot, safeWriteMemoryFile, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
+import { ensureSafeMemoryRoot, safeReadMemoryJson, safeWriteMemoryFile, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { looksSensitive, SECRET_GUARD_DESCRIPTION } from './sensitive.js';
 
-export const PORTABLE_SCHEMA_VERSION = 1;
+export const PORTABLE_SCHEMA_VERSION = 2;
 export const PORTABLE_KIND = 'cmi-portable-evidence';
 export const PORTABLE_PROVENANCE_FILE = 'portable-provenance.json';
 export const MAX_PORTABLE_MANIFEST_BYTES = 2 * 1024 * 1024;
@@ -19,8 +20,24 @@ export const MAX_PORTABLE_ARTIFACTS = 20_000;
 export const MAX_SOURCE_FILES = 20_000;
 export const MAX_SOURCE_FILE_BYTES = 8 * 1024 * 1024;
 export const MAX_SOURCE_TOTAL_BYTES = 256 * 1024 * 1024;
+export const MAX_IDENTITY_POLICY_BYTES = 128 * 1024;
+export const MAX_IDENTITY_POLICY_INPUTS = 2_000;
 
 const TRANSIENT_FILE = /(?:\.lock|\.tmp|\.bak)$/i;
+const IDENTITY_POLICY_SCHEMA_VERSION = 1;
+const MAX_IGNORE_PATTERNS = 256;
+const MAX_IGNORE_PATTERN_BYTES = 4 * 1024;
+const MAX_IGNORE_TOTAL_BYTES = 64 * 1024;
+const DEFAULT_IDENTITY_SCAN = {
+  configVersion: 4,
+  maxFileBytes: 1_000_000,
+  maxSourceBytes: 512_000,
+  maxGraphFiles: 5_000,
+  includeHidden: false,
+  incrementalScan: true,
+  workspaceDetection: true,
+  ignorePatterns: [],
+};
 
 function error(code, message, details = undefined) {
   const result = new Error(message);
@@ -33,6 +50,44 @@ function canonical(value) { return JSON.stringify(value); }
 function digestBytes(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function digestText(value) { return `sha256:${digestBytes(value)}`; }
 function nowIso() { return new Date().toISOString(); }
+
+function policyError(message, details = undefined) { return error('CMI_PORTABLE_POLICY_INVALID', message, details); }
+
+function boundedInteger(value, fallback, minimum, maximum, label) {
+  const resolved = value === undefined ? fallback : value;
+  if (!Number.isInteger(resolved) || resolved < minimum || resolved > maximum) throw policyError(`${label} must be an integer between ${minimum} and ${maximum}.`);
+  return resolved;
+}
+
+function normalizeIdentityScanConfig(raw = {}, requireComplete = false) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw policyError('CMI scan configuration must be a JSON object.');
+  const required = ['version', 'maxFileBytes', 'maxSourceBytes', 'maxGraphFiles', 'includeHidden', 'incrementalScan', 'workspaceDetection', 'ignorePatterns'];
+  if (requireComplete && required.some((key) => !Object.prototype.hasOwnProperty.call(raw, key))) throw policyError('Frozen CMI scan configuration is incomplete.');
+  const ignorePatterns = raw.ignorePatterns === undefined ? DEFAULT_IDENTITY_SCAN.ignorePatterns : raw.ignorePatterns;
+  if (!Array.isArray(ignorePatterns) || ignorePatterns.length > MAX_IGNORE_PATTERNS) throw policyError(`ignorePatterns must contain at most ${MAX_IGNORE_PATTERNS} entries.`);
+  let ignoreBytes = 0;
+  const normalizedPatterns = ignorePatterns.map((pattern) => {
+    if (typeof pattern !== 'string' || pattern.includes('\0') || Buffer.byteLength(pattern, 'utf8') > MAX_IGNORE_PATTERN_BYTES) throw policyError('ignorePatterns contains an invalid or oversized pattern.');
+    ignoreBytes += Buffer.byteLength(pattern, 'utf8');
+    return pattern;
+  });
+  if (ignoreBytes > MAX_IGNORE_TOTAL_BYTES) throw policyError(`ignorePatterns exceed the ${MAX_IGNORE_TOTAL_BYTES}-byte safety limit.`);
+  const booleans = (key, fallback) => {
+    const value = raw[key] === undefined ? fallback : raw[key];
+    if (typeof value !== 'boolean') throw policyError(`${key} must be boolean.`);
+    return value;
+  };
+  return {
+    version: boundedInteger(raw.version, DEFAULT_IDENTITY_SCAN.configVersion, 1, 100, 'config version'),
+    maxFileBytes: boundedInteger(raw.maxFileBytes, DEFAULT_IDENTITY_SCAN.maxFileBytes, 1, MAX_SOURCE_FILE_BYTES, 'maxFileBytes'),
+    maxSourceBytes: boundedInteger(raw.maxSourceBytes, DEFAULT_IDENTITY_SCAN.maxSourceBytes, 1, MAX_SOURCE_FILE_BYTES, 'maxSourceBytes'),
+    maxGraphFiles: boundedInteger(raw.maxGraphFiles, DEFAULT_IDENTITY_SCAN.maxGraphFiles, 1, MAX_SOURCE_FILES, 'maxGraphFiles'),
+    includeHidden: booleans('includeHidden', DEFAULT_IDENTITY_SCAN.includeHidden),
+    incrementalScan: booleans('incrementalScan', DEFAULT_IDENTITY_SCAN.incrementalScan),
+    workspaceDetection: booleans('workspaceDetection', DEFAULT_IDENTITY_SCAN.workspaceDetection),
+    ignorePatterns: normalizedPatterns,
+  };
+}
 
 function normalizeRelative(value) {
   const raw = String(value || '').replace(/\\/g, '/');
@@ -143,6 +198,69 @@ function canonicalSourceContent(content) {
   return Buffer.from(text.replace(/\r\n?/g, '\n'), 'utf8');
 }
 
+async function readIgnoreFilePolicy(root) {
+  const target = path.join(root, '.cmiignore');
+  let stat;
+  try { stat = await fs.lstat(target); }
+  catch (cause) {
+    if (cause?.code === 'ENOENT') return { path: '.cmiignore', present: false, bytes: 0, digest: null, compatibilityDigest: null };
+    throw policyError('Could not inspect .cmiignore safely.', { cause: cause?.code || 'unknown' });
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) throw policyError('.cmiignore must be a regular non-symlink file.');
+  const content = await readStableFile(target, MAX_IGNORE_TOTAL_BYTES, '.cmiignore', root);
+  return {
+    path: '.cmiignore',
+    present: true,
+    bytes: content.byteLength,
+    digest: digestText(content),
+    compatibilityDigest: digestText(canonicalSourceContent(content)),
+  };
+}
+
+async function readIdentityPolicyInputs(root) {
+  let rawConfig;
+  try { rawConfig = await safeReadMemoryJson(root, 'config.json', { optional: true, maxBytes: MAX_IDENTITY_POLICY_BYTES }); }
+  catch (cause) { throw policyError('CMI scan configuration could not be read safely.', { cause: cause?.code || cause?.message || 'invalid' }); }
+  const scan = normalizeIdentityScanConfig(rawConfig || {});
+  const ignoreFile = await readIgnoreFilePolicy(root);
+  return { configPresent: rawConfig !== null, scan, ignoreFile };
+}
+
+function validatePolicyInputRecords(records, label) {
+  if (!Array.isArray(records) || records.length > MAX_IDENTITY_POLICY_INPUTS) throw policyError(`Frozen ${label} inputs are missing or exceed the safety limit.`);
+  const seen = new Set();
+  const sorted = records.map((item) => item?.path || '');
+  if (JSON.stringify(sorted) !== JSON.stringify([...sorted].sort((left, right) => left.localeCompare(right)))) throw policyError(`Frozen ${label} inputs are not deterministically sorted.`);
+  return records.map((item) => {
+    if (!item || typeof item.path !== 'string' || normalizeRelative(item.path) !== item.path || seen.has(item.path)) throw policyError(`Frozen ${label} input path is invalid.`);
+    if (!Number.isInteger(item.size) || item.size < 0 || item.size > MAX_SOURCE_FILE_BYTES || !/^sha256:[0-9a-f]{64}$/.test(item.digest) || !Number.isInteger(item.compatibilitySize) || item.compatibilitySize < 0 || item.compatibilitySize > MAX_SOURCE_FILE_BYTES || !/^sha256:[0-9a-f]{64}$/.test(item.compatibilityDigest)) throw policyError(`Frozen ${label} input descriptor is invalid.`);
+    seen.add(item.path);
+    return item;
+  });
+}
+
+function validateIdentityPolicy(policy) {
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy) || policy.schemaVersion !== IDENTITY_POLICY_SCHEMA_VERSION) throw policyError('Frozen identity policy schema is unsupported.');
+  const scan = normalizeIdentityScanConfig(policy.scan, true);
+  if (canonical(scan) !== canonical(policy.scan)) throw policyError('Frozen identity scan configuration is not canonical or bounded.');
+  const ignoreFile = policy.ignoreFile;
+  if (!ignoreFile || ignoreFile.path !== '.cmiignore' || typeof ignoreFile.present !== 'boolean' || !Number.isInteger(ignoreFile.bytes) || ignoreFile.bytes < 0 || ignoreFile.bytes > MAX_IGNORE_TOTAL_BYTES || (ignoreFile.digest !== null && !/^sha256:[0-9a-f]{64}$/.test(ignoreFile.digest)) || (ignoreFile.compatibilityDigest !== null && !/^sha256:[0-9a-f]{64}$/.test(ignoreFile.compatibilityDigest)) || (ignoreFile.present !== Boolean(ignoreFile.digest)) || (ignoreFile.present !== Boolean(ignoreFile.compatibilityDigest)) || (!ignoreFile.present && ignoreFile.bytes !== 0)) throw policyError('Frozen .cmiignore policy is invalid.');
+  validatePolicyInputRecords(policy.resolverInputs, 'resolver');
+  validatePolicyInputRecords(policy.workspaceInputs, 'workspace');
+  return policy;
+}
+
+function identityPolicyFromSources(inputs, source) {
+  const descriptor = (file) => ({ path: file.path, size: file.size, digest: file.digest, compatibilitySize: file.compatibilitySize, compatibilityDigest: file.compatibilityDigest });
+  return {
+    schemaVersion: IDENTITY_POLICY_SCHEMA_VERSION,
+    scan: inputs.scan,
+    ignoreFile: inputs.ignoreFile,
+    resolverInputs: source.records.filter((file) => RESOLVER_INPUT.test(file.path)).map(descriptor),
+    workspaceInputs: source.records.filter((file) => WORKSPACE_INPUT.test(file.path)).map(descriptor),
+  };
+}
+
 async function evidenceFiles(root) {
   const memory = await ensureSafeMemoryRoot(root, { create: false });
   if (!memory) throw error('CMI_EVIDENCE_UNINITIALIZED', 'Project memory is not initialized; run cmi init and cmi scan before freezing evidence.');
@@ -163,25 +281,31 @@ async function evidenceFiles(root) {
   return artifacts;
 }
 
-async function sourceFiles(root) {
-  const config = await readConfig(root);
-  const matcher = await createIgnoreMatcher(root, config);
+async function sourceFiles(root, policyInputs = null) {
+  const inputs = policyInputs || await readIdentityPolicyInputs(root);
+  const matcher = await createIgnoreMatcher(root, inputs.scan);
   const files = await walkDirectory(root, root, {
     maxEntries: MAX_SOURCE_FILES,
     skip: (relative, entry) => matcher.shouldIgnore(relative, entry.isDirectory()),
   });
   let totalBytes = 0;
+  let compatibilityBytes = 0;
   const records = [];
   for (const file of files) {
     const content = await readStableFile(file.full, MAX_SOURCE_FILE_BYTES, file.relative, root);
     totalBytes += content.byteLength;
     if (totalBytes > MAX_SOURCE_TOTAL_BYTES) throw error('CMI_PORTABLE_LIMIT', `Source content exceeds the ${MAX_SOURCE_TOTAL_BYTES}-byte identity limit.`);
-    const identityContent = canonicalSourceContent(content);
-    records.push({ path: file.relative, size: identityContent.byteLength, digest: digestText(identityContent) });
+    const compatibilityContent = canonicalSourceContent(content);
+    compatibilityBytes += compatibilityContent.byteLength;
+    records.push({ path: file.relative, size: content.byteLength, digest: digestText(content), compatibilitySize: compatibilityContent.byteLength, compatibilityDigest: digestText(compatibilityContent) });
   }
   records.sort((left, right) => left.path.localeCompare(right.path));
   const material = records.map((item) => `${item.path}\0${item.size}\0${item.digest}\n`).join('');
-  return { algorithm: 'sha256', digest: digestText(material), fileCount: records.length, bytes: totalBytes };
+  const compatibilityMaterial = records.map((item) => `${item.path}\0${item.compatibilitySize}\0${item.compatibilityDigest}\n`).join('');
+  const identity = { algorithm: 'sha256', digest: digestText(material), fileCount: records.length, bytes: totalBytes, compatibility: { algorithm: 'sha256', policy: 'utf8-lf-v1', digest: digestText(compatibilityMaterial), fileCount: records.length, bytes: compatibilityBytes } };
+  const observedInputs = await readIdentityPolicyInputs(root);
+  if (inputs.schemaVersion !== IDENTITY_POLICY_SCHEMA_VERSION && canonical({ scan: observedInputs.scan, ignoreFile: observedInputs.ignoreFile }) !== canonical({ scan: inputs.scan, ignoreFile: inputs.ignoreFile })) throw error('CMI_PORTABLE_READ_RACE', 'Identity policy changed while source identity was being computed.', { expected: { scan: inputs.scan, ignoreFile: inputs.ignoreFile }, observed: { scan: observedInputs.scan, ignoreFile: observedInputs.ignoreFile } });
+  return { identity, records, policy: identityPolicyFromSources(inputs, { records }) };
 }
 
 function evidenceDigest(files) {
@@ -196,6 +320,7 @@ function identityMaterial(manifest) {
     cmi: { version: manifest.cmi.version, sourceRevision: manifest.cmi.sourceRevision || null },
     project: {
       sourceIdentity: manifest.project.sourceIdentity,
+      identityPolicy: manifest.project.identityPolicy,
       repository: manifest.project.repository,
       sourceRevision: manifest.project.sourceRevision,
       worktreeClean: manifest.project.worktreeClean,
@@ -210,6 +335,12 @@ function identityMaterial(manifest) {
 
 function buildIdentityDigest(manifest) { return digestText(canonical(identityMaterial(manifest))); }
 
+function validateSourceIdentity(identity) {
+  if (!identity || identity.algorithm !== 'sha256' || !/^sha256:[0-9a-f]{64}$/.test(identity.digest) || !Number.isInteger(identity.fileCount) || identity.fileCount < 0 || identity.fileCount > MAX_SOURCE_FILES || !Number.isInteger(identity.bytes) || identity.bytes < 0 || identity.bytes > MAX_SOURCE_TOTAL_BYTES) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable source identity is invalid.');
+  const compatibility = identity.compatibility;
+  if (!compatibility || compatibility.algorithm !== 'sha256' || compatibility.policy !== 'utf8-lf-v1' || !/^sha256:[0-9a-f]{64}$/.test(compatibility.digest) || compatibility.fileCount !== identity.fileCount || !Number.isInteger(compatibility.bytes) || compatibility.bytes < 0 || compatibility.bytes > MAX_SOURCE_TOTAL_BYTES) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable source compatibility identity is invalid.');
+}
+
 function assertManifestShape(manifest) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest must be a JSON object.');
   if (manifest.schemaVersion !== PORTABLE_SCHEMA_VERSION || manifest.kind !== PORTABLE_KIND) throw error('CMI_PORTABLE_SCHEMA_UNSUPPORTED', `Unsupported portable manifest schema or kind (schema ${manifest.schemaVersion || 'unknown'}).`);
@@ -217,7 +348,9 @@ function assertManifestShape(manifest) {
   const repository = manifest.project?.repository;
   if (manifest.format?.algorithm !== 'sha256' || manifest.format?.bundleLayout !== 'directory-v1' || manifest.format?.authenticated !== false || manifest.evidence?.format?.artifactRoot !== '.codex-memory' || manifest.evidence?.format?.storageSchemaVersion !== 1 || !manifest.evidence?.format?.reservedFiles?.includes(PORTABLE_PROVENANCE_FILE)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest format is unsupported or incomplete.');
   if (!manifest.cmi || typeof manifest.cmi.version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.cmi.version) || (manifest.cmi.sourceRevision !== null && !/^[0-9a-f]{40}$/i.test(manifest.cmi.sourceRevision))) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest CMI provenance is invalid.');
-  if (!sourceIdentity || sourceIdentity.algorithm !== 'sha256' || !/^sha256:[0-9a-f]{64}$/.test(sourceIdentity.digest) || !Number.isInteger(sourceIdentity.fileCount) || sourceIdentity.fileCount < 0 || sourceIdentity.fileCount > MAX_SOURCE_FILES || !Number.isInteger(sourceIdentity.bytes) || sourceIdentity.bytes < 0 || sourceIdentity.bytes > MAX_SOURCE_TOTAL_BYTES || manifest.project.sourceRevision === undefined || !repository || typeof repository.available !== 'boolean' || !['git-origin-hash', 'unavailable'].includes(repository.identityBasis) || (repository.identity !== null && !/^sha256:[0-9a-f]{64}$/.test(repository.identity)) || !manifest.evidence?.digest || !/^sha256:[0-9a-f]{64}$/.test(manifest.evidence.digest) || !Array.isArray(manifest.evidence.files)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest identity or artifact inventory is missing.');
+  validateSourceIdentity(sourceIdentity);
+  validateIdentityPolicy(manifest.project?.identityPolicy);
+  if (manifest.project.sourceRevision === undefined || !repository || typeof repository.available !== 'boolean' || !['git-origin-hash', 'unavailable'].includes(repository.identityBasis) || (repository.identity !== null && !/^sha256:[0-9a-f]{64}$/.test(repository.identity)) || !manifest.evidence?.digest || !/^sha256:[0-9a-f]{64}$/.test(manifest.evidence.digest) || !Array.isArray(manifest.evidence.files)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest identity or artifact inventory is missing.');
   if (manifest.project.sourceRevision !== null && !/^[0-9a-f]{40}$/i.test(manifest.project.sourceRevision)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable project source revision is invalid.');
   if (manifest.project.worktreeClean !== null && typeof manifest.project.worktreeClean !== 'boolean') throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable project worktree cleanliness must be boolean or null.');
   if (!manifest.project.location || typeof manifest.project.location.path !== 'string' || !manifest.creation || typeof manifest.creation.frozenAt !== 'string' || !Number.isFinite(Date.parse(manifest.creation.frozenAt)) || !manifest.provenance || typeof manifest.provenance.trustBoundary !== 'string') throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable creation, location, or trust-boundary provenance is missing.');
@@ -272,24 +405,51 @@ async function readBundleArtifacts(bundle) {
   return contents;
 }
 
+async function resolveDestinationIdentityPolicy(root, frozenPolicy) {
+  validateIdentityPolicy(frozenPolicy);
+  const local = await readIdentityPolicyInputs(root);
+  const mismatches = [];
+  if (local.configPresent && canonical(local.scan) !== canonical(frozenPolicy.scan)) mismatches.push({ dimension: 'identity-policy.scan-config', expected: frozenPolicy.scan, observed: local.scan, reason: 'Destination CMI scan configuration differs from the frozen identity policy.' });
+  if (canonical(local.ignoreFile) !== canonical(frozenPolicy.ignoreFile)) mismatches.push({ dimension: 'identity-policy.ignore-file', expected: frozenPolicy.ignoreFile, observed: local.ignoreFile, reason: 'Destination .cmiignore differs from the frozen identity policy.' });
+  return { policy: frozenPolicy, mismatches };
+}
+
+function policyInputsMatch(expected, observed, compatibility) {
+  if (canonical(expected) === canonical(observed)) return true;
+  if (!compatibility || expected.length !== observed.length) return false;
+  return expected.every((item, index) => item.path === observed[index]?.path && item.compatibilitySize === observed[index]?.compatibilitySize && item.compatibilityDigest === observed[index]?.compatibilityDigest);
+}
+
 async function compareProject(manifest, root) {
   const projectRoot = await realpathOrNull(path.resolve(root));
   if (!projectRoot) throw error('CMI_PORTABLE_PATH_INVALID', 'Destination project root could not be resolved safely.');
-  const sourceIdentity = await sourceFiles(projectRoot);
+  const destinationPolicy = await resolveDestinationIdentityPolicy(projectRoot, manifest.project.identityPolicy);
+  const source = await sourceFiles(projectRoot, destinationPolicy.policy);
   const repository = await collectRepositoryProvenance(projectRoot);
-  const mismatches = [];
+  const mismatches = [...destinationPolicy.mismatches];
   const notes = [];
-  if (sourceIdentity.digest !== manifest.project.sourceIdentity.digest) mismatches.push({ dimension: 'source-content', expected: manifest.project.sourceIdentity.digest, observed: sourceIdentity.digest, reason: 'Project source content differs from the frozen source identity.' });
   if (manifest.project.repository?.identity && repository.identity && manifest.project.repository.identity !== repository.identity) mismatches.push({ dimension: 'repository', expected: manifest.project.repository.identity, observed: repository.identity, reason: 'Git repository identity differs.' });
   else if (manifest.project.repository?.identity && !repository.identity) notes.push('Repository identity could not be re-established at the destination.');
   if (manifest.project.sourceRevision && repository.revision && manifest.project.sourceRevision !== repository.revision) mismatches.push({ dimension: 'revision', expected: manifest.project.sourceRevision, observed: repository.revision, reason: 'Git source revision differs.' });
   else if (manifest.project.sourceRevision && !repository.revision) notes.push('Frozen Git revision could not be re-established at the destination; content identity was checked instead.');
-  const exactProof = !mismatches.length && (!manifest.project.repository?.identity || Boolean(repository.identity)) && (!manifest.project.sourceRevision || Boolean(repository.revision)) && (!manifest.project.repository?.identity || manifest.project.repository.identity === repository.identity) && (!manifest.project.sourceRevision || manifest.project.sourceRevision === repository.revision);
+  if (manifest.project.worktreeClean !== null && repository.worktreeClean !== null && manifest.project.worktreeClean !== repository.worktreeClean) mismatches.push({ dimension: 'worktree-cleanliness', expected: manifest.project.worktreeClean, observed: repository.worktreeClean, reason: 'Destination Git worktree cleanliness differs from the frozen state.' });
+  else if (manifest.project.worktreeClean !== null && repository.worktreeClean === null) notes.push('Destination Git worktree cleanliness could not be established; exact compatibility is unavailable.');
+  const gitCheckoutProof = Boolean(manifest.project.repository?.identity && manifest.project.sourceRevision && manifest.project.worktreeClean === true && repository.identity && repository.revision && repository.worktreeClean === true && manifest.project.repository.identity === repository.identity && manifest.project.sourceRevision === repository.revision);
+  const sourceIdentityMatch = source.identity.digest === manifest.project.sourceIdentity.digest;
+  const checkoutIdentityMatch = source.identity.compatibility.digest === manifest.project.sourceIdentity.compatibility.digest && source.identity.compatibility.fileCount === manifest.project.sourceIdentity.compatibility.fileCount;
+  if (!sourceIdentityMatch && !(gitCheckoutProof && checkoutIdentityMatch)) mismatches.push({ dimension: 'source-content', expected: manifest.project.sourceIdentity.digest, observed: source.identity.digest, reason: 'Project source content differs from the frozen source identity.' });
+  else if (!sourceIdentityMatch) notes.push('Byte-level source differences were accepted only because exact Git repository/revision and clean-worktree evidence matched the frozen state, and the bounded LF checkout identity also matched.');
+  const policy = manifest.project.identityPolicy;
+  const resolverMatch = policyInputsMatch(policy.resolverInputs, source.policy.resolverInputs, gitCheckoutProof);
+  const workspaceMatch = policyInputsMatch(policy.workspaceInputs, source.policy.workspaceInputs, gitCheckoutProof);
+  if (!resolverMatch) mismatches.push({ dimension: 'identity-policy.resolver-inputs', expected: policy.resolverInputs, observed: source.policy.resolverInputs, reason: 'Resolver input identity differs from the frozen policy.' });
+  if (!workspaceMatch) mismatches.push({ dimension: 'identity-policy.workspace-inputs', expected: policy.workspaceInputs, observed: source.policy.workspaceInputs, reason: 'Workspace input identity differs from the frozen policy.' });
+  const exactProof = sourceIdentityMatch && !mismatches.length && (!manifest.project.repository?.identity || Boolean(repository.identity)) && (!manifest.project.sourceRevision || Boolean(repository.revision)) && (!manifest.project.repository?.identity || manifest.project.repository.identity === repository.identity) && (!manifest.project.sourceRevision || manifest.project.sourceRevision === repository.revision) && (manifest.project.worktreeClean === null || repository.worktreeClean === manifest.project.worktreeClean);
   const frozenPath = manifest.project.location?.path || null;
   const samePath = Boolean(frozenPath && path.resolve(frozenPath) === projectRoot);
   let state = 'mismatch';
-  if (!mismatches.length) state = exactProof && samePath ? 'exact' : exactProof ? 'compatible-relocated' : 'compatible-content-only';
-  return { state, projectRoot, sourceIdentity, repository, mismatches, notes, samePath, exactProof };
+  if (!mismatches.length) state = exactProof && samePath ? 'exact' : gitCheckoutProof && !sourceIdentityMatch ? 'compatible-git-checkout' : exactProof ? 'compatible-relocated' : 'compatible-content-only';
+  return { state, projectRoot, sourceIdentity: source.identity, identityPolicy: source.policy, repository, mismatches, notes, samePath, exactProof, gitCheckoutProof };
 }
 
 async function existingEvidenceMatches(root, manifest) {
@@ -302,14 +462,15 @@ async function existingEvidenceMatches(root, manifest) {
   });
 }
 
-async function writeProvenance(stagingRoot, manifest, comparison, operation) {
-  const value = {
+function buildProvenanceValue(manifest, comparison, operation) {
+  return {
     schemaVersion: 1,
     kind: 'cmi-portable-provenance',
     original: {
       manifestIdentity: manifest.identity.digest,
       frozenAt: manifest.creation.frozenAt,
       sourceIdentity: manifest.project.sourceIdentity,
+      identityPolicy: manifest.project.identityPolicy,
       repository: manifest.project.repository,
       sourceRevision: manifest.project.sourceRevision,
       location: manifest.project.location,
@@ -318,9 +479,11 @@ async function writeProvenance(stagingRoot, manifest, comparison, operation) {
     verification: {
       state: comparison.state,
       sourceIdentity: comparison.sourceIdentity,
+      identityPolicy: comparison.identityPolicy,
       repository: comparison.repository,
       samePath: comparison.samePath,
       exactProof: comparison.exactProof,
+      gitCheckoutProof: comparison.gitCheckoutProof,
       notes: comparison.notes,
     },
     trust: {
@@ -328,6 +491,45 @@ async function writeProvenance(stagingRoot, manifest, comparison, operation) {
       statement: 'Portable evidence is digest-verified and compatibility-checked, but this bundle is not authenticated or a proof of source authorship.',
     },
   };
+}
+
+function validateExistingRebindProvenance(value, manifest, comparison) {
+  const valid = value && value.schemaVersion === 1 && value.kind === 'cmi-portable-provenance'
+    && value.original?.manifestIdentity === manifest.identity.digest
+    && canonical(value.original?.sourceIdentity) === canonical(manifest.project.sourceIdentity)
+    && canonical(value.original?.identityPolicy) === canonical(manifest.project.identityPolicy)
+    && canonical(value.original?.repository) === canonical(manifest.project.repository)
+    && value.original?.sourceRevision === manifest.project.sourceRevision
+    && value.requested?.operation === 'rebind'
+    && Number.isFinite(Date.parse(value.requested?.requestedAt || ''))
+    && value.verification?.state === comparison.state
+    && value.verification?.sourceIdentity?.digest === comparison.sourceIdentity.digest
+    && value.verification?.repository?.identity === comparison.repository.identity
+    && value.verification?.repository?.revision === comparison.repository.revision
+    && value.verification?.repository?.worktreeClean === comparison.repository.worktreeClean
+    && value.verification?.samePath === comparison.samePath
+    && value.verification?.exactProof === comparison.exactProof
+    && value.trust?.authenticated === false
+    && typeof value.trust?.statement === 'string' && value.trust.statement.length > 0;
+  if (!valid) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Existing portable provenance is missing, conflicting, or unverifiable; no evidence was overwritten.');
+  return value;
+}
+
+async function ensureExistingRebindProvenance(root, manifest, comparison) {
+  let existing;
+  try { existing = await safeReadMemoryJson(root, PORTABLE_PROVENANCE_FILE, { optional: true, maxBytes: MAX_PORTABLE_MANIFEST_BYTES }); }
+  catch (cause) { throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Existing portable provenance could not be safely read; no evidence was overwritten.', { cause: cause?.message || 'invalid' }); }
+  if (existing) return validateExistingRebindProvenance(existing, manifest, comparison);
+  const candidate = buildProvenanceValue(manifest, comparison, 'rebind');
+  await safeWriteMemoryFile(root, PORTABLE_PROVENANCE_FILE, `${JSON.stringify(candidate, null, 2)}\n`, { ifMissing: true });
+  let observed;
+  try { observed = await safeReadMemoryJson(root, PORTABLE_PROVENANCE_FILE, { optional: false, maxBytes: MAX_PORTABLE_MANIFEST_BYTES }); }
+  catch (cause) { throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Rebind provenance could not be validated after creation; no evidence was overwritten.', { cause: cause?.message || 'invalid' }); }
+  return validateExistingRebindProvenance(observed, manifest, comparison);
+}
+
+async function writeProvenance(stagingRoot, manifest, comparison, operation) {
+  const value = buildProvenanceValue(manifest, comparison, operation);
   await safeWriteMemoryFile(stagingRoot, PORTABLE_PROVENANCE_FILE, `${JSON.stringify(value, null, 2)}\n`, { ifMissing: true });
   return value;
 }
@@ -366,7 +568,8 @@ export async function freezePortableEvidence(root, bundlePath) {
   if (stale.counts.blocked > 0) throw error('CMI_EVIDENCE_BLOCKED', 'Portable freeze stopped because trust-critical evidence is blocked and cannot be exported as trusted state.', stale);
   const projectStatus = await getProjectStatus(projectRoot);
   const artifacts = await evidenceFiles(projectRoot);
-  const sourceIdentity = await sourceFiles(projectRoot);
+  const identityInputs = await readIdentityPolicyInputs(projectRoot);
+  const source = await sourceFiles(projectRoot, identityInputs);
   const repository = await collectRepositoryProvenance(projectRoot);
   const executable = await collectExecutableProvenance({ projectRoot });
   const manifest = {
@@ -375,7 +578,8 @@ export async function freezePortableEvidence(root, bundlePath) {
     format: { algorithm: 'sha256', bundleLayout: 'directory-v1', authenticated: false },
     cmi: { version: VERSION, sourceRevision: executable.observed.sourceRevision || null, invocationKind: executable.observed.invocationKind, packageRoot: executable.observed.packageRoot || null },
     project: {
-      sourceIdentity,
+      sourceIdentity: source.identity,
+      identityPolicy: source.policy,
       repository: { available: repository.available, identity: repository.identity, identityBasis: repository.identityBasis },
       sourceRevision: repository.revision || null,
       worktreeClean: repository.worktreeClean,
@@ -435,7 +639,8 @@ export async function restorePortableEvidence(root, bundlePath, options = {}) {
     if (existing.isSymbolicLink() || !existing.isDirectory()) throw error('CMI_PORTABLE_UNSAFE_PATH', 'Destination .codex-memory is not a safe directory; no evidence was overwritten.');
     const same = await existingEvidenceMatches(destination, bundle.manifest).catch((cause) => { throw error('CMI_PORTABLE_DESTINATION_CONFLICT', `Existing destination evidence could not be safely validated; no evidence was overwritten.`, { cause: cause.message }); });
     if (!same) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Destination already contains different or incomplete CMI evidence; no evidence was overwritten.');
-    return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: comparison.state, path: destination, restored: false, alreadyPresent: true, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: comparison };
+    const provenance = operation === 'rebind' ? await ensureExistingRebindProvenance(destination, bundle.manifest, comparison) : undefined;
+    return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: comparison.state, path: destination, restored: false, alreadyPresent: true, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: comparison, ...(provenance ? { provenance } : {}) };
   }
   const provenance = await stageRestore(destination, artifacts, bundle.manifest, comparison, operation);
   return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: comparison.state, path: destination, restored: true, alreadyPresent: false, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: comparison, provenance };
