@@ -1,6 +1,6 @@
 {
   "name": "codex-memory-intelligence",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Local-first project memory, dependency and impact intelligence, evidence-driven change history, and session continuation for AI coding agents.",
   "type": "module",
   "bin": {
