@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 999,
+  "id": "66666666-6666-4666-8666-666666666666",
+  "status": "active",
+  "goal": "Future change record",
+  "createdAt": "2026-08-01T00:00:00.000Z",
+  "updatedAt": "2026-08-01T00:00:00.000Z",
+  "before": {},
+  "observations": [],
+  "completion": null,
+  "policy": "Future record fixture."
+}

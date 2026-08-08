@@ -22,7 +22,7 @@ function memoryDomain(counts = {}) {
 }
 
 function graphDomain(graphHealth) {
-  if (!graphHealth?.available) return { state: 'missing', healthy: false, usable: false, current: false, complete: false };
+  if (!graphHealth?.available) return { state: 'missing', healthy: false, usable: false, current: false, complete: false, formatStatus: 'missing', rebuildRequired: true };
   const current = Boolean(graphHealth.current);
   const complete = Boolean(graphHealth.complete);
   const state = !current ? 'stale' : !complete ? 'incomplete' : 'healthy';
@@ -40,13 +40,25 @@ function graphDomain(graphHealth) {
     workspaceInputsChanged: Boolean(graphHealth.workspaceInputsChanged),
     scanConfigChanged: Boolean(graphHealth.scanConfigChanged),
     freshnessUnknown: Boolean(graphHealth.freshnessUnknown),
+    schemaVersion: graphHealth.schemaVersion ?? null,
+    formatStatus: graphHealth.formatStatus || 'current',
+    rebuildRequired: Boolean(graphHealth.rebuildRequired),
+    formatReason: graphHealth.formatReason || null,
   };
 }
 
 export function buildEvidenceHealth(input = {}) {
   const initialized = input.initialized !== false;
   const storageSafe = input.storageSafe !== false;
-  const indexAvailable = Boolean(input.indexAvailable);
+  const indexCurrent = Boolean(input.indexAvailable);
+  const indexHealth = input.indexHealth || {
+    available: indexCurrent,
+    current: indexCurrent,
+    schemaVersion: null,
+    state: indexCurrent ? 'current' : 'missing',
+    rebuildRequired: false,
+  };
+  const indexAvailable = Boolean(indexHealth.available);
   const graph = graphDomain(input.graphHealth);
   const memory = memoryDomain(input.memoryHealth);
   const reasons = [];
@@ -60,9 +72,12 @@ export function buildEvidenceHealth(input = {}) {
     reasons.push('Durable CMI storage failed integrity checks.');
     recommendations.push({ id: 'storage-integrity', command: null, reason: 'Repair the .codex-memory storage boundary before reading or writing durable evidence.' });
   }
-  if (initialized && !indexAvailable) {
-    reasons.push('Project index is missing.');
-    recommendations.push({ id: 'scan-index', command: 'cmi scan', reason: 'Build the project index before relying on structural intelligence.' });
+  if (initialized && !indexCurrent) {
+    if (indexHealth.state === 'missing') reasons.push('Project index is missing.');
+    else if (indexHealth.rebuildRequired) {
+      reasons.push(`Project index format ${indexHealth.schemaVersion ?? 'unknown'} is ${indexHealth.state}; it is not treated as current evidence.`);
+    }
+    recommendations.push({ id: 'scan-index', command: 'cmi scan', reason: indexHealth.rebuildRequired ? 'Rebuild the generated project index with this CMI version; older or newer generated formats are not durable truth.' : 'Build the project index before relying on structural intelligence.' });
   }
   if (initialized && graph.state === 'missing') {
     reasons.push('Project graph is missing.');
@@ -75,8 +90,10 @@ export function buildEvidenceHealth(input = {}) {
       graph.scanConfigChanged ? 'scan/ignore-config drift' : null,
       graph.freshnessUnknown ? 'unverified discovery state' : null,
     ].filter(Boolean);
-    reasons.push(`Project graph is stale (${graph.staleNodes} stale, ${graph.missingNodes} missing node(s)${drift.length ? `; ${drift.join(', ')}` : ''}).`);
-    recommendations.push({ id: 'refresh-graph', command: 'cmi scan', reason: 'Refresh repository discovery, resolver inputs, and source fingerprints before relying on graph or impact evidence.' });
+    reasons.push(graph.rebuildRequired && graph.formatReason
+      ? graph.formatReason
+      : `Project graph is stale (${graph.staleNodes} stale, ${graph.missingNodes} missing node(s)${drift.length ? `; ${drift.join(', ')}` : ''}).`);
+    recommendations.push({ id: 'refresh-graph', command: 'cmi scan', reason: graph.rebuildRequired ? graph.formatReason : 'Refresh repository discovery, resolver inputs, and source fingerprints before relying on graph or impact evidence.' });
   } else if (graph.state === 'incomplete') {
     reasons.push('Project graph is current but incomplete because configured graph coverage was truncated.');
     recommendations.push({ id: 'expand-graph', command: 'cmi scan', reason: 'Raise graph coverage limits or narrow scope before treating impact evidence as complete.' });
@@ -94,7 +111,7 @@ export function buildEvidenceHealth(input = {}) {
 
   let state = 'healthy';
   if (!initialized) state = 'uninitialized';
-  else if (!storageSafe || !indexAvailable || graph.state === 'missing' || graph.state === 'stale' || memory.state === 'blocked') state = 'blocked';
+  else if (!storageSafe || !indexCurrent || graph.state === 'missing' || graph.state === 'stale' || memory.state === 'blocked') state = 'blocked';
   else if (graph.state === 'incomplete' || !memory.healthy) state = 'degraded';
 
   const capabilities = {
@@ -112,7 +129,7 @@ export function buildEvidenceHealth(input = {}) {
     blocked: state === 'blocked' || state === 'uninitialized',
     domains: {
       storage: { state: storageSafe ? 'safe' : 'unsafe', healthy: storageSafe },
-      index: { state: indexAvailable ? 'available' : 'missing', healthy: indexAvailable },
+      index: { state: indexHealth.state === 'current' ? 'available' : indexHealth.state, healthy: indexCurrent, available: indexAvailable, current: indexCurrent, schemaVersion: indexHealth.schemaVersion ?? null, rebuildRequired: Boolean(indexHealth.rebuildRequired) },
       graph,
       memory,
     },

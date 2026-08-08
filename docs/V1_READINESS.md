@@ -1,18 +1,18 @@
 # CMI v1.0 Readiness Audit
 
-Phase 2 operational UX, repository hygiene, and compatibility audit. This document records the state of the repository at the Phase 2 baseline and is not a v1.0 declaration.
+Phase 3 backward-compatibility, migration-evidence, and empirical-record reconciliation audit. This document records the state of the repository at the Phase 3 starting baseline and is not a v1.0 declaration.
 
 Audit date: 2026-08-09 (Asia/Ho_Chi_Minh)
-Baseline: `c2732a96a0aa4ea0ae9b0b19a14dfc297fde461a` (`main`)
-Remediation code head: `324da70`
+Phase 3 starting baseline: `58c0ade19e71b75439c975fabb9d79353931a0c3` (`main`)
+Implementation branch: `feat/v0.10-phase3-migration-compat`
 Public/package version: `0.9.2`
-Phase 2 target: `v0.10.0` readiness review; no tag, publish, or release is authorized by this audit.
+Phase 3 target: `v0.10.0` readiness review; no tag, publish, or release is authorized by this audit.
 
 ## Executive disposition
 
-There is no known engineering P0 or P1 blocker within the audited Phase 2 scope. The bounded fixes in this branch make fresh-project diagnostics, tracked/untracked CMI baselines, durable-state compatibility wording, public-release boundaries, and portable mismatch handling more actionable without weakening fail-closed behavior. The remediation recommendation is `READY_FOR_TECH_LEAD_REREVIEW`.
+There is no known engineering P0 or P1 blocker within the audited Phase 3 scope. The compatibility fixtures and runtime checks cover the representative released persistence floor without requiring a general migration command; future and corrupt formats remain fail-closed. This is not a claim of production readiness, v1.0 readiness, statistical sufficiency, or CMI productivity value.
 
-This is not a claim of production readiness, v1.0 readiness, statistical sufficiency, or CMI productivity value. Empirical studies remain explicitly classified below, and the incomplete repository-side records are not converted into positive product evidence.
+The recommendation is `READY_FOR_TECH_LEAD_REVIEW` for this Phase 3 branch. Empirical studies remain explicitly classified below, and missing repository-side ledger state is not converted into positive product evidence.
 
 ## Readiness matrix
 
@@ -24,15 +24,15 @@ This is not a claim of production readiness, v1.0 readiness, statistical suffici
 | Portable evidence transport | Ready for audited scope | Freeze/inspect succeeded on a clean disposable worktree; mismatch, corruption, traversal, symlink, destination-conflict, relocation, and rebind paths are covered by tests | SHA-256 is integrity checking, not authentication or source authorship proof |
 | Executable provenance | Ready for audited scope | CLI/MCP parity and package-install fixtures are covered by Phase 1 tests | Install ambiguity remains an explicit diagnostic limitation |
 | MCP read-only/write gate | Ready for audited scope | Safe tool discovery and direct-call bypass tests; write tools require explicit `CMI_WRITE_ENABLED=1` | Recheck the gate on every newly added mutating tool |
-| CLI/MCP contract parity | Ready for Phase 2 review | Shared runtime contracts and existing parity tests; matrix below records the public surface | Add a deprecation policy before promising v1 stability |
-| Durable persistence compatibility | Not yet evidenced for v1 | Current versioned memory, config, change, session, finding, evaluation, and portable-provenance contracts are validated in runtime/tests | Complete migration fixtures and compatibility tests before a v1 stability promise |
+| CLI/MCP contract parity | Ready for Phase 3 review | Shared runtime contracts and existing parity tests; matrix below records the public surface | Add a deprecation policy before promising v1 stability |
+| Durable persistence compatibility | Not yet evidenced for v1 | [`PERSISTENCE_COMPATIBILITY.md`](PERSISTENCE_COMPATIBILITY.md), seven provenance-recorded fixture families, 9 compatibility tests, future/corrupt no-overwrite checks, and full-suite coverage across config, memory, graph/index, changes, sessions, findings, and evaluations | Ready for audited historical range; broader release/version support, portable predecessor policy, and v1 stability decision remain open |
 | Security and parser safety | Ready for audited scope | Symlink/path/TOCTOU and strict JSON regression coverage; CodeQL is a supporting hosted gate | Heuristic parsers remain advisory, not compiler-grade |
 | Performance | Non-blocking follow-up | Incremental scan and benchmark smoke paths exist; no material regression observed in this audit | Record a reproducible baseline if performance becomes a v1 claim |
-| Release/package hygiene | Ready for current public line | npm latest and package metadata remain `0.9.2`; publish workflow has successful trusted-publish runs for the public line | No `v0.10.0` release is part of Phase 2 |
+| Release/package hygiene | Ready for current public line | npm latest and package metadata remain `0.9.2`; publish workflow has successful trusted-publish runs for the public line | No `v0.10.0` release is part of Phase 3 |
 | Cross-platform hosted verification | Ready for audited scope | Remediation head `324da70` passed CI runs `31269662717` and `31269664555` across Ubuntu/macOS/Windows × Node 22/24; CodeQL analyze run `31269664567` and check `93133490326` passed | Preserve this gate on subsequent code changes |
-| Empirical product value | Not yet evidenced | Study 002 is descriptive-only and complete; Studies 001 and 003 have incomplete repository-side records | Do not claim productivity impact or v1 readiness from these studies |
+| Empirical product value | Not yet evidenced | Study 002 remains descriptive-only; Study 001 remains incomplete; Study 003 has a preserved hosted descriptive record with an explicit protocol deviation but an unreconciled repository-side ledger | Do not claim productivity impact or v1 readiness from these studies |
 
-Status meanings: `Ready for audited scope` means the current contract has direct evidence and no known in-scope blocker; `Not yet evidenced` means a future v1 gate is still open, not that a failure was found; `Non-blocking follow-up` is useful operational work outside the Phase 2 release gate.
+Status meanings: `Ready for audited scope` means the current contract has direct evidence and no known in-scope blocker; `Not yet evidenced` means a future v1 gate is still open, not that a failure was found; `Non-blocking follow-up` is useful operational work outside the Phase 3 release gate.
 
 ## CLI/MCP contract matrix
 
@@ -55,17 +55,17 @@ JSON errors use one machine-readable object on stderr. Structured blocked result
 
 ## Compatibility and migration policy
 
-The pre-v1 policy is intentionally conservative: versioned durable state is never silently rewritten or discarded, generated caches are rebuildable rather than a compatibility promise, and unsupported or unsafe evidence fails closed. A v1 stability promise requires fixtures proving these rules across at least one prior supported format.
+The Phase 3 policy and executable matrix are documented in [`docs/PERSISTENCE_COMPATIBILITY.md`](PERSISTENCE_COMPATIBILITY.md). The pre-v1 policy remains intentionally conservative: versioned durable state is never silently rewritten or discarded, generated caches are rebuildable rather than a compatibility promise, and unsupported or unsafe evidence fails closed. Phase 3 found no durable incompatibility requiring an explicit migration command.
 
 | Data class | Current compatibility rule | Required v1 migration rule |
 | --- | --- | --- |
-| Reviewed memory and metadata | Legacy metadata remains readable; current versioned metadata is validated; invalid versioned metadata is untracked/blocked rather than treated as reviewed truth | Add an explicit schema migration command or documented one-way upgrade with backup/no-overwrite behavior and fixtures for each supported prior version |
+| Reviewed memory and metadata | Legacy metadata remains readable; current versioned metadata is validated; invalid versioned metadata is untracked/blocked rather than treated as reviewed truth | The audited historical floor is read-compatible without migration; future schema changes still require a separately justified explicit migration or supported-floor decision |
 | Project graph, index, generated architecture, and snapshots | `project-graph.json`, `project-index.json`, `architecture.md`, and `snapshots/` are generated from current project evidence; missing/stale graph state triggers scan or a blocked current-evidence claim | Rebuild is the fallback for these generated artifacts; a future format change must retain a clear diagnostic and must not be confused with durable-record migration |
-| Configuration | `.codex-memory/config.json` stores user/project scan policy and resolver inputs used by current evidence | Preserve settings through an explicit validated migration; do not discard or silently reset user configuration |
+| Configuration | `.codex-memory/config.json` stores user/project scan policy and resolver inputs used by current evidence; future versions are rejected before defaults are written | Preserve settings through an explicit validated migration only if a future observed incompatibility requires it; do not discard or silently reset user configuration |
 | Reviewed memory and agent instructions | `memory.md`, `decisions.md`, `mistakes.md`, and `agent-instructions.md` are user/reviewer-authored durable state; metadata and source freshness are validated separately | Preserve old records read-only or migrate through validated, atomic, no-overwrite conversion; never invent review provenance |
-| Changes, sessions, handoffs, and findings | `.codex-memory/changes/`, `.codex-memory/sessions/`, and `findings.json` retain work evidence, blockers, outcomes, and continuation state | Preserve records or migrate through validated, atomic, no-overwrite conversion; do not classify them as rebuildable caches |
-| Evaluations | `.codex-memory/evaluations/` retains bounded anonymized field records and explicit reviewer/protocol provenance | Preserve immutable captured measurements; migrate only through validation and never upgrade provenance |
-| Portable provenance | `.codex-memory/portable-provenance.json` records explicit restore/rebind identity and verification provenance | Preserve or validate the record during migration; do not regenerate it as if it were graph/index cache |
+| Changes, sessions, handoffs, and findings | `.codex-memory/changes/`, `.codex-memory/sessions/`, and `findings.json` retain work evidence, blockers, outcomes, and continuation state; audited historical records remain readable without rewrite | Preserve records or migrate through validated, atomic, no-overwrite conversion if a future observed incompatibility requires it; do not classify them as rebuildable caches |
+| Evaluations | `.codex-memory/evaluations/` retains bounded anonymized field records and explicit reviewer/protocol provenance; the audited `v0.9.1` record remains unreviewed | Preserve immutable captured measurements; migrate only through validation and never upgrade provenance |
+| Portable provenance | `.codex-memory/portable-provenance.json` records explicit restore/rebind identity and verification provenance; no released predecessor is supported | Preserve or validate the record during migration; do not regenerate it as if it were graph/index cache |
 | Portable evidence bundles | Current bundle schema and artifact schemas are verified before reads/writes; mismatch, traversal, symlink, conflict, and digest failure fail closed | Publish supported bundle schema versions and a tested restore/rebind compatibility table; no in-place mutation of the source bundle |
 | CLI JSON | Stable top-level success/error shapes; blocked trust-critical commands return nonzero; stdout remains usable for JSON consumers | Treat fields as additive until v1; document deprecations and preserve error codes/details for one supported transition period |
 | MCP tools | Safe mode exposes no mutation surface; write-capable tools require `CMI_WRITE_ENABLED=1`; runtime contracts are shared with CLI | Version or deprecate tool/schema changes explicitly; keep read-only default and test direct-call bypass attempts |
@@ -102,6 +102,25 @@ These are bounded operational checks, not product-value experiments.
 | Unsafe durable memory | Disposable `memory.md` symlink to an outside temporary file; `status`, `doctor`, `search`, `remember`, `stale` | All trust-sensitive paths blocked; outside content was not imported |
 | MCP boundary | Safe and write-enabled session-aware MCP discovery/direct-call tests | Safe mode does not expose mutation; write mode is explicit and parity is retained |
 
+## Phase 3 compatibility experiments
+
+These are bounded engineering checks, not new empirical product-value studies.
+
+| Experiment | Observation | Disposition |
+| --- | --- | --- |
+| Historical durable project | A disposable `v0.5.0` project was inspected with current config/status/search/init. Config, legacy memory, and authored instructions were not rewritten; legacy memory was not promoted to reviewed-current. | Accepted; fixture and regression test retained |
+| Unsupported/future state | Future config, generated formats, durable records, and metadata were rejected, marked invalid, or blocked. Existing bytes remained unchanged. | Accepted; no defaults or downgrade path |
+| Generated old state | The obsolete `v0.5.0` graph was detected as non-current; `scan` rebuilt graph/index and left durable memory/review labeling unchanged. | Accepted; generated rebuild only |
+| Corrupt durable state | Truncated config returned `CMI_CONFIG_INVALID`; `init` stopped before replacing it. Existing portable future-schema rejection and storage safety tests remain green. | Accepted; no migration backup path exists because no migration was required |
+
+## Empirical record dispositions
+
+Study 001 (Issue #28) remains an incomplete historical study. The preserved issue/preregistration evidence shows the plain condition complete and the CMI condition pending, but no original CMI condition artifact with sufficient provenance was found in the repository-side record. Study 002 or later evaluator commentary is not used to manufacture the missing condition.
+
+Study 003 (Issue #30) has a preserved hosted evaluator record marked analyzable with a documented protocol deviation, including the V1/V2/V3 amendment history and eligible V3 bundle. The repository-side ledger still reports CMI pending, and no repository ledger artifact or transparent correction record was present in this checkout. The discrepancy is therefore left unreconciled rather than rewriting the ledger or removing the deviation. The hosted record remains descriptive-only; no causal, generalization, or productivity claim is added.
+
+No study was restarted, no new measured condition was run, and Study 002 was not modified.
+
 ## Security, parser, and performance review
 
 - Security: path traversal, symlink inputs, unsafe durable paths, destination conflicts, digest corruption, and portable-evaluation file races are rejected or blocked. CodeQL remains a required supporting signal, not a substitute for runtime review.
@@ -110,6 +129,6 @@ These are bounded operational checks, not product-value experiments.
 
 ## Acceptance gates
 
-Before the draft PR is handed to the tech lead, the branch must have: clean `git diff --check`; full `npm run verify`; benchmark, package, release-check, CLI, and MCP smoke results; no version/tag/release mutation; green Ubuntu/macOS/Windows Node 22/24 CI; green CodeQL; a documented study/issue disposition; and a PR body containing the Phase 2 scope, behavior matrix, evidence table, verification record, known limitations, and explicit no-merge/no-release statement.
+Before the draft PR is handed to the tech lead, the branch must have: clean `git diff --check`; full `npm run verify`; benchmark, package, release-check, CLI, and MCP smoke results; no version/tag/release mutation; green Ubuntu/macOS/Windows Node 22/24 CI; green CodeQL; a documented study/issue disposition; and a PR body containing the Phase 3 scope, compatibility matrix, fixture provenance, verification record, known limitations, and explicit no-merge/no-release statement.
 
-Known limitations are deliberate: static analysis is heuristic, portable bundles are not authenticated backups, evaluation provenance is caller-attested, Studies 001 and 003 do not currently support a positive product-value claim, and v1 backward compatibility is not yet evidenced by migration fixtures.
+Known limitations are deliberate: static analysis is heuristic, portable bundles are not authenticated backups, evaluation provenance is caller-attested, Studies 001 and 003 do not currently support a positive product-value claim, and the compatibility guarantee is limited to the audited historical floor documented in `PERSISTENCE_COMPATIBILITY.md`.

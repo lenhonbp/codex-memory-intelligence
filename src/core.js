@@ -18,8 +18,9 @@ import { buildEvidenceHealth } from './evidence-health.js';
 
 const exec = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
+export const CONFIG_SCHEMA_VERSION = 4;
 const DEFAULT_CONFIG = {
-  version: 4,
+  version: CONFIG_SCHEMA_VERSION,
   maxFileBytes: 1_000_000,
   maxSourceBytes: 512_000,
   maxGraphFiles: 5_000,
@@ -42,6 +43,24 @@ export async function ensureDir(directoryPath) { await fs.mkdir(directoryPath, {
 export async function writeIfMissing(filePath, content) { if (!(await exists(filePath))) await fs.writeFile(filePath, content, 'utf8'); }
 
 function normalizeConfig(current = {}) {
+  if (current === null || current === undefined) current = {};
+  if (!current || typeof current !== 'object' || Array.isArray(current)) {
+    const error = new Error('Project configuration must be a JSON object.');
+    error.code = 'CMI_CONFIG_INVALID';
+    throw error;
+  }
+  if (current.version !== undefined) {
+    if (!Number.isInteger(current.version) || current.version < 1) {
+      const error = new Error('Project configuration version must be a positive integer.');
+      error.code = 'CMI_CONFIG_INVALID';
+      throw error;
+    }
+    if (current.version > CONFIG_SCHEMA_VERSION) {
+      const error = new Error(`Unsupported project configuration version ${current.version}; this CMI version supports up to ${CONFIG_SCHEMA_VERSION}.`);
+      error.code = 'CMI_CONFIG_VERSION_UNSUPPORTED';
+      throw error;
+    }
+  }
   const ignorePatterns = Array.isArray(current.ignorePatterns) ? current.ignorePatterns.map(String) : [];
   return {
     ...DEFAULT_CONFIG,
@@ -51,8 +70,22 @@ function normalizeConfig(current = {}) {
   };
 }
 
+async function readStoredConfig(root) {
+  try {
+    return await safeReadMemoryJson(root, 'config.json', { optional: true });
+  } catch (cause) {
+    if (cause?.code === 'CMI_UNSAFE_STORAGE') throw cause;
+    const error = new Error('Project configuration exists but is not valid JSON or cannot be safely read; no defaults were written.');
+    error.code = 'CMI_CONFIG_INVALID';
+    error.causeCode = cause?.code || 'invalid-json';
+    throw error;
+  }
+}
+
 export async function initProject(root) {
   const directory = await ensureSafeMemoryRoot(root, { create: true });
+  const currentConfig = await readStoredConfig(root);
+  const migratedConfig = normalizeConfig(currentConfig);
   await safeEnsureMemoryDir(root, 'snapshots');
   await safeWriteMemoryFile(root, 'memory.md', '# Project Memory\n\nDurable facts, conventions, constraints, and operational knowledge.\n', { ifMissing: true });
   await safeWriteMemoryFile(root, 'decisions.md', '# Architecture Decisions\n\nRecord the context, decision, and consequences.\n', { ifMissing: true });
@@ -60,19 +93,17 @@ export async function initProject(root) {
   await safeWriteMemoryFile(root, 'architecture.md', '# Project Architecture\n\nRun `cmi scan` to refresh this file.\n', { ifMissing: true });
   await safeWriteMemoryFile(root, 'agent-instructions.md', '# Agent Instructions\n\n1. Search project memory before broad repository exploration.\n2. Check memory health before relying on old decisions.\n3. Read decisions before architectural changes.\n4. Run impact analysis before changing shared files or symbols.\n5. Read mistakes before risky operations or deployment.\n6. Store only durable knowledge, never secrets or temporary logs.\n7. Refresh project intelligence after structural changes.\n8. Use workspace-scoped search in monorepositories.\n9. Treat MCP durable-memory mutations as opt-in operations that require review.\n', { ifMissing: true });
   await safeWriteMemoryFile(root, '.gitignore', 'project-graph.json\nproject-index.json\nsnapshots/\n', { ifMissing: true });
-  const currentConfig = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
-  const migratedConfig = normalizeConfig(currentConfig);
-  if (JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) {
+  if (JSON.stringify(currentConfig || {}) !== JSON.stringify(migratedConfig)) {
     await safeWriteMemoryFile(root, 'config.json', JSON.stringify(migratedConfig, null, 2) + '\n');
-  } else if (!(await safeReadMemoryFile(root, 'config.json', { optional: true }))) {
+  } else if (currentConfig === null) {
     await safeWriteMemoryFile(root, 'config.json', JSON.stringify(migratedConfig, null, 2) + '\n');
   }
   return directory;
 }
 
 export async function readConfig(root) {
-  const current = await safeReadMemoryJson(root, 'config.json', { optional: true });
-  return normalizeConfig(current || {});
+  const current = await readStoredConfig(root);
+  return normalizeConfig(current);
 }
 
 async function walk(root, config, matcher, current = root, output = [], stats = { ignored: 0, symlinks: 0, tooLarge: 0, unreadable: 0 }) {
@@ -268,20 +299,29 @@ export async function status(root) {
     memoryHealth: { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0, blocked: 0 },
     snapshots: 0,
   };
-  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
+  const storedIndex = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
+  const index = storedIndex?.schemaVersion === 5 ? storedIndex : null;
+  const indexHealth = {
+    available: Boolean(storedIndex),
+    current: Boolean(index),
+    schemaVersion: Number.isInteger(storedIndex?.schemaVersion) ? storedIndex.schemaVersion : null,
+    state: !storedIndex ? 'missing' : storedIndex.schemaVersion === 5 ? 'current' : storedIndex.schemaVersion > 5 ? 'unsupported' : 'obsolete',
+    rebuildRequired: Boolean(storedIndex && storedIndex.schemaVersion !== 5),
+  };
   const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
   const snapshots = await safeListMemoryDir(root, 'snapshots').catch(() => []);
   const entries = { facts: await countEntries(root, 'memory.md'), decisions: await countEntries(root, 'decisions.md'), mistakes: await countEntries(root, 'mistakes.md') };
   const memoryHealth = await checkStaleMemory(root);
   const loaded = await loadMemory(root, { withHealth: true });
   const graphHealth = loaded.graphHealth;
-  const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: true, indexAvailable: Boolean(index), graphHealth, memoryHealth: memoryHealth.counts });
+  const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: true, indexAvailable: Boolean(index), indexHealth, graphHealth, memoryHealth: memoryHealth.counts });
   return {
     initialized: true,
     healthy: evidenceHealth.healthy,
     evidenceHealth,
     storageHealth: { safe: true },
     index,
+    indexHealth,
     graph: graph?.summary || null,
     graphHealth,
     workspaces: index?.workspaces || null,

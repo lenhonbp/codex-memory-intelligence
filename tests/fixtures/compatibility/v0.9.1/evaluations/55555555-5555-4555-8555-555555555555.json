@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "55555555-5555-4555-8555-555555555555",
+  "recordedAt": "2026-08-01T00:00:00.000Z",
+  "subject": {"version":"0.9.1","sourceRevision":null},
+  "source": {"kind":"self-host","independent":false},
+  "protocol": {"kind":"observational"},
+  "repository": {"fingerprint":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","fingerprintBasis":"local-root-hash","class":"application"},
+  "task": {"kind":"audit","sessionId":null},
+  "measurements": {
+    "project": {"evidenceState":"healthy","healthy":true,"graphCurrent":true,"graphTruncated":false,"graphStaleNodes":0,"graphMissingNodes":0,"worktreeClean":null,"sourceFiles":0,"workspaceCount":0},
+    "continuation": {"sessionPresent":false,"outcome":null,"sessionScopeCount":0,"openFindingCount":0,"recommendationCount":0,"handoffPresent":false,"nextActionPresent":false,"nextActionPriority":null,"nextActionEvidenceType":null,"nextActionConfidence":null,"guardrailCount":0,"planningSignalCount":0},
+    "changeHistory": {"completedRecords":0,"consideredRecords":0,"calibrationSamples":0,"averagePathRecall":null,"averagePathPrecision":null,"averagePathF1":null,"calibrationConfidence":"insufficient-evidence"}
+  },
+  "stress": {"scenario":null,"expectedInvariantCount":0,"passedInvariantCount":0,"failedInvariantCount":0,"outcome":"not-applicable"},
+  "review": {"provenance":"unreviewed","reviewedAt":null,"outcome":"unreviewed","falsePositiveFindings":null,"missedFindings":null,"nextActionRating":"unknown","handoffRating":"unknown","reconstructionRating":"unknown","followUpOutcome":"unknown","verificationChoiceOutcome":"unknown","historyRating":"unknown"},
+  "policy": "Evaluation records remain bounded, descriptive, and explicitly unreviewed when no reviewer evidence exists."
+}

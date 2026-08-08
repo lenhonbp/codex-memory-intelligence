@@ -74,10 +74,10 @@ export function validateFindingContract(item) {
   return { valid: errors.length === 0, errors };
 }
 
-export function validateRecommendationContract(item) {
+export function validateRecommendationContract(item, options = {}) {
   const errors = [];
   if (!object(item)) return { valid: false, errors: ['recommendation must be an object.'] };
-  add(errors, text(item.id, 500), 'recommendation.id is required.');
+  add(errors, options.allowLegacyId && item.id === undefined ? true : text(item.id, 500), 'recommendation.id is required.');
   add(errors, RECOMMENDATION_PRIORITIES.has(item.priority), 'recommendation.priority is invalid.');
   add(errors, text(item.action, 2000), 'recommendation.action is required.');
   add(errors, text(item.reason, 2000), 'recommendation.reason is required.');
@@ -114,7 +114,8 @@ export function validateHandoffContract(handoff) {
   add(errors, Array.isArray(handoff.activeChanges) && handoff.activeChanges.length <= 20, 'handoff.activeChanges is invalid.');
   add(errors, Array.isArray(handoff.openFindings) && handoff.openFindings.length <= 20 && handoff.openFindings.every((item) => validateFindingContract(item).valid), 'handoff.openFindings contains invalid findings.');
   add(errors, Array.isArray(handoff.nextActions) && handoff.nextActions.length <= 10 && handoff.nextActions.every((item) => validateRecommendationContract(item).valid), 'handoff.nextActions contains invalid recommendations.');
-  add(errors, validateRecommendationContract(handoff.nextAction).valid, 'handoff.nextAction is invalid.');
+  const legacyFallback = object(handoff.nextAction) && handoff.nextAction.id === undefined && Array.isArray(handoff.nextActions) && handoff.nextActions.length === 0;
+  add(errors, validateRecommendationContract(handoff.nextAction, { allowLegacyId: legacyFallback }).valid, 'handoff.nextAction is invalid.');
   add(errors, Array.isArray(handoff.guardrails) && handoff.guardrails.length <= 12 && handoff.guardrails.every((item) => validateGuardrailContract(item).valid), 'handoff.guardrails contains invalid guardrails.');
   add(errors, Array.isArray(handoff.knowledgeCandidates) && handoff.knowledgeCandidates.length <= 20, 'handoff.knowledgeCandidates is invalid.');
   add(errors, text(handoff.agentInstruction, 4000), 'handoff.agentInstruction is required.');

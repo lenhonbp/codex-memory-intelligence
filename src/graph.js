@@ -13,6 +13,7 @@ const SOURCE_EXTENSIONS = new Set([
 ]);
 const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx'];
 const PARSER_VERSION = 4;
+export const GRAPH_SCHEMA_VERSION = 4;
 const FRESHNESS_VERSION = 1;
 export const RESOLVER_INPUT = /(^|\/)(?:tsconfig(?:\.[^/]+)?|jsconfig)\.json$|(^|\/)go\.mod$|(^|\/)Cargo\.toml$/;
 export const WORKSPACE_INPUT = /(^|\/)(?:package\.json|pnpm-workspace\.yaml|go\.work|go\.mod|Cargo\.toml)$/;
@@ -373,7 +374,10 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const candidates = fileRecords.filter((file) => SOURCE_EXTENSIONS.has(path.extname(file.path).toLowerCase()) && file.size <= maxSourceBytes);
   const sources = candidates.slice(0, maxGraphFiles);
   const sourcePaths = new Set(sources.map((file) => file.path));
-  const previous = options.previousGraph?.parserVersion === PARSER_VERSION ? new Map(options.previousGraph.nodes.map((node) => [node.path, node])) : new Map();
+  const previous = options.previousGraph?.schemaVersion === GRAPH_SCHEMA_VERSION
+    && options.previousGraph?.parserVersion === PARSER_VERSION
+    ? new Map(options.previousGraph.nodes.map((node) => [node.path, node]))
+    : new Map();
   const resolvers = await loadResolvers(root, fileRecords);
   const freshness = await buildFreshnessDescriptor(root, fileRecords, config);
   const nodes = [];
@@ -426,7 +430,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const removedFiles = [...previous.keys()].filter((filePath) => !sourcePaths.has(filePath)).length;
   const durationMs = Number((performance.now() - started).toFixed(2));
   return {
-    schemaVersion: 4,
+    schemaVersion: GRAPH_SCHEMA_VERSION,
     parserVersion: PARSER_VERSION,
     generatedAt: new Date().toISOString(),
     freshness,
@@ -466,6 +470,8 @@ function graphFingerprintMatches(stat, fingerprint) {
 export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
   const graph = suppliedGraph || await loadProjectGraph(root);
   if (!graph) return { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, truncated: false, current: false, complete: false, healthy: false, state: 'missing' };
+  const schemaVersion = Number.isInteger(graph.schemaVersion) ? graph.schemaVersion : null;
+  const formatStatus = schemaVersion === GRAPH_SCHEMA_VERSION ? 'current' : schemaVersion === null ? 'unknown' : schemaVersion > GRAPH_SCHEMA_VERSION ? 'unsupported' : 'obsolete';
   let freshNodes = 0;
   let staleNodes = 0;
   let missingNodes = 0;
@@ -496,7 +502,7 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
   const scanConfigChanged = Boolean(storedFreshness && currentFreshness && (storedFreshness.scanConfigHash !== currentFreshness.scanConfigHash || storedFreshness.ignoreFileFingerprint !== currentFreshness.ignoreFileFingerprint));
   const discoveryChanged = freshnessUnknown || sourceSetChanged || resolverInputsChanged || workspaceInputsChanged || scanConfigChanged || discoveryUnreadable > 0;
   const truncated = Boolean(graph.summary?.truncated);
-  const current = staleNodes === 0 && missingNodes === 0 && !discoveryChanged;
+  const current = formatStatus === 'current' && staleNodes === 0 && missingNodes === 0 && !discoveryChanged;
   const complete = !truncated;
   const healthy = current && complete;
   const state = !current ? 'stale' : !complete ? 'incomplete' : 'healthy';
@@ -511,6 +517,16 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
     complete,
     healthy,
     state,
+    schemaVersion,
+    formatStatus,
+    rebuildRequired: formatStatus !== 'current',
+    formatReason: formatStatus === 'obsolete'
+      ? `Project graph format ${schemaVersion} is obsolete; rebuild generated intelligence with cmi scan.`
+      : formatStatus === 'unsupported'
+        ? `Project graph format ${schemaVersion} is newer than this CMI version; do not reinterpret it, rebuild with a compatible CMI version or remove it after preserving the original.`
+        : formatStatus === 'unknown'
+          ? 'Project graph format is missing or unknown; rebuild generated intelligence with cmi scan.'
+          : null,
     sourceSetChanged,
     resolverInputsChanged,
     workspaceInputsChanged,
@@ -525,7 +541,15 @@ export async function impactAnalysis(root, target, maxDepth = 3) {
   const graph = await loadProjectGraph(root);
   if (!graph) return { found: false, blocked: true, reason: 'Project graph is missing. Run cmi scan.', graphHealth: await inspectProjectGraphHealth(root, graph) };
   const graphHealth = await inspectProjectGraphHealth(root, graph);
-  if (!graphHealth.current) return { found: false, blocked: true, reason: 'Project graph is stale or repository discovery inputs changed. Run cmi scan before relying on impact analysis.', graphHealth, recommendedAction: { command: 'cmi scan', reason: 'Source fingerprints, source set, resolver/workspace inputs, or scan configuration no longer match the stored graph.' } };
+  if (!graphHealth.current) return {
+    found: false,
+    blocked: true,
+    reason: graphHealth.rebuildRequired
+      ? graphHealth.formatReason
+      : 'Project graph is stale or repository discovery inputs changed. Run cmi scan before relying on impact analysis.',
+    graphHealth,
+    recommendedAction: { command: 'cmi scan', reason: graphHealth.rebuildRequired ? graphHealth.formatReason : 'Source fingerprints, source set, resolver/workspace inputs, or scan configuration no longer match the stored graph.' },
+  };
   const warnings = graphHealth.complete ? [] : ['Impact coverage is incomplete because the project graph is truncated.'];
   const query = String(target || '').trim().toLowerCase();
   if (!query) throw new Error('Impact target cannot be empty');
