@@ -7,6 +7,7 @@ import { scanProject, remember, status } from '../src/core.js';
 import { loadProjectGraph, inspectProjectGraphHealth, impactAnalysis } from '../src/graph.js';
 import { searchMemory } from '../src/search.js';
 import { refreshMemory, setMemoryLifecycle } from '../src/stale.js';
+import { listFindings, setFindingState } from '../src/session-intelligence.js';
 
 async function rootFixture(prefix = 'cmi-review-remediation-') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -85,6 +86,18 @@ test('oversized durable memory is visible as blocked evidence and cannot partici
   assert.equal(project.evidenceHealth.blocked, true);
   assert.equal(project.evidenceHealth.domains.memory.state, 'blocked');
   await assert.rejects(() => searchMemory(root, 'anything'), (error) => error?.code === 'CMI_MEMORY_BLOCKED');
+});
+
+test('corrupt findings registry blocks reads and mutations without overwriting bytes', async () => {
+  const root = await rootFixture();
+  await scanProject(root);
+  const registry = path.join(root, '.codex-memory', 'findings.json');
+  const corrupt = '{bad json';
+  await fs.writeFile(registry, corrupt, 'utf8');
+
+  await assert.rejects(() => listFindings(root), (error) => error?.code === 'CMI_FINDINGS_BLOCKED');
+  await assert.rejects(() => setFindingState(root, 'deadbeef', 'resolved', { reason: 'must not overwrite corruption' }), (error) => error?.code === 'CMI_FINDINGS_BLOCKED');
+  assert.equal(await fs.readFile(registry, 'utf8'), corrupt);
 });
 
 test('heuristic parser rejects JS comment/string imports and resolves reviewed Python/Rust edge cases', async () => {
