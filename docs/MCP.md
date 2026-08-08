@@ -10,15 +10,17 @@ Safe default:
 cmi mcp-config
 ```
 
-This keeps durable project writes disabled. Read-only durable history, memory search, graph intelligence, advisory pre-change analysis, change history, session reports, handoffs, persistent findings, and evaluation reports remain available.
+This keeps **all durable project writes disabled**, including generated scan/index/graph cache writes. Read-only durable history, existing memory search, existing graph intelligence, advisory pre-change analysis, change history, session reports, handoffs, persistent findings, and evaluation reports remain available when their underlying evidence already exists.
 
-Enable durable project writes explicitly when a connected agent should create project memory, review memory/finding lifecycle, create BEFORE/DURING/AFTER change records, track/finalize work sessions, or capture a reviewed/anonymized evaluation record:
+`scan_project_intelligence` is deliberately absent from safe/default `tools/list`. A client that attempts to call it directly by name is rejected before `scanProject()` executes, so safe MCP cannot create `.codex-memory` as a side effect of a scan.
+
+Enable durable project writes explicitly when a connected agent should scan/update generated caches, create project memory, review memory/finding lifecycle, create BEFORE/DURING/AFTER change records, track/finalize work sessions, or capture a reviewed/anonymized evaluation record:
 
 ```bash
 cmi mcp-config --write
 ```
 
-Bulk reviewed-memory refresh requires another opt-in:
+Bulk source-fingerprint refresh requires another opt-in:
 
 ```bash
 cmi mcp-config --write --bulk-refresh
@@ -54,13 +56,12 @@ Existing read/default tools include:
 - `get_change_insights` — relevant completed changes, co-change evidence, verification patterns, and path-overlap calibration;
 - `get_change_record` — read one durable change record;
 - `list_change_records` — list bounded active/completed record summaries;
-- `scan_project_intelligence` — incremental/full project scan;
 - `get_project_memory_status` — memory/index/graph/workspace health;
 - `list_project_workspaces` — detected workspaces;
 - `explain_project_ignore` — explain ignore behavior;
 - `get_project_graph` — compact graph statistics;
-- `analyze_project_impact` — reverse-dependency impact analysis;
-- `check_stale_memory` — active-memory stale/review audit plus inactive lifecycle inventory.
+- `analyze_project_impact` — reverse-dependency impact analysis that returns blocked when graph freshness cannot be established;
+- `check_stale_memory` — active-memory stale/review audit, blocked-file diagnostics, and inactive lifecycle inventory.
 
 Evaluation read tools add:
 
@@ -79,27 +80,27 @@ Session-continuation read tools add:
 
 `search_project_memory` and `build_project_context` accept two evidence-policy controls:
 
-- `stalePolicy: demote | include | exclude` — `demote` is the default and keeps stale/review evidence visible but down-ranked; `include` reduces that penalty for explicit inspection; `exclude` keeps only current reviewed/observed evidence;
+- `stalePolicy: demote | include | exclude` — `demote` is the default and keeps stale/review evidence visible but down-ranked; `include` reduces that penalty for explicit inspection; `exclude` filters stale/review/untracked knowledge while result metadata still distinguishes source-current `fresh-source` from semantically `reviewed-current` knowledge;
 - `includeInactive: true` — explicit historical-inspection mode for `deprecated`, `rejected`, or `superseded` memory. Inactive memory is excluded by default.
 
-`scan_project_intelligence` may update generated CMI caches, so it is not annotated as read-only even though it does not create reviewed durable memory/change/session evidence.
+Safe/default MCP never creates or refreshes generated caches. If the graph/index is missing or stale, the read tool reports that limitation and instructs the caller to use a write-enabled scan rather than silently mutating the project.
 
 ## Write-enabled tools
 
 When the server starts with `CMI_WRITE_ENABLED=1`, existing write tools include:
 
+- `scan_project_intelligence` — incrementally/full scans the repository and writes generated project index/graph/architecture caches;
 - `start_change_record`;
 - `observe_change_record`;
 - `complete_change_record`;
 - `remember_project_knowledge`;
-- `refresh_project_memory`;
+- `refresh_project_memory` — refreshes source fingerprints only and does not attest semantic review;
 - `set_project_memory_state`.
 
 Evaluation write tools add:
 
-- `capture_project_evaluation` — persist one bounded evaluation record with explicit source kind, protocol, task/repository class, optional closed-session association, and review provenance. It is absent unless `CMI_WRITE_ENABLED=1`.
-
-Evaluation write tools add `capture_project_evaluation` and one-time `review_project_evaluation` when write mode is enabled.
+- `capture_project_evaluation` — persist one bounded evaluation record with explicit source kind, protocol, task/repository class, optional closed-session association, and review provenance. It is absent unless `CMI_WRITE_ENABLED=1`;
+- one-time `review_project_evaluation` when write mode is enabled.
 
 Session-continuation write tools add:
 
@@ -150,6 +151,8 @@ Recommendations carry priority, reason, evidence type, evidence references, and 
 
 Persistent findings do not disappear when one AI session ends. Deterministic health findings may auto-resolve when the measured condition disappears; explicit blockers/questions remain review-controlled.
 
+A missing `findings.json` is a valid empty registry. A registry that **exists but is malformed, oversized, symlinked, non-regular, or otherwise unsafe to read is not empty evidence**: finding reads/mutations fail closed with a blocked-registry diagnostic. CMI will not overwrite that corrupt registry through a normal finding mutation.
+
 No recommendation proves business priority or authorizes a project command to run automatically.
 
 ## Advisory and historical boundaries
@@ -159,7 +162,8 @@ No recommendation proves business priority or authorizes a project command to ru
 The output distinguishes:
 
 - directly observed Git/path/project health;
-- reviewed durable memory;
+- source-current durable memory (`fresh-source`);
+- semantically reviewed current durable memory (`reviewed-current`);
 - explicit agent/human session observations;
 - deterministic inference;
 - historical correlation;
@@ -168,6 +172,7 @@ The output distinguishes:
 
 In particular:
 
+- a source fingerprint that still matches is not evidence that a reviewer has re-validated the meaning of a memory entry;
 - a co-change edge means two paths/boundaries appeared in the same stored change records, not that one causes or depends on the other;
 - a changed path is direct edit evidence, not proof of complete runtime impact;
 - a verification `passed` value remains stored evidence with explicit provenance, not a command independently executed by CMI;
@@ -228,11 +233,15 @@ They are bounded, local, human-reviewable evidence. Explicit paths must be proje
 
 Session records do not prove that every meaningful action in an external agent environment was captured. CMI combines observable repository state with explicit session observations and says when evidence is incomplete.
 
+Finding registry corruption is treated as a trust failure, not as zero findings. Recovery is intentionally explicit so a later write cannot silently erase corrupted-but-potentially-recoverable bytes.
+
 See [Session Continuation Intelligence](SESSION_INTELLIGENCE.md).
 
 ## Evaluation trust model
 
 Evaluation records live under `.codex-memory/evaluations/`. Read/list/report are available in safe MCP mode; durable capture is write-gated. MCP uses the same runtime contract as the CLI, including explicit `external-real|self-host|synthetic` source class, `observational|controlled-stress` protocol, CMI version/source revision, and `human|agent|unreviewed` review provenance.
+
+Those identity/classification fields are **caller-attested provenance**, not externally authenticated identities. CMI validates shape and keeps evidence classes separate; it does not independently prove that a repository is external, that a declared reviewer is human, or that a caller actually executed a controlled-stress scenario. Controlled-stress outcomes are derived from supplied invariant counts, which prevents a caller from overriding counts with a more favorable outcome but does not turn supplied counts into independently witnessed measurements.
 
 The evaluation report never promotes self-host/synthetic runs into independent repository evidence, never lets controlled-stress inflate ordinary observational coverage, and never combines agent-reviewed usefulness with human-reviewed usefulness. MCP does not make an evaluation judgment merely because an agent calls the report tool.
 
@@ -240,7 +249,7 @@ See [Real-Repository Evaluation](EVALUATION.md).
 
 ## Durable mutation boundary
 
-Durable memory mutations share a local write lock so `remember`, reviewed refresh, and lifecycle mutation do not overwrite each other when multiple local writers operate concurrently. Change records and session/finding storage use their own local locking/atomic-write boundaries.
+Durable memory mutations share a local write lock so `remember`, source-fingerprint refresh, and lifecycle mutation do not overwrite each other when multiple local writers operate concurrently. Change records and session/finding storage use their own local locking/atomic-write boundaries.
 
 New durable memory entries carry `schemaVersion: 1` and start with `lifecycle.state: active`. Existing metadata without a schema version remains readable for compatibility and is upgraded when explicitly refreshed or lifecycle-mutated.
 
@@ -251,7 +260,7 @@ The safe intended flow is:
 ```text
 read evidence
 → agent/human reasoning
-→ explicit change/session/finding or reviewed-memory write
+→ explicit scan/cache write or change/session/finding/reviewed-memory write
 → later review/refresh/resolve/deprecate/reject/supersede when evidence changes
 ```
 
