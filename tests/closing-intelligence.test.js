@@ -33,6 +33,8 @@ test('unfinished feature A remains visible after unrelated feature B closes, the
   assert.equal(carryover.severity, 'reminder');
   assert.match(carryover.title, /Unfinished previous work.*feature A/i);
   assert.equal(carryover.evidenceType, 'observed');
+  assert.equal(closingB.nextAction.priority, 'P3');
+  assert.match(closingB.nextAction.action, /do not block.*unrelated task/i);
   await completeChangeRecord(root, changeA.id, { outcome: 'abandoned', notes: ['Explicitly deferred by project owner.'] });
   const sessionC = await startSession(root, 'feature C unrelated review');
   await closeSession(root, sessionC.id, { outcome: 'investigated', notes: ['No implementation change.'] });
