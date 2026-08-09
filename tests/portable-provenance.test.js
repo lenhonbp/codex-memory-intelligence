@@ -10,6 +10,7 @@ import { initProject, scanProject, remember, status } from '../src/core.js';
 import { checkStaleMemory } from '../src/stale.js';
 import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidence } from '../src/portable-evidence.js';
 import { collectExecutableProvenance } from '../src/provenance.js';
+import { VERSION } from '../src/version.js';
 
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../src/cli-entry.js', import.meta.url));
@@ -336,7 +337,7 @@ test('canonical executable provenance resolves the invoked source checkout and e
   const result = await collectExecutableProvenance({ projectRoot: process.cwd() });
   assert.equal(result.kind, 'cmi-executable-provenance');
   assert.equal(result.observed.packageName, 'codex-memory-intelligence');
-  assert.equal(result.observed.packageVersion, '0.9.2');
+  assert.equal(result.observed.packageVersion, VERSION);
   assert.equal(result.observed.installKind, 'source-checkout');
   assert.match(result.observed.sourceRevision, /^[0-9a-f]{40}$/);
   assert.equal(result.ambiguity.candidates[0].source, 'actual-invocation');
@@ -352,7 +353,7 @@ test('CLI provenance JSON identifies the actual script rather than a cwd package
   const result = await run(['provenance', '--json'], root);
   assert.equal(result.code, 0);
   const parsed = JSON.parse(result.stdout);
-  assert.equal(parsed.observed.packageVersion, '0.9.2');
+  assert.equal(parsed.observed.packageVersion, VERSION);
   assert.notEqual(parsed.observed.packageVersion, '99.99.99');
   assert.ok(parsed.ambiguity.candidates.some((item) => item.source === 'project-local-candidate'));
 });

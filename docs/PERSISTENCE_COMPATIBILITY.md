@@ -1,8 +1,8 @@
 # Persistence Compatibility and Migration Evidence
 
-Phase 3 audit date: 2026-08-09 (Asia/Ho_Chi_Minh)
+Phase 3 compatibility audit date: 2026-08-09 (Asia/Ho_Chi_Minh)
 
-This document records executable compatibility evidence for the current `0.9.2` source line. It is a bounded pre-v1 support statement, not a promise to support every historical format or a `v0.10.0` release declaration.
+This document records executable compatibility evidence included in the `0.10.0` release candidate. It is a bounded pre-v1 support statement, not a promise to support every historical format or future schema.
 
 ## Scope and supported historical floor
 

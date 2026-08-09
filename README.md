@@ -26,9 +26,9 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.9.2` is the current public release line for **Evidence Integrity + Real-Repository Evaluation**. The published package includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange. It does not include the portable project-evidence or executable-provenance commands added after the `v0.9.2` tag. The npm badge above remains the authoritative indicator of the version currently published to the registry.
+The current repository release candidate is `v0.10.0`; it is prepared for review and is not published. The latest published npm release remains `v0.9.2` until release authorization. The npm badge above is authoritative for registry state. The published package includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange.
 
-Current `main` contains unreleased v0.10.0 work, including portable project evidence, executable provenance, and Phase 2 operational UX/readiness changes. Install `v0.9.2` from npm for the public release contract; do not infer current-main commands from that package.
+This candidate adds portable project evidence, executable provenance, operational UX/readiness hardening, and the audited persistence compatibility floor. Install `v0.9.2` from npm for the currently published contract; do not infer candidate-only commands from that package until `v0.10.0` is authorized and published.
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
@@ -309,7 +309,7 @@ cmi mcp-config [--write] [--bulk-refresh]
 cmi --version
 ```
 
-The following commands are present in current `main` as unreleased v0.10.0 work and are not included in the public npm `v0.9.2` package:
+The following commands are present in the `v0.10.0` release candidate and are not included in the public npm `v0.9.2` package until publication:
 
 ```text
 cmi provenance [--json]
@@ -319,7 +319,7 @@ cmi evidence restore <bundle-path> [--json]
 cmi evidence rebind <bundle-path> [--json]
 ```
 
-## Current main / unreleased v0.10.0: portable evidence and executable provenance
+## v0.10.0 release candidate: portable evidence and executable provenance
 
 In the current checkout, freeze the current `.codex-memory` state into a bounded directory bundle whose manifest contains path-independent source-content identity, Git repository/revision evidence when observable, CMI version/source provenance, a deterministic artifact inventory, and SHA-256 digests. These commands are not available from npm `v0.9.2`:
 
