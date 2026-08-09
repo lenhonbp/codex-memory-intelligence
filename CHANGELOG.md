@@ -8,6 +8,7 @@ All notable changes are documented here.
 
 - Added one-time `cmi activate` integration for Codex plus a bounded generic mode so supported agents can use CMI automatically after project activation instead of requiring CMI-specific user prompts.
 - Added read-only ambient task routing through `cmi ambient` and MCP `get_ambient_task_brief`, with conservative short-prompt intent classification and evidence-linked context/workflow guidance.
+- Added CMI Closing Intelligence: a bounded end-of-work read model and branded `CMI Intelligence` footer that surfaces up to three evidence-based cross-session, verification, finding, and reviewed-consistency alerts plus a clean fallback.
 
 ### Changed
 
@@ -16,11 +17,13 @@ All notable changes are documented here.
 - Repository baselines now preserve product-scope compatibility while separately reporting raw Git cleanliness and the count of omitted untracked CMI-internal paths.
 - Existing relative CSS/static imports are classified as non-code local dependencies instead of unresolved source imports.
 - Generic memory-gap and regression-test suggestions are suppressed when no task-specific files, boundaries, or topic evidence support them.
+- Codex activation now requires supported agents to retrieve Closing Intelligence before ending substantial work and append a concise user-visible CMI footer; unfinished active changes remain visible across later sessions without blocking a user priority change by default.
 
 ### Evidence limits
 
 - Ambient intent routing is deterministic advisory classification, not autonomous authorization or proof of user intent.
 - Agent activation cannot force clients that ignore repository instructions or MCP to follow CMI.
+- Reviewed design/architecture/policy relevance in Closing Intelligence is a consistency-check cue, not proof that the implementation violates the reviewed rule. Closing Intelligence introduces no separate durable notification store.
 - This development work does not establish productivity improvement, time savings, or general product value.
 
 ## [0.10.0] - 2026-08-09

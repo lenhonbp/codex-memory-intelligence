@@ -19,6 +19,7 @@ import {
   formatHandoff,
   formatFindingList,
 } from './session-intelligence.js';
+import { buildClosingIntelligence, formatClosingIntelligence } from './closing-intelligence.js';
 import { buildAmbientTaskBrief, formatAmbientTaskBrief } from './ambient-intelligence.js';
 import {
   captureEvaluation,
@@ -64,6 +65,7 @@ const observationProperties = {
 };
 const sessionReadTools = [
   { name: 'get_ambient_task_brief', title: 'Get ambient task brief', description: 'Route a natural-language user request through CMI project health, Git baseline, task context, optional pre-change preparation, continuation handoff, and conservative workflow hints. Use this early for substantive or terse requests; the user does not need to mention CMI.', inputSchema: { type: 'object', required: ['request'], properties: { request: { type: 'string', minLength: 1, maxLength: 1000 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+  { name: 'get_closing_intelligence', title: 'Get Closing Intelligence', description: 'Build the bounded branded end-of-work view for a closed session: up to three cross-session, verification, finding, and reviewed-consistency alerts plus the evidence-based next action. This read model never creates durable truth.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Closed session ID/prefix; defaults to latest closed session.' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_work_session_status', title: 'Get work-session status', description: 'Assess the active work session now: current repository state, persistent unresolved findings, session scope, and prioritized evidence-based next actions.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Session ID/prefix; defaults to latest active session.' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_work_session_report', title: 'Get work-session report', description: 'Read one active or closed durable session record, including outcome intelligence when closed.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Session ID/prefix or latest.' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'list_work_sessions', title: 'List work sessions', description: 'List bounded session summaries and their recorded next action.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['active', 'closed'] }, limit: { type: 'integer', minimum: 1, maximum: 100 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
@@ -126,6 +128,7 @@ const sessionResources = [
   { uri: 'cmi://project/session/latest', name: 'Latest work session', title: 'Latest Work Session', description: 'Latest durable session report, including next-action intelligence when closed.', mimeType: 'application/json' },
   { uri: 'cmi://project/session-handoff/latest', name: 'Latest session handoff', title: 'Latest Session Handoff', description: 'Continuation pack for the latest closed session.', mimeType: 'application/json' },
   { uri: 'cmi://project/findings', name: 'Project findings', title: 'Persistent Project Findings', description: 'Open findings that should remain visible across AI sessions until evidence or review resolves them.', mimeType: 'application/json' },
+  { uri: 'cmi://project/closing-intelligence/latest', name: 'Latest Closing Intelligence', title: 'CMI Closing Intelligence', description: 'Bounded end-of-work alerts and next action for the latest closed work session.', mimeType: 'application/json' },
 ];
 const sessionPrompts = [
   { name: 'close_project_session', title: 'Close project session with next actions', description: 'Finalize substantial project work and surface what remains plus exactly what should happen next.', arguments: [] },
@@ -137,6 +140,10 @@ async function callSessionTool(name, args = {}) {
   if (name === 'get_ambient_task_brief') {
     const result = await buildAmbientTaskBrief(root, args.request || '');
     return textResult(formatAmbientTaskBrief(result), result);
+  }
+  if (name === 'get_closing_intelligence') {
+    const result = await buildClosingIntelligence(root, args.id || 'latest');
+    return textResult(formatClosingIntelligence(result), result);
   }
   if (name === 'get_work_session_status') {
     const result = await assessSession(root, args.id || 'latest');
@@ -175,7 +182,8 @@ async function callSessionTool(name, args = {}) {
   if (name === 'finalize_work_session') {
     writable();
     const result = await closeSession(root, args.id || 'latest', args);
-    return textResult(formatSessionReport(result), result);
+    const closingIntelligence = await buildClosingIntelligence(root, result.id);
+    return textResult(`${formatSessionReport(result)}\n\n${formatClosingIntelligence(closingIntelligence)}`, { ...result, closingIntelligence });
   }
   if (name === 'set_project_finding_state') {
     writable();
@@ -210,12 +218,13 @@ async function readSessionResource(uri) {
   if (uri === 'cmi://project/session/latest') return { uri, mimeType: 'application/json', text: JSON.stringify(await getSession(root, 'latest'), null, 2) };
   if (uri === 'cmi://project/session-handoff/latest') return { uri, mimeType: 'application/json', text: JSON.stringify(await getSessionHandoff(root, 'latest'), null, 2) };
   if (uri === 'cmi://project/findings') return { uri, mimeType: 'application/json', text: JSON.stringify(await listFindings(root, { state: 'open', limit: 100 }), null, 2) };
+  if (uri === 'cmi://project/closing-intelligence/latest') return { uri, mimeType: 'application/json', text: JSON.stringify(await buildClosingIntelligence(root, 'latest'), null, 2) };
   if (uri === 'cmi://project/evaluation-report') return { uri, mimeType: 'application/json', text: JSON.stringify(await buildEvaluationReport(root), null, 2) };
   throw new Error(`Unknown session/evaluation resource: ${uri}`);
 }
 function sessionPrompt(name) {
   if (name === 'close_project_session') {
-    return { description: 'Close the current project session and make the next step obvious.', messages: [{ role: 'user', content: { type: 'text', text: 'Before ending substantial project work, call finalize_work_session. Record any final accomplishments, blockers, decisions, open questions, and project-relative files that CMI cannot observe itself. Then present the session outcome, all P0/P1 unresolved findings, and the highest-priority next action to the user without waiting for them to ask what to do next. Preserve the distinction between observed evidence, reviewed knowledge, historical correlation, and inference. Do not claim verification that was not actually performed.' } }] };
+    return { description: 'Close the current project session and make the next step obvious.', messages: [{ role: 'user', content: { type: 'text', text: 'Before ending substantial project work, call finalize_work_session. Record any final accomplishments, blockers, decisions, open questions, and project-relative files that CMI cannot observe itself. Then retrieve Closing Intelligence and append its concise `### CMI Intelligence` section to the final user-visible response: at most three alerts, material P0/P1 evidence first, or the one-line CLEAN state when no material alert exists. Also surface the highest-priority next action without waiting for the user to ask what to do next. Preserve the distinction between observed evidence, reviewed knowledge, historical correlation, and inference. Reviewed consistency-rule relevance is not proof of a violation. Do not claim verification that was not actually performed.' } }] };
   }
   if (name === 'continue_from_session_handoff') {
     return { description: 'Resume from durable CMI continuation state.', messages: [{ role: 'user', content: { type: 'text', text: 'Read get_session_handoff or cmi://project/session-handoff/latest before reconstructing project state manually. Continue the recorded objective when appropriate. Address P0/P1 next actions before unrelated work unless the user explicitly changes priority. Re-check current repository evidence because handoff state can become stale, and do not promote knowledge candidates into durable truth without review.' } }] };
@@ -249,7 +258,7 @@ input.on('line', (line) => {
     if (method === 'initialize') {
       lifecycle = 'initializing';
       forward(message, (response) => {
-        if (response?.result) response.result.instructions = `${response.result.instructions || ''} CMI ambient project intelligence is available. For substantive or terse user requests, call get_ambient_task_brief early using the user request as given; users do not need to mention CMI or restate its workflow. Treat its routing as advisory, keep user intent in control, and never promote candidates into durable truth without review. Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness. Longitudinal reconstruction, follow-up, history-usefulness, and verification-choice outcomes require explicit review; structural evidence diagnostics never imply statistical sufficiency or automatic threshold recalibration.`.trim();
+        if (response?.result) response.result.instructions = `${response.result.instructions || ''} CMI ambient project intelligence is available. For substantive or terse user requests, call get_ambient_task_brief early using the user request as given; users do not need to mention CMI or restate its workflow. Treat its routing as advisory, keep user intent in control, and never promote candidates into durable truth without review. Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it, retrieve Closing Intelligence, and append a concise \`CMI Intelligence\` section with at most three alerts (or CLEAN), including the highest-priority next action, so the user can see unresolved cross-session work and evidence-backed consistency reminders without asking. Do not present reviewed-rule relevance as proof of a violation. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness. Longitudinal reconstruction, follow-up, history-usefulness, and verification-choice outcomes require explicit review; structural evidence diagnostics never imply statistical sufficiency or automatic threshold recalibration.`.trim();
         return response;
       });
       return;

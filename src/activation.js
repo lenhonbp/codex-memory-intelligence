@@ -23,7 +23,8 @@ For every substantive repository task:
 - Do not broaden the user's task merely because CMI recommends additional work. Surface material P0/P1 evidence, but keep user intent in control.
 - Never promote inferred advice, memory-gap suggestions, session candidates, or change-learning candidates into durable project truth without explicit review.
 - Never claim a test/build/deploy succeeded unless it was actually run and observed through the agent's normal environment.
-- Before ending substantial work, finalize the CMI session when possible and surface unresolved P0/P1 findings plus the highest-priority evidence-based next action.
+- Before ending substantial work, finalize the CMI session when possible, retrieve Closing Intelligence, and append a concise \`### CMI Intelligence\` section to the final user-visible response. Show at most three alerts; never omit material P0/P1 evidence; if no material alert exists, show the one-line CLEAN state.
+- Treat reviewed design, architecture, policy, and other consistency-rule relevance as a requirement to check, not proof of a violation. Only call something a violation when evidence establishes it.
 
 If CMI is unavailable or blocked, continue only with evidence you can actually establish and state the limitation. Do not ask the user to rewrite a short prompt into a CMI-specific prompt.
 ${AGENTS_END}`;
