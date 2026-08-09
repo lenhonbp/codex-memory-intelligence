@@ -200,6 +200,10 @@ async function readFindingsRegistry(root) {
   });
   return registry || { schemaVersion: 1, updatedAt: nowIso(), findings: [] };
 }
+async function findingsRegistryExists(root) {
+  try { await fs.lstat(findingsPath(root)); return true; }
+  catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
+}
 async function writeFindingsRegistry(root, registry) {
   const validation = validateFindingRegistryContract(registry);
   if (!validation.valid) throw new Error(`Invalid findings registry: ${validation.errors.join(' ')}`);
@@ -374,7 +378,7 @@ function makeFinding(category, severity, title, detail, options = {}) {
 function verificationNames(records) {
   return new Set(records.flatMap((record) => record.completion?.verifications || []).map((item) => String(item.name || '').trim().toLowerCase()));
 }
-function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, staleReport, gitContinuity }) {
+function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, mutationPaths, staleReport, gitContinuity }) {
   const findings = [];
   const graph = current.project.graph;
   if (!current.project.initialized || !graph) {
@@ -421,8 +425,8 @@ function detectFindings({ record, current, relatedActive, concurrentActive, comp
     if ((completion.unexpectedImpact || []).length) findings.push(makeFinding('unexpected-impact', 'medium', 'Unexpected impact was recorded for related work', completion.unexpectedImpact.join(' '), { target: change.id, evidence: [`change:${change.id}`], sessionRelevance: 'related' }));
   }
 
-  if (scopePaths.length && !completedDetails.length && !relatedActive.length) findings.push(makeFinding('uncaptured-session-change', 'medium', 'Session changed project scope without a related change record', `${scopePaths.length} project path(s) changed during the session but no associated active/completed CMI change record was identified.`, { target: record.id, evidence: ['git-session-scope'], relatedFiles: scopePaths, sessionRelevance: 'related' }));
-  if (current.repository?.available && current.repository.projectClean === false && scopePaths.length) findings.push(makeFinding('uncommitted-session-work', 'low', 'Session ends with uncommitted project work', `${scopePaths.length} session-related path(s) remain in the Git worktree. Preserve or explicitly hand off this state before switching tasks.`, { target: record.id, evidence: ['git-worktree'], relatedFiles: scopePaths, sessionRelevance: 'related' }));
+  if (mutationPaths.length && !completedDetails.length && !relatedActive.length) findings.push(makeFinding('uncaptured-session-change', 'medium', 'Session changed project scope without a related change record', `${mutationPaths.length} project path(s) changed during the session but no associated active/completed CMI change record was identified.`, { target: record.id, evidence: ['git-session-mutation-scope'], relatedFiles: mutationPaths, sessionRelevance: 'related' }));
+  if (current.repository?.available && current.repository.projectClean === false && mutationPaths.length) findings.push(makeFinding('uncommitted-session-work', 'low', 'Session ends with uncommitted project work', `${mutationPaths.length} session-mutated path(s) remain in the Git worktree. Preserve or explicitly hand off this state before switching tasks.`, { target: record.id, evidence: ['git-worktree'], relatedFiles: mutationPaths, sessionRelevance: 'related' }));
   return findings;
 }
 function priorityFor(finding) {
@@ -448,7 +452,7 @@ function actionFor(finding) {
     'git-history-rewrite': 'Review session scope manually after rebase/reset/history rewrite; use explicit observed paths or a new clean session baseline instead of start-to-current Git diff attribution.',
     'prediction-gap': `Review the missed changed paths (${finding.relatedFiles?.join(', ') || 'see evidence'}) and decide whether future scope/boundary expectations should be updated.`,
     'unexpected-impact': 'Investigate the unexpected impact and add a reviewed lesson only if the evidence supports it.',
-    'uncaptured-session-change': 'Create/complete a CMI change record for the session scope so expected-vs-actual and verification evidence are not lost.',
+    'uncaptured-session-change': 'Create/complete a CMI change record for the mutated session scope so expected-vs-actual and verification evidence are not lost.',
     'uncommitted-session-work': 'Commit, stash, revert, or explicitly preserve the dirty session scope before switching to unrelated work.',
     'open-question': `Answer or explicitly defer the open question: ${finding.detail}`,
     'invalid-change-records': 'Repair or quarantine invalid durable change records before relying on historical intelligence.',
@@ -528,16 +532,16 @@ function buildKnowledgeCandidates(record, findings) {
   for (const finding of findings.filter((item) => ['prediction-gap', 'unexpected-impact', 'verification-failed'].includes(item.category))) candidates.push({ type: 'mistake', status: 'review-required', proposal: `${finding.title}: ${finding.detail}`, reason: 'Repeated or well-understood evidence may justify a durable lesson after review.' });
   return bounded(candidates, 20);
 }
-function inferOutcome(explicit, record, current, relatedActive, completedDetails, currentFindings, scopePaths) {
+function inferOutcome(explicit, record, current, relatedActive, completedDetails, currentFindings, mutationPaths) {
   if (explicit) {
     const normalized = String(explicit).trim().toLowerCase();
     if (!SESSION_OUTCOMES.has(normalized)) throw new Error(`Session outcome must be one of: ${[...SESSION_OUTCOMES].join(', ')}.`);
     return normalized;
   }
   if (currentFindings.some((item) => item.severity === 'critical' || item.category === 'session-blocker')) return 'blocked';
-  if (relatedActive.length || currentFindings.some((item) => ['verification-missing', 'verification-incomplete'].includes(item.category)) || (current.repository?.available && current.repository.projectClean === false && scopePaths.length)) return 'partial';
+  if (relatedActive.length || currentFindings.some((item) => ['verification-missing', 'verification-incomplete'].includes(item.category)) || (current.repository?.available && current.repository.projectClean === false && mutationPaths.length)) return 'partial';
   if (completedDetails.length && completedDetails.every((item) => item.completion?.outcome === 'succeeded')) return 'succeeded';
-  if (!scopePaths.length && record.observations.some((item) => item.notes?.length || item.decisions?.length || item.questions?.length || item.accomplished?.length)) return 'investigated';
+  if (!mutationPaths.length && record.observations.some((item) => item.notes?.length || item.decisions?.length || item.questions?.length || item.accomplished?.length || item.files?.length)) return 'investigated';
   return 'unknown';
 }
 function summaryText(outcome, scopePaths, completedDetails, openFindings, recommendations) {
@@ -546,6 +550,7 @@ function summaryText(outcome, scopePaths, completedDetails, openFindings, recomm
   return `Session outcome: ${outcome}. ${scopePaths.length} project path(s) were associated with the session and ${completedDetails.length} related change record(s) completed during it. ${blocking} high/critical relevant open finding(s) remain. Next: ${next}`;
 }
 async function persistDetectedFindings(root, sessionId, detected) {
+  const registryExists = await findingsRegistryExists(root);
   const registry = await readFindingsRegistry(root);
   const timestamp = nowIso();
   const seenKeys = new Set();
@@ -579,7 +584,7 @@ async function persistDetectedFindings(root, sessionId, detected) {
     finding.stateReason = 'The deterministic condition was not present in the latest closed session assessment.';
   }
   registry.findings = registry.findings.slice(-1000);
-  await writeFindingsRegistry(root, registry);
+  if (registry.findings.length || registryExists) await writeFindingsRegistry(root, registry);
   return current;
 }
 async function loadOpenFindings(root) {
@@ -638,7 +643,8 @@ async function buildAssessment(root, record) {
   const committedEvidence = await committedPathsSince(root, record.start.repository?.fullHead, current.repository?.fullHead);
   const committedPaths = committedEvidence.paths;
   const observedPaths = record.observations.flatMap((item) => item.files || []);
-  const scopePaths = bounded(unique([...newDirtyPaths, ...committedPaths, ...observedPaths]), MAX_PATHS);
+  const mutationPaths = bounded(unique([...newDirtyPaths, ...committedPaths]), MAX_PATHS);
+  const scopePaths = bounded(unique([...mutationPaths, ...observedPaths]), MAX_PATHS);
   const association = associateSessionChanges({
     sessionGoal: record.goal,
     startActiveChanges: record.start.activeChanges || [],
@@ -649,7 +655,7 @@ async function buildAssessment(root, record) {
   const completedDetails = association.relatedCompleted.map((item) => item.change);
   const detected = detectFindings({
     record, current, relatedActive: association.relatedActive, concurrentActive: association.concurrentActive,
-    completedDetails, scopePaths, staleReport, gitContinuity: committedEvidence.continuity,
+    completedDetails, scopePaths, mutationPaths, staleReport, gitContinuity: committedEvidence.continuity,
   });
   const findings = mergeLiveFindings(existingOpen, detected);
   const planningSignals = intelligence.planning?.signals || [];
@@ -659,7 +665,7 @@ async function buildAssessment(root, record) {
     schemaVersion: 1, generatedAt: nowIso(),
     session: { id: record.id, goal: record.goal, status: record.status, createdAt: record.createdAt },
     current,
-    scope: { paths: scopePaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths], gitContinuity: committedEvidence.continuity },
+    scope: { paths: scopePaths, mutationPaths, newDirtyPaths, committedPaths, explicitlyObservedPaths: unique(observedPaths), preexistingDirtyPaths: [...startPaths], gitContinuity: committedEvidence.continuity },
     association: {
       relatedActive: association.relatedActive.map(relationSummary),
       concurrentActive: association.concurrentActive.map(relationSummary),
@@ -692,7 +698,7 @@ export async function closeSession(root, selector, options = {}) {
     const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges, planningSignals);
     const guardrails = buildGuardrails(openFindings, recommendations);
     const relatedActive = assessment.association.relatedActive;
-    const outcome = inferOutcome(options.outcome, record, assessment.current, relatedActive, assessment.completedChanges, currentFindings, assessment.scope.paths);
+    const outcome = inferOutcome(options.outcome, record, assessment.current, relatedActive, assessment.completedChanges, currentFindings, assessment.scope.mutationPaths || []);
     const knowledgeCandidates = buildKnowledgeCandidates(record, currentFindings);
     const associationForHandoff = {
       relatedActive: assessment.association.relatedActive.map((item) => ({ ...item, change: { id: item.id, goal: item.goal, status: item.status } })),
@@ -710,7 +716,7 @@ export async function closeSession(root, selector, options = {}) {
       summary: summaryText(outcome, assessment.scope.paths, assessment.completedChanges, openFindings, recommendations),
       scope: assessment.scope, current: assessment.current, association: assessment.association,
       findings: currentFindings, openFindings, recommendations, guardrails, knowledgeCandidates, handoff,
-      policy: 'Findings and next actions are evidence-linked advisory output. Session/change association is conservative; concurrent/unattributed changes do not block the session by default. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.',
+      policy: 'Findings and next actions are evidence-linked advisory output. Session scope may include explicitly observed/read paths; mutation scope is derived only from Git-observed dirty or committed project paths. Session/change association is conservative; concurrent/unattributed changes do not block the session by default. CMI does not execute project commands or promote knowledge candidates into durable truth automatically.',
     };
     await writeSession(root, record);
     return record;
@@ -747,7 +753,7 @@ export function formatSessionAssessment(result) {
   const findings = result.findings.map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
   const actions = result.recommendations.map((item) => `- ${item.priority} ${item.action}`).join('\n') || '- No evidence-based follow-up required.';
   const guardrails = result.guardrails.map((item) => `- ${item.rule}`).join('\n') || '- Preserve evidence distinctions.';
-  return `# Session status\n\nGoal: ${result.session.goal}\nScope observed: ${result.scope.paths.length} path(s)\nRelated active changes: ${result.association.relatedActive.length} · concurrent/unattributed active changes: ${result.association.concurrentActive.length}\n\n## Current findings\n${findings}\n\n## What to do next\n${actions}\n\n## Guardrails\n${guardrails}`;
+  return `# Session status\n\nGoal: ${result.session.goal}\nScope observed: ${result.scope.paths.length} path(s) · mutation evidence: ${(result.scope.mutationPaths || []).length} path(s)\nRelated active changes: ${result.association.relatedActive.length} · concurrent/unattributed active changes: ${result.association.concurrentActive.length}\n\n## Current findings\n${findings}\n\n## What to do next\n${actions}\n\n## Guardrails\n${guardrails}`;
 }
 export function formatHandoff(handoff) {
   const findings = handoff.openFindings.map((item) => `- [${item.severity}] ${item.title}: ${item.detail}`).join('\n') || '- None';
