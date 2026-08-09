@@ -51,6 +51,7 @@ function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds
     kind: finding.category === 'active-change' ? 'unfinished-work' : finding.category,
     severity: carryover ? 'reminder' : levelForFinding(finding),
     title,
+    subject: active?.goal || null,
     detail: finding.detail,
     confidence: finding.confidence || 'low',
     evidenceType: finding.evidenceType || 'inferred',
@@ -69,6 +70,7 @@ function activeChangeAlert(change) {
     kind: 'unfinished-work',
     severity: 'reminder',
     title: `Unfinished previous work: ${change.goal}`,
+    subject: change.goal,
     detail: `Change "${change.goal}" is still active. CMI is preserving it across sessions so a newer task does not silently erase unfinished work.`,
     confidence: 'high',
     evidenceType: 'observed',
@@ -110,6 +112,7 @@ async function reviewedConsistencyAlerts(root, session) {
       kind: 'consistency-rule',
       severity: 'reminder',
       title: `Reviewed project rule applies: ${compactText(item.title, 120)}`,
+      subject: item.title,
       detail: `Reviewed project knowledge is relevant to this session: ${compactText(item.text, 260)} CMI has not established a violation; verify the implementation against this reviewed rule before claiming consistency.`,
       confidence: 'high',
       evidenceType: 'reviewed',
@@ -150,6 +153,28 @@ function sortAlerts(alerts) {
     || (b.occurrences || 1) - (a.occurrences || 1)
     || a.title.localeCompare(b.title));
 }
+function nextActionReferencesAlert(nextAction, alert) {
+  if (!nextAction || !alert) return false;
+  if ((nextAction.relatedFindingIds || []).some((id) => (alert.relatedFindingIds || []).includes(id))) return true;
+  return (alert.relatedChangeIds || []).some((id) => (nextAction.evidence || []).includes(`change:${id}`));
+}
+function normalizeNextAction(session, alerts) {
+  const nextAction = session.close?.handoff?.nextAction || null;
+  if (!nextAction) return null;
+  const carryover = alerts.find((alert) => alert.kind === 'unfinished-work' && alert.severity === 'reminder' && nextActionReferencesAlert(nextAction, alert));
+  if (!carryover || nextAction.priority === 'P3') return nextAction;
+  const subject = carryover.subject || carryover.title.replace(/^Unfinished previous work:\s*/i, '');
+  return {
+    id: `closing-carryover:${carryover.relatedChangeIds[0] || carryover.id}`,
+    priority: 'P3',
+    action: `Keep unfinished work "${subject}" visible and resume or explicitly defer it when the user prioritizes it; do not block the just-completed unrelated task on it by default.`,
+    reason: 'Closing Intelligence classified this active change as cross-session carryover rather than current-session goal evidence.',
+    evidenceType: carryover.evidenceType,
+    evidence: carryover.evidence,
+    confidence: carryover.confidence,
+    relatedFindingIds: carryover.relatedFindingIds,
+  };
+}
 
 export async function buildClosingIntelligence(root, selector = 'latest') {
   const session = await resolveClosedSession(root, selector);
@@ -177,7 +202,7 @@ export async function buildClosingIntelligence(root, selector = 'latest') {
     state,
     alerts,
     counts,
-    nextAction: session.close.handoff.nextAction,
+    nextAction: normalizeNextAction(session, candidates),
     policy: 'Closing Intelligence is a bounded read model over existing CMI session, change, finding, and reviewed-memory evidence. It shows at most three alerts, does not create durable truth, and does not treat reviewed-rule relevance or heuristic consistency as proof of a violation.',
   };
 }
