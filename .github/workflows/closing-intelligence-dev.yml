@@ -26,13 +26,16 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/activation.js')
-          text = p.read_text(encoding='utf-8')
-          old = 'append a concise `### CMI Intelligence` section'
-          new = 'append a concise \\`### CMI Intelligence\\` section'
-          if text.count(old) != 1:
-              raise SystemExit(f'activation escaping target count={text.count(old)}')
-          p.write_text(text.replace(old, new), encoding='utf-8')
+          repairs = [
+              ('src/activation.js', 'append a concise `### CMI Intelligence` section', 'append a concise \\`### CMI Intelligence\\` section'),
+              ('src/mcp-entry.js', 'append a concise `CMI Intelligence` section with at most three alerts', 'append a concise \\`CMI Intelligence\\` section with at most three alerts'),
+          ]
+          for path, old, new in repairs:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path} escaping target count={text.count(old)}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
           PY
       - name: Syntax-check changed source
         run: |
