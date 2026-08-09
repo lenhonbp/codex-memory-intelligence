@@ -58,7 +58,7 @@ Durable memory, session, handoff, and finding identities use canonical UUIDs in 
 
 Critical schema versions and enums are checked during repository quality validation, so a runtime/schema mismatch is a CI failure rather than documentation drift.
 
-Legacy memory metadata remains readable for compatibility. New/versioned metadata is held to the current contract. Invalid versioned metadata is treated as untracked evidence instead of reviewed-current knowledge.
+Marker-free legacy memory remains untracked and valid legacy metadata remains readable for compatibility. New/versioned metadata is held to the current contract. A present invalid or future metadata marker is blocked from retrieval and mutation instead of being treated as ordinary untracked or reviewed-current knowledge.
 
 ## Non-goals
 

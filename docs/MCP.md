@@ -260,7 +260,7 @@ See [Real-Repository Evaluation](EVALUATION.md).
 
 Durable memory mutations share a local write lock so `remember`, source-fingerprint refresh, and lifecycle mutation do not overwrite each other when multiple local writers operate concurrently. Change records and session/finding storage use their own local locking/atomic-write boundaries.
 
-New durable memory entries carry `schemaVersion: 1` and start with `lifecycle.state: active`. Existing metadata without a schema version remains readable for compatibility and is upgraded when explicitly refreshed or lifecycle-mutated.
+New durable memory entries carry `schemaVersion: 1` and start with `lifecycle.state: active`. Valid existing metadata without a schema version remains readable for compatibility and is upgraded when explicitly refreshed or lifecycle-mutated. Invalid or future-version metadata blocks retrieval and all normal memory mutations; MCP write enablement does not override this compatibility boundary.
 
 Memory-gap suggestions, session knowledge candidates, and change learning candidates never bypass the write boundary and never become durable project truth automatically.
 

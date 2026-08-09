@@ -427,12 +427,12 @@ export async function prepareChangeBrief(root, query, options = {}) {
   if (!normalizedQuery) throw new Error('Change goal cannot be empty.');
   const graph = await loadProjectGraph(root);
   const baseline = await getRepositoryBaseline(root);
-  if (!graph) {
-    return { schemaVersion: 1, generatedAt: new Date().toISOString(), query: normalizedQuery, workspace: options.workspace || null, ready: false, baseline, reason: 'Project graph is missing. Run cmi scan before preparing a change.', graphHealth: await inspectProjectGraphHealth(root, graph) };
-  }
   const graphHealth = await inspectProjectGraphHealth(root, graph);
+  if (!graph) {
+    return { schemaVersion: 1, generatedAt: new Date().toISOString(), query: normalizedQuery, workspace: options.workspace || null, ready: false, baseline, reason: graphHealth.scanAllowed === false ? graphHealth.blockedReason : 'Project graph is missing. Run cmi scan before preparing a change.', graphHealth };
+  }
   if (!graphHealth.current) {
-    return { schemaVersion: 1, generatedAt: new Date().toISOString(), query: normalizedQuery, workspace: options.workspace || null, ready: false, baseline, reason: 'Project graph is stale. Run cmi scan before preparing a change.', graphHealth };
+    return { schemaVersion: 1, generatedAt: new Date().toISOString(), query: normalizedQuery, workspace: options.workspace || null, ready: false, baseline, reason: graphHealth.scanAllowed === false ? graphHealth.blockedReason || graphHealth.formatReason : graphHealth.formatReason || 'Project graph is stale. Run cmi scan before preparing a change.', graphHealth };
   }
   const context = await buildContextPack(root, normalizedQuery, options.limit || 12, { workspace: options.workspace });
   const boundaryMap = await mapProjectBoundaries(root);

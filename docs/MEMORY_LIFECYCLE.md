@@ -25,6 +25,8 @@ New durable entries carry metadata with `schemaVersion: 1` and begin in the acti
 
 Older tracked entries without `schemaVersion` remain readable for compatibility. An explicit refresh or lifecycle mutation upgrades their metadata to schema version 1.
 
+That compatibility path applies only to valid legacy metadata. A present invalid marker or metadata schema newer than this CMI version blocks search, context, preparation, refresh, lifecycle mutation, and new memory writes until it is handled with a compatible/newer CMI version or explicit operator recovery; current CMI does not downgrade or rewrite it.
+
 ## Lifecycle states
 
 ### `active`

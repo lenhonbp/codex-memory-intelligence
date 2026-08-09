@@ -97,7 +97,7 @@ test('session assessment surfaces history rewrite instead of auto-attributing re
   assert.ok(assessment.guardrails.some((item) => item.id === 'do-not-overattribute-rewritten-history'));
 });
 
-test('invalid versioned memory lifecycle metadata is not trusted as reviewed-current evidence', async () => {
+test('invalid versioned memory lifecycle metadata is blocked from trusted evidence', async () => {
   const root = await project('cmi-v09-memory-contract-');
   await fs.writeFile(path.join(root, 'src', 'policy.js'), 'export const policy = true;\n');
   await scanProject(root);
@@ -107,8 +107,9 @@ test('invalid versioned memory lifecycle metadata is not trusted as reviewed-cur
   const corrupted = content.replace('"state":"active"', '"state":"ghost"');
   await fs.writeFile(file, corrupted);
   const report = await checkStaleMemory(root);
-  assert.equal(report.counts.untracked, 1);
-  assert.match(report.entries.find((item) => /Policy is enabled/.test(item.text)).reasons[0], /runtime validation/i);
+  assert.equal(report.counts.untracked, 0);
+  assert.equal(report.counts.blocked, 1);
+  assert.equal(report.entries.find((item) => item.status === 'blocked')?.diagnostic?.code, 'CMI_MEMORY_METADATA_INVALID');
   const valid = validateMemoryMetadataContract({ schemaVersion: 1, id: entry.id, type: 'fact', createdAt: new Date().toISOString(), sources: [], sourceHashes: {}, projectHash: null, lifecycle: { state: 'active' } });
   assert.equal(valid.valid, true);
 });

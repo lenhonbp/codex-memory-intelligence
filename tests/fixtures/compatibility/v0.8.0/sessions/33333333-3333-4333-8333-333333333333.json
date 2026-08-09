@@ -34,7 +34,7 @@
       "activeChanges": [],
       "openFindings": [],
       "nextActions": [],
-      "nextAction": {"priority":"P3","action":"Review the next user-prioritized goal.","reason":"No additional historical evidence was recorded.","evidenceType":"observed","evidence":[],"confidence":"high"},
+      "nextAction": {"priority":"P3","action":"No evidence-based follow-up is currently required; begin the next user-prioritized project goal.","reason":"CMI found no unresolved evidence requiring a more specific action.","evidenceType":"observed","evidence":[],"confidence":"high"},
       "guardrails": [],
       "knowledgeCandidates": [],
       "agentInstruction": "Continue from preserved session evidence and re-check current project state."

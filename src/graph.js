@@ -5,6 +5,7 @@ import { resolveProjectFile, slash } from './paths.js';
 import { workspaceForPath } from './workspaces.js';
 import { createIgnoreMatcher } from './ignore.js';
 import { safeReadMemoryJson, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
+import { inspectProjectConfig } from './config.js';
 
 const SOURCE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx',
@@ -12,8 +13,9 @@ const SOURCE_EXTENSIONS = new Set([
   '.vue', '.svelte',
 ]);
 const JS_EXTENSIONS = ['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx'];
-const PARSER_VERSION = 4;
+export const GRAPH_PARSER_VERSION = 4;
 export const GRAPH_SCHEMA_VERSION = 4;
+export const PROJECT_INDEX_SCHEMA_VERSION = 5;
 const FRESHNESS_VERSION = 1;
 export const RESOLVER_INPUT = /(^|\/)(?:tsconfig(?:\.[^/]+)?|jsconfig)\.json$|(^|\/)go\.mod$|(^|\/)Cargo\.toml$/;
 export const WORKSPACE_INPUT = /(^|\/)(?:package\.json|pnpm-workspace\.yaml|go\.work|go\.mod|Cargo\.toml)$/;
@@ -375,7 +377,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const sources = candidates.slice(0, maxGraphFiles);
   const sourcePaths = new Set(sources.map((file) => file.path));
   const previous = options.previousGraph?.schemaVersion === GRAPH_SCHEMA_VERSION
-    && options.previousGraph?.parserVersion === PARSER_VERSION
+    && options.previousGraph?.parserVersion === GRAPH_PARSER_VERSION
     ? new Map(options.previousGraph.nodes.map((node) => [node.path, node]))
     : new Map();
   const resolvers = await loadResolvers(root, fileRecords);
@@ -431,7 +433,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const durationMs = Number((performance.now() - started).toFixed(2));
   return {
     schemaVersion: GRAPH_SCHEMA_VERSION,
-    parserVersion: PARSER_VERSION,
+    parserVersion: GRAPH_PARSER_VERSION,
     generatedAt: new Date().toISOString(),
     freshness,
     summary: {
@@ -460,6 +462,62 @@ export async function loadProjectGraph(root) {
   try { return await safeReadMemoryJson(root, 'project-graph.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }); } catch { return null; }
 }
 
+function versionState(value, supported) {
+  if (!Number.isInteger(value)) return 'unknown';
+  if (value === supported) return 'current';
+  return value > supported ? 'unsupported' : 'obsolete';
+}
+
+function combinedGraphFormat(graph) {
+  if (!graph) return { state: 'missing', schemaVersion: null, parserVersion: null };
+  const schemaVersion = Number.isInteger(graph.schemaVersion) ? graph.schemaVersion : null;
+  const parserVersion = Number.isInteger(graph.parserVersion) ? graph.parserVersion : null;
+  const schemaState = versionState(schemaVersion, GRAPH_SCHEMA_VERSION);
+  const parserState = versionState(parserVersion, GRAPH_PARSER_VERSION);
+  const state = [schemaState, parserState].includes('unsupported')
+    ? 'unsupported'
+    : [schemaState, parserState].includes('obsolete')
+      ? 'obsolete'
+      : [schemaState, parserState].includes('unknown')
+        ? 'unknown'
+        : 'current';
+  return { state, schemaVersion, parserVersion, schemaState, parserState };
+}
+
+export async function inspectGeneratedFormats(root, suppliedGraph = undefined) {
+  const graph = suppliedGraph === undefined ? await loadProjectGraph(root) : suppliedGraph;
+  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
+  const graphFormat = combinedGraphFormat(graph);
+  const indexVersion = Number.isInteger(index?.schemaVersion) ? index.schemaVersion : null;
+  const indexState = index ? versionState(indexVersion, PROJECT_INDEX_SCHEMA_VERSION) : 'missing';
+  const unsupported = graphFormat.state === 'unsupported' || indexState === 'unsupported';
+  const unsupportedParts = [
+    graphFormat.state === 'unsupported' ? `project graph schema/parser ${graphFormat.schemaVersion ?? 'unknown'}/${graphFormat.parserVersion ?? 'unknown'}` : null,
+    indexState === 'unsupported' ? `project index schema ${indexVersion ?? 'unknown'}` : null,
+  ].filter(Boolean);
+  const reason = unsupported
+    ? `Generated intelligence is newer than this CMI version (${unsupportedParts.join(', ')}). Normal scan is blocked; use a compatible/newer CMI version, or preserve and explicitly remove the unsupported generated files before rebuilding.`
+    : null;
+  return {
+    state: unsupported ? 'unsupported' : 'supported',
+    current: graphFormat.state === 'current' && indexState === 'current',
+    scanAllowed: !unsupported,
+    code: unsupported ? 'CMI_GENERATED_VERSION_UNSUPPORTED' : null,
+    reason,
+    graph: graphFormat,
+    index: { state: indexState, schemaVersion: indexVersion, available: Boolean(index) },
+  };
+}
+
+export async function assertGeneratedFormatsWritable(root) {
+  const compatibility = await inspectGeneratedFormats(root);
+  if (compatibility.scanAllowed) return compatibility;
+  const error = new Error(compatibility.reason);
+  error.code = compatibility.code;
+  error.details = compatibility;
+  throw error;
+}
+
 function graphFingerprintMatches(stat, fingerprint) {
   if (!stat || typeof fingerprint !== 'string') return false;
   const [size, mtimeMs, ctimeMs] = fingerprint.split(':').map(Number);
@@ -469,9 +527,32 @@ function graphFingerprintMatches(stat, fingerprint) {
 
 export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
   const graph = suppliedGraph || await loadProjectGraph(root);
-  if (!graph) return { available: false, totalNodes: 0, freshNodes: 0, staleNodes: 0, missingNodes: 0, truncated: false, current: false, complete: false, healthy: false, state: 'missing' };
-  const schemaVersion = Number.isInteger(graph.schemaVersion) ? graph.schemaVersion : null;
-  const formatStatus = schemaVersion === GRAPH_SCHEMA_VERSION ? 'current' : schemaVersion === null ? 'unknown' : schemaVersion > GRAPH_SCHEMA_VERSION ? 'unsupported' : 'obsolete';
+  const [configuration, generated] = await Promise.all([
+    inspectProjectConfig(root),
+    inspectGeneratedFormats(root, graph),
+  ]);
+  const scanAllowed = configuration.usable && generated.scanAllowed;
+  const blockedReason = !configuration.usable ? configuration.reason : generated.reason;
+  if (!graph) return {
+    available: false,
+    totalNodes: 0,
+    freshNodes: 0,
+    staleNodes: 0,
+    missingNodes: 0,
+    truncated: false,
+    current: false,
+    complete: false,
+    healthy: false,
+    state: scanAllowed ? 'missing' : 'unsupported',
+    formatStatus: 'missing',
+    rebuildRequired: false,
+    scanAllowed,
+    blockedReason,
+    generatedState: generated.state,
+    configurationState: configuration.state,
+  };
+  const schemaVersion = generated.graph.schemaVersion;
+  const formatStatus = generated.graph.state;
   let freshNodes = 0;
   let staleNodes = 0;
   let missingNodes = 0;
@@ -487,10 +568,10 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
   let discoveryUnreadable = 0;
   let freshnessError = null;
   try {
-    const config = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
-    const discovery = await discoverGraphFileRecords(root, config);
+    if (!configuration.usable) throw Object.assign(new Error(configuration.reason), { code: configuration.code });
+    const discovery = await discoverGraphFileRecords(root, configuration.config);
     discoveryUnreadable = discovery.unreadable;
-    currentFreshness = await buildFreshnessDescriptor(root, discovery.records, config);
+    currentFreshness = await buildFreshnessDescriptor(root, discovery.records, configuration.config);
   } catch (error) {
     freshnessError = error?.code || 'CMI_GRAPH_FRESHNESS_FAILED';
   }
@@ -502,10 +583,11 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
   const scanConfigChanged = Boolean(storedFreshness && currentFreshness && (storedFreshness.scanConfigHash !== currentFreshness.scanConfigHash || storedFreshness.ignoreFileFingerprint !== currentFreshness.ignoreFileFingerprint));
   const discoveryChanged = freshnessUnknown || sourceSetChanged || resolverInputsChanged || workspaceInputsChanged || scanConfigChanged || discoveryUnreadable > 0;
   const truncated = Boolean(graph.summary?.truncated);
-  const current = formatStatus === 'current' && staleNodes === 0 && missingNodes === 0 && !discoveryChanged;
+  const current = scanAllowed && formatStatus === 'current' && staleNodes === 0 && missingNodes === 0 && !discoveryChanged;
   const complete = !truncated;
   const healthy = current && complete;
-  const state = !current ? 'stale' : !complete ? 'incomplete' : 'healthy';
+  const state = !scanAllowed ? 'unsupported' : !current ? 'stale' : !complete ? 'incomplete' : 'healthy';
+  const rebuildRequired = scanAllowed && ['obsolete', 'unknown'].includes(formatStatus);
   return {
     available: true,
     totalNodes: (graph.nodes || []).length,
@@ -519,11 +601,16 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
     state,
     schemaVersion,
     formatStatus,
-    rebuildRequired: formatStatus !== 'current',
-    formatReason: formatStatus === 'obsolete'
-      ? `Project graph format ${schemaVersion} is obsolete; rebuild generated intelligence with cmi scan.`
-      : formatStatus === 'unsupported'
-        ? `Project graph format ${schemaVersion} is newer than this CMI version; do not reinterpret it, rebuild with a compatible CMI version or remove it after preserving the original.`
+    parserVersion: generated.graph.parserVersion,
+    rebuildRequired,
+    scanAllowed,
+    blockedReason,
+    generatedState: generated.state,
+    configurationState: configuration.state,
+    formatReason: !scanAllowed
+      ? blockedReason
+      : formatStatus === 'obsolete'
+        ? `Project graph format ${schemaVersion}/${generated.graph.parserVersion ?? 'unknown'} is obsolete; rebuild generated intelligence with cmi scan.`
         : formatStatus === 'unknown'
           ? 'Project graph format is missing or unknown; rebuild generated intelligence with cmi scan.'
           : null,
@@ -539,8 +626,14 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
 
 export async function impactAnalysis(root, target, maxDepth = 3) {
   const graph = await loadProjectGraph(root);
-  if (!graph) return { found: false, blocked: true, reason: 'Project graph is missing. Run cmi scan.', graphHealth: await inspectProjectGraphHealth(root, graph) };
   const graphHealth = await inspectProjectGraphHealth(root, graph);
+  if (!graph) return {
+    found: false,
+    blocked: true,
+    reason: graphHealth.scanAllowed === false ? graphHealth.blockedReason : 'Project graph is missing. Run cmi scan.',
+    graphHealth,
+    recommendedAction: { command: graphHealth.scanAllowed === false ? null : 'cmi scan', reason: graphHealth.scanAllowed === false ? graphHealth.blockedReason : 'Build the project graph before relying on impact analysis.' },
+  };
   if (!graphHealth.current) return {
     found: false,
     blocked: true,
@@ -548,7 +641,12 @@ export async function impactAnalysis(root, target, maxDepth = 3) {
       ? graphHealth.formatReason
       : 'Project graph is stale or repository discovery inputs changed. Run cmi scan before relying on impact analysis.',
     graphHealth,
-    recommendedAction: { command: 'cmi scan', reason: graphHealth.rebuildRequired ? graphHealth.formatReason : 'Source fingerprints, source set, resolver/workspace inputs, or scan configuration no longer match the stored graph.' },
+    recommendedAction: {
+      command: graphHealth.scanAllowed === false ? null : 'cmi scan',
+      reason: graphHealth.scanAllowed === false
+        ? graphHealth.blockedReason || graphHealth.formatReason
+        : graphHealth.rebuildRequired ? graphHealth.formatReason : 'Source fingerprints, source set, resolver/workspace inputs, or scan configuration no longer match the stored graph.',
+    },
   };
   const warnings = graphHealth.complete ? [] : ['Impact coverage is incomplete because the project graph is truncated.'];
   const query = String(target || '').trim().toLowerCase();

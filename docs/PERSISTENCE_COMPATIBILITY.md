@@ -32,12 +32,14 @@ Fixtures are under [`tests/fixtures/compatibility/`](../tests/fixtures/compatibi
 | `v0.5-config-memory` | `v0.5.0` / `e2b40f5...` | Minimized released config and legacy metadata; Markdown is deterministic and secret-free | Config and memory read without rewrite; review is not promoted |
 | `v0.5-generated` | `v0.5.0` / `e2b40f5...` | Minimized released index and schema-3 graph with one path-independent source node | Index is current; graph is detected as obsolete and rebuilt |
 | `v0.7-change` | `v0.7.0` / `4034aad...` | Minimized released active change record with deterministic IDs and empty observations | Read-compatible, no rewrite |
-| `v0.8-session` | `v0.8.0` / `aaae517...` | Minimized closed session retaining the released id-less fallback `nextAction` | Read-compatible through a bounded legacy reader path, no rewrite |
+| `v0.8-session` | `v0.8.0` / `aaae517...` | Minimized closed session retaining the exact released id-less fallback `nextAction` action, reason, priority, evidence type/list, and confidence | Read-compatible through one exact bounded legacy reader path, no rewrite |
 | `v0.9-findings` | `v0.9.0` / `6ae9297...` | Minimized schema-1 registry and one deterministic finding | Read-compatible, no rewrite |
 | `v0.9.1-evaluation` | `v0.9.1` / `b729793...` | Minimized observational self-host evaluation with no reviewer judgment | Read-compatible, remains unreviewed |
 | `future-version-durable` | Synthetic-derived | Changes only `schemaVersion` to `999` on otherwise valid minimized records | Unsupported state is rejected, invalid, or blocked without overwrite |
 
 No private project data, absolute machine paths, credentials, or byte-for-byte historical claims are present in the corpus. Minimized fixtures retain the contract fields needed for the tested behavior; synthetic future fixtures are explicitly rejection tests, not historical evidence.
+
+The v0.8.0 exception is sourced from `v0.8.0:src/session-intelligence.js` and preserves the released fallback exactly: priority `P3`; action `No evidence-based follow-up is currently required; begin the next user-prioritized project goal.`; reason `CMI found no unresolved evidence requiring a more specific action.`; evidence type `observed`; empty evidence; confidence `high`; and no `id`. Any changed value, added field, non-empty `nextActions`, or arbitrary no-ID recommendation is invalid.
 
 ## Executable compatibility matrix
 
@@ -52,22 +54,26 @@ No private project data, absolute machine paths, credentials, or byte-for-byte h
 | `v0.8.0` session | `read-compatible` with zero invalid records | Listing is read-only | No | Legacy fallback remains advisory; no ID is invented | Session bytes unchanged | `read-compatible-no-rewrite` |
 | `v0.9.0` findings | `read-compatible` | Listing is read-only | No | Finding state is preserved | Registry bytes unchanged | `read-compatible-no-rewrite` |
 | `v0.9.1` evaluation | `read-compatible` with zero invalid records | Listing is read-only | No | Caller-attested/unreviewed provenance remains unchanged | Record bytes unchanged | `read-compatible-no-rewrite` |
-| Future durable records/metadata | Validators reject or report invalid; findings reads block | No normal write path repairs them | No | Fail closed; no best-effort reinterpretation | Original bytes remain unchanged | `unsupported-version-blocked` |
+| Future memory metadata | `stale`/`status` report a blocked entry with `CMI_MEMORY_VERSION_UNSUPPORTED`; search/context/prepare refuse it | `remember`, all/targeted refresh, and lifecycle mutation stop before write | No | Fail closed; never treated as ordinary untracked text | All durable Markdown bytes remain unchanged | `unsupported-version-blocked` |
+| Future change/session/finding/evaluation records | Validators reject or report invalid; findings reads block | No normal write path repairs them | No | Fail closed; no best-effort reinterpretation | Original bytes remain unchanged | `unsupported-version-blocked` |
+| Future config | `status --json` and `doctor --json` expose an unsupported configuration domain and graph evidence is not current | `init`, config reads, and configuration-dependent mutation stop before write | No | Configuration and dependent evidence are blocked | Config bytes remain unchanged | `CMI_CONFIG_VERSION_UNSUPPORTED` |
+| Future graph/index, including mixed future/current pairs | Status/impact classify generated intelligence as unsupported | Normal `scan` refuses; no ordinary scan recommendation is emitted | No | Generated evidence is blocked, not stale/rebuildable | Graph/index bytes remain unchanged | `CMI_GENERATED_VERSION_UNSUPPORTED` |
 | Corrupt config | Explicit `CMI_CONFIG_INVALID` | `init` stops before default/config replacement | No | No trust claim | Original bytes remain unchanged | `corrupt-blocked` |
 | Future portable manifest | Existing portable validation returns `CMI_PORTABLE_SCHEMA_UNSUPPORTED` | No in-place bundle migration | No | Restore cannot treat it as supported evidence | Source bundle is not rewritten | `unsupported-version-blocked` |
 
-The matrix is backed by the nine compatibility tests in `tests/compatibility.test.js`, plus the existing portable, storage, stale-memory, generated-cache, and runtime-contract suites.
+The matrix is backed by the twelve compatibility tests in `tests/compatibility.test.js`, plus the existing portable, storage, stale-memory, generated-cache, and runtime-contract suites.
 
 ## Migration decision and implementation
 
 No explicit migration command was implemented. The fixtures prove that the released durable range is safely readable without a destructive conversion, and adding a generic migration surface would create more provenance and backup obligations without an observed need.
 
-Two narrow compatibility behaviors are implemented:
+Three narrow compatibility behaviors are implemented:
 
-1. `init` and `readConfig` now reject future or malformed config before writing defaults. Existing config bytes are preserved, and unsafe storage errors remain fail-closed.
-2. The session validator accepts the exact old closed-session fallback where `nextAction.id` is absent only when `nextActions` is empty. It does not generate an ID, change the record, or upgrade its trust classification.
+1. `init` and `readConfig` reject future or malformed config before writing defaults, while `status` and `doctor` expose a canonical blocked configuration domain without trusting configuration-dependent graph freshness. Existing config bytes are preserved.
+2. Memory with no metadata marker remains legacy/untracked, and valid legacy metadata remains readable. A present but invalid or future marker is a blocked entry: retrieval and every normal memory mutation refuse it without rewriting any durable Markdown.
+3. The session validator accepts only the exact released v0.8.0 id-less fallback when `nextActions` is empty. Every fallback field and value must match the released `buildHandoff` output; arbitrary no-ID recommendations remain invalid. The reader does not generate an ID, change the record, or upgrade its trust classification.
 
-Generated state follows `detect → explain → rebuild`: old graph schema/parser versions are classified as obsolete, future graph versions as unsupported, and neither is reported as current. `scan` rebuilds the graph and index from current source while leaving durable Markdown and provenance untouched.
+Generated state distinguishes `obsolete/rebuildable` from `unsupported/preserve`: old graph schema/parser `3/3` is classified as obsolete and normal `scan` rebuilds it, while any future graph/parser/index version—including mixed future/current pairs—blocks graph use and normal scan. Recovery requires a compatible/newer CMI version or explicit preservation and removal of the unsupported generated files.
 
 There is no migration CLI or MCP mutation surface. Read-only MCP behavior therefore remains unchanged, and no write gate is weakened.
 
@@ -83,6 +89,8 @@ Limitations are deliberate: compatibility is proven for the listed representativ
 
 - Historical durable project: a disposable `v0.5.0` project was inspected with current status/search/init; the config, legacy memory, and authored instructions were not rewritten, while the graph was explicitly marked obsolete.
 - Generated old state: the same disposable project was scanned; graph health became current and durable memory plus review labeling remained unchanged.
-- Unsupported path: future config and future generated/durable fixtures were read through current validators; unsupported state was blocked or marked invalid and original bytes remained unchanged.
+- Unsupported memory path: future memory metadata produced `CMI_MEMORY_VERSION_UNSUPPORTED`; stale/status blocked it, search/context/prepare refused it, and remember/refresh/lifecycle paths preserved all durable Markdown bytes.
+- Unsupported config path: a healthy disposable project with only config version changed to `999` produced blocked `status --json` and `doctor --json` configuration diagnostics; graph evidence was non-current and config bytes remained unchanged.
+- Unsupported generated path: paired and mixed future/current graph/index fixtures blocked status/impact and normal scan with no ordinary scan recommendation; graph/index bytes remained unchanged.
 - Corruption: truncated config returned `CMI_CONFIG_INVALID`; `init` did not replace the original bytes.
 - Portable evidence: current supported behavior and future manifest rejection remain covered by the Phase 1 portable-provenance tests; no internal Phase 1 schema is promoted to a public historical guarantee.

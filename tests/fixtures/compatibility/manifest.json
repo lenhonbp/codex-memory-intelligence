@@ -45,9 +45,9 @@
       "originatingTag": "v0.8.0",
       "originatingCommit": "aaae517c75817871b37b9fc55cec8e7b3d1ee100",
       "dataClass": "session-handoff",
-      "sourceEvidence": ["src/session-intelligence.js", "schemas/session-record.schema.json"],
+      "sourceEvidence": ["v0.8.0:src/session-intelligence.js#buildHandoff", "schemas/session-record.schema.json"],
       "materialization": "minimized",
-      "transformation": "Retained the released closed-session shape and its id-less fallback nextAction; repository state is reduced to empty objects and arrays.",
+      "transformation": "Retained the exact released id-less fallback nextAction values from v0.8.0 buildHandoff; repository state is reduced to empty objects and arrays without altering that compatibility exception.",
       "files": ["v0.8.0/sessions/33333333-3333-4333-8333-333333333333.json"],
       "expected": {"read": "read-compatible-no-rewrite", "write": "read-compatible-no-rewrite", "migration": false, "trust": "legacy-fallback-remains-unreviewed-advisory"}
     },
