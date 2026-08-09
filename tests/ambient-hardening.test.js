@@ -58,3 +58,26 @@ test('activation refuses unsupported generated evidence before writing agent int
   assert.equal(await exists(path.join(root, 'AGENTS.md')), false);
   assert.equal(await exists(path.join(root, '.codex', 'config.toml')), false);
 });
+
+test('activation rejects a symlinked Codex integration parent before project mutation', async (t) => {
+  const root = await fixture();
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-ambient-outside-'));
+  try {
+    await fs.symlink(outside, path.join(root, '.codex'), process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error?.code)) {
+      t.skip(`Symlink creation is unavailable on this runner: ${error.code}`);
+      return;
+    }
+    throw error;
+  }
+
+  await assert.rejects(
+    activateProject(root, { agent: 'codex' }),
+    /unsafe integration parent/i,
+  );
+
+  assert.equal(await exists(path.join(root, 'AGENTS.md')), false);
+  assert.equal(await exists(path.join(root, '.codex-memory')), false);
+  assert.equal(await exists(path.join(outside, 'config.toml')), false);
+});
