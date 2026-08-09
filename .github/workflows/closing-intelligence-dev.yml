@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply-and-verify:
-    if: ${{ startsWith(github.event.head_commit.message, 'chore: run closing intelligence patch') }}
+    if: ${{ startsWith(github.event.head_commit.message, 'RUN_CLOSING_PATCH') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
