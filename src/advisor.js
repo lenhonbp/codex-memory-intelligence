@@ -196,10 +196,12 @@ export async function getRepositoryBaseline(root) {
       committedAt = await runGit(resolvedRoot, ['log', '-1', '--format=%cI']);
     } catch {}
     const porcelain = await runGit(resolvedRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']);
-    const allChanges = parseGitStatusPorcelainZ(porcelain).filter((item) => {
+    const rawChanges = parseGitStatusPorcelainZ(porcelain);
+    const allChanges = rawChanges.filter((item) => {
       const cmiInternal = isCmiInternalPath(item.path) || isCmiInternalPath(item.originalPath);
       return !(cmiInternal && isUntrackedGitStatus(item.status));
     });
+    const cmiInternalChangesOmitted = rawChanges.length - allChanges.length;
     return {
       available: true,
       projectPath,
@@ -209,6 +211,10 @@ export async function getRepositoryBaseline(root) {
       clean: allChanges.length === 0,
       changes: bounded(allChanges, 200),
       changesTruncated: allChanges.length > 200,
+      rawClean: rawChanges.length === 0,
+      rawChanges: bounded(rawChanges, 200),
+      rawChangesTruncated: rawChanges.length > 200,
+      cmiInternalChangesOmitted,
       upstream,
       ahead,
       behind,
@@ -406,16 +412,17 @@ function buildRisks({ baseline, graph, memory, boundaries, topics }) {
   if (baseline.available && !baseline.clean) risks.push({ id: 'dirty-worktree', title: 'Dirty worktree', severity: 'medium', reason: 'Existing changes can be mixed with the planned change or invalidate attribution.', evidence: baseline.changes.map((item) => item.path).slice(0, 20), confidence: 'high' });
   if (graph.summary?.truncated) risks.push({ id: 'truncated-graph', title: 'Truncated project graph', severity: 'high', reason: 'The graph reached its configured file limit, so impact coverage is incomplete.', evidence: [], confidence: 'high' });
   if ((graph.summary?.unresolvedImports || 0) > 0) risks.push({ id: 'unresolved-imports', title: 'Unresolved local imports', severity: 'medium', reason: `${graph.summary.unresolvedImports} local imports could not be resolved, so impact analysis may be incomplete.`, evidence: [], confidence: 'high' });
-  if (memory.coverage.relevantDurableEntries === 0) risks.push({ id: 'memory-gap', title: 'No relevant durable memory', severity: 'low', reason: 'The change lacks reviewed project-specific facts, decisions, or lessons in the retrieved context.', evidence: memory.relatedFiles, confidence: 'high' });
+  if (memory.relatedFiles.length > 0 && memory.coverage.relevantDurableEntries === 0) risks.push({ id: 'memory-gap', title: 'No relevant durable memory', severity: 'low', reason: 'The change lacks reviewed project-specific facts, decisions, or lessons in the retrieved context.', evidence: memory.relatedFiles, confidence: 'high' });
   if (boundaries.length > 1) risks.push({ id: 'cross-boundary-change', title: 'Cross-boundary change', severity: boundaries.length >= 4 ? 'high' : 'medium', reason: `The retrieved context spans ${boundaries.length} inferred boundaries.`, evidence: boundaries.map((item) => item.label), confidence: 'medium' });
   for (const topic of topics) risks.push({ id: topic.id, title: topic.title, severity: ['identity-access', 'persistence-schema', 'security-privacy'].includes(topic.id) ? 'high' : 'medium', reason: topic.risk, evidence: memory.relatedFiles.filter((file) => topic.pattern.test(file)).slice(0, 8), confidence: memory.relatedFiles.some((file) => topic.pattern.test(file)) ? 'medium' : 'low' });
   return risks.slice(0, 10);
 }
 
 function buildVerification({ boundaries, topics, memory }) {
-  const items = [
+  const items = [];
+  if (memory.relatedFiles.length || boundaries.length || topics.length) items.push(
     { id: 'targeted-tests', title: 'Targeted regression tests', guidance: 'Run the smallest test set that directly covers the changed behavior and every modified boundary.', evidence: memory.relatedFiles.slice(0, 8) },
-  ];
+  );
   if (boundaries.length > 1) items.push({ id: 'boundary-integration', title: 'Boundary integration tests', guidance: 'Verify contracts and state transitions across each affected boundary, not only isolated units.', evidence: boundaries.map((item) => item.label) });
   for (const topic of topics) items.push({ id: `verify-${topic.id}`, title: topic.title, guidance: topic.verification, evidence: memory.relatedFiles.filter((file) => topic.pattern.test(file)).slice(0, 8) });
   if (memory.coverage.mistakes > 0) items.push({ id: 'known-failures', title: 'Known failure regression', guidance: 'Re-run checks that cover retrieved mistakes and prevention rules.', evidence: [] });
@@ -487,7 +494,8 @@ export function formatRepositoryBaseline(result) {
   if (!result.available) return `Repository baseline unavailable: ${result.reason}`;
   const sync = result.upstream ? ` · upstream ${result.upstream}${result.ahead === null ? '' : ` · ahead ${result.ahead} · behind ${result.behind}`}` : '';
   const changes = result.clean ? '- None' : result.changes.map((item) => `- ${item.status} ${item.path}${item.originalPath ? ` (from ${item.originalPath})` : ''}`).join('\n');
-  return `# Repository baseline\n\n- Branch: ${result.branch}\n- HEAD: ${result.head || 'unborn'}\n- Worktree: ${result.clean ? 'clean' : 'dirty'}\n- Project path: ${result.projectPath}${sync}\n- Latest commit: ${result.commit?.subject || 'none'}\n\n## Changes\n${changes}`;
+  const raw = result.rawClean === undefined ? '' : `\n- Raw Git worktree: ${result.rawClean ? 'clean' : 'dirty'}${result.cmiInternalChangesOmitted ? ` · ${result.cmiInternalChangesOmitted} untracked CMI-internal change(s) omitted from product scope` : ''}`;
+  return `# Repository baseline\n\n- Branch: ${result.branch}\n- HEAD: ${result.head || 'unborn'}\n- Product worktree: ${result.clean ? 'clean' : 'dirty'}${raw}\n- Project path: ${result.projectPath}${sync}\n- Latest commit: ${result.commit?.subject || 'none'}\n\n## Product changes\n${changes}`;
 }
 
 export function formatBoundaryMap(result) {

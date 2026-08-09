@@ -26,11 +26,9 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-The current repository release candidate is `v0.10.0`; it is prepared for review and is not published. The latest published npm release remains `v0.9.2` until release authorization. The npm badge above is authoritative for registry state. The published package includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange.
+The current public release is `v0.10.0` / `codex-memory-intelligence@0.10.0`. The repository `main` branch may contain later unreleased documentation or development work; package/tag publication remains a separately authorized release operation.
 
-This candidate adds portable project evidence, executable provenance, operational UX/readiness hardening, and the audited persistence compatibility floor. Install `v0.9.2` from npm for the currently published contract; do not infer candidate-only commands from that package until `v0.10.0` is authorized and published.
-
-Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
+The next development line focuses on ambient agent integration: activate CMI once, then let users talk to supported coding agents normally while the agent retrieves CMI context and uses work intelligence without requiring CMI-specific user prompts. This remains subject to the same evidence/trust boundaries: inference is advisory and is never automatically promoted into reviewed durable project truth.
 
 See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
@@ -55,6 +53,16 @@ npx cmi --version
 Requires Node.js 22 or newer.
 
 ## Quick start
+
+For supported Codex project integration, activate once:
+
+```bash
+npx cmi activate
+```
+
+Then start a new Codex run/session and use normal prompts, including short requests. CMI manages a bounded `AGENTS.md` block and project-scoped Codex MCP configuration without overwriting unrelated user content. See [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md).
+
+The lower-level CLI remains available for explicit workflows:
 
 ```bash
 # A fresh project is intentionally blocked until it has durable state and a scan.

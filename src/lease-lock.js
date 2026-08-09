@@ -18,6 +18,19 @@ async function readLease(target) {
   finally { await handle?.close().catch(() => {}); }
 }
 
+function processLiveness(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return 'unknown';
+  if (pid === process.pid) return 'alive';
+  try {
+    process.kill(pid, 0);
+    return 'alive';
+  } catch (error) {
+    if (error?.code === 'ESRCH') return 'dead';
+    if (error?.code === 'EPERM' || error?.code === 'EACCES') return 'alive';
+    return 'unknown';
+  }
+}
+
 async function removeIfOwned(target, ownerId) {
   const current = await readLease(target);
   if (!current || current.ownerId !== ownerId) return false;
@@ -50,10 +63,15 @@ export async function acquireLeaseLock(target, options = {}) {
         await sleep(retryMs);
         continue;
       }
-      if (Date.now() - observed.mtimeMs > staleMs) {
+      const ownerLiveness = processLiveness(observed.pid);
+      if (Date.now() - observed.mtimeMs > staleMs && ownerLiveness !== 'alive') {
         await sleep(2);
         const confirmed = await readLease(target);
-        if (confirmed?.ownerId === observed.ownerId && Date.now() - confirmed.mtimeMs > staleMs) {
+        if (
+          confirmed?.ownerId === observed.ownerId
+          && Date.now() - confirmed.mtimeMs > staleMs
+          && processLiveness(confirmed.pid) !== 'alive'
+        ) {
           await removeIfOwned(target, observed.ownerId);
           continue;
         }

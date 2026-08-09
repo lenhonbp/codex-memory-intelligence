@@ -160,6 +160,15 @@ function resolveFromCandidates(candidates, sourcePaths) {
   return candidates.find((candidate) => sourcePaths.has(candidate)) || null;
 }
 
+function resolveLocalNonCodeImport(fromFile, specifier, allFilePaths) {
+  if (!specifier.startsWith('.')) return null;
+  const clean = specifier.split(/[?#]/, 1)[0];
+  const base = slash(path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), clean)));
+  const candidates = [base];
+  if (!path.posix.extname(base)) candidates.push(`${base}.css`, `${base}.scss`, `${base}.sass`, `${base}.less`, `${base}.json`);
+  return candidates.find((candidate) => allFilePaths.has(candidate)) || null;
+}
+
 function resolveJavaScriptImport(fromFile, specifier, sourcePaths, aliasConfigs) {
   if (specifier.startsWith('.')) {
     const base = slash(path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), specifier)));
@@ -376,6 +385,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const candidates = fileRecords.filter((file) => SOURCE_EXTENSIONS.has(path.extname(file.path).toLowerCase()) && file.size <= maxSourceBytes);
   const sources = candidates.slice(0, maxGraphFiles);
   const sourcePaths = new Set(sources.map((file) => file.path));
+  const allFilePaths = new Set(fileRecords.map((file) => file.path));
   const previous = options.previousGraph?.schemaVersion === GRAPH_SCHEMA_VERSION
     && options.previousGraph?.parserVersion === GRAPH_PARSER_VERSION
     ? new Map(options.previousGraph.nodes.map((node) => [node.path, node]))
@@ -415,7 +425,10 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
     node.imports = node.rawImports.map((specifier) => {
       const resolved = resolveImport(node.path, specifier, sourcePaths, resolvers);
       const localSyntax = isLocalSyntax(node.path, specifier, resolvers);
-      return { specifier, resolved, external: !resolved && !localSyntax, unresolved: !resolved && localSyntax };
+      const nonCodeTarget = !resolved && localSyntax ? resolveLocalNonCodeImport(node.path, specifier, allFilePaths) : null;
+      const external = !resolved && !localSyntax;
+      const unresolved = !resolved && localSyntax && !nonCodeTarget;
+      return { specifier, resolved, ...(nonCodeTarget ? { nonCodeTarget } : {}), external, unresolved, dependencyKind: resolved ? 'source-local' : nonCodeTarget ? 'non-code-local' : external ? 'external' : 'unresolved-local' };
     });
   }
 
@@ -425,6 +438,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
   const localEdges = nodes.reduce((sum, node) => sum + node.imports.filter((item) => item.resolved).length, 0);
   const externalDependencies = [...new Set(nodes.flatMap((node) => node.imports.filter((item) => item.external).map((item) => item.specifier)))].sort();
   const unresolvedImports = nodes.reduce((sum, node) => sum + node.imports.filter((item) => item.unresolved).length, 0);
+  const nonCodeDependencies = nodes.reduce((sum, node) => sum + node.imports.filter((item) => item.nonCodeTarget).length, 0);
   const symbolCount = nodes.reduce((sum, node) => sum + node.symbols.length, 0);
   const workspaceByFile = new Map(nodes.map((node) => [node.path, node.workspace]));
   const crossWorkspaceEdges = nodes.reduce((sum, node) => sum + node.imports.filter((item) => item.resolved && node.workspace && workspaceByFile.get(item.resolved) && workspaceByFile.get(item.resolved) !== node.workspace).length, 0);
@@ -441,6 +455,7 @@ export async function buildProjectGraph(root, fileRecords, config = {}, options 
       localEdges,
       externalDependencies: externalDependencies.length,
       unresolvedImports,
+      nonCodeDependencies,
       symbols: symbolCount,
       skippedUnsafeFiles,
       parsedFiles,

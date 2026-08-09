@@ -4,7 +4,24 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-Future unreleased changes go here.
+### Added
+
+- Added one-time `cmi activate` integration for Codex plus a bounded generic mode so supported agents can use CMI automatically after project activation instead of requiring CMI-specific user prompts.
+- Added read-only ambient task routing through `cmi ambient` and MCP `get_ambient_task_brief`, with conservative short-prompt intent classification and evidence-linked context/workflow guidance.
+
+### Changed
+
+- Unchanged scans now keep tracked `architecture.md` byte-stable by excluding volatile scan timestamps/parser reuse/duration metrics from the human-reviewable architecture summary.
+- Active work-session state is stored under ignored transient CMI storage and materializes into durable reviewable `sessions/` evidence only when finalized.
+- Repository baselines now preserve product-scope compatibility while separately reporting raw Git cleanliness and the count of omitted untracked CMI-internal paths.
+- Existing relative CSS/static imports are classified as non-code local dependencies instead of unresolved source imports.
+- Generic memory-gap and regression-test suggestions are suppressed when no task-specific files, boundaries, or topic evidence support them.
+
+### Evidence limits
+
+- Ambient intent routing is deterministic advisory classification, not autonomous authorization or proof of user intent.
+- Agent activation cannot force clients that ignore repository instructions or MCP to follow CMI.
+- This development work does not establish productivity improvement, time savings, or general product value.
 
 ## [0.10.0] - 2026-08-09
 

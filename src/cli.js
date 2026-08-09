@@ -29,15 +29,17 @@ import {
 } from './change-intelligence.js';
 import { VERSION } from './version.js';
 import { collectExecutableProvenance } from './provenance.js';
+import { activateProject, formatActivation } from './activation.js';
+import { buildAmbientTaskBrief, formatAmbientTaskBrief } from './ambient-intelligence.js';
 import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidence } from './portable-evidence.js';
 
 const [cmd, ...args] = process.argv.slice(2);
 const pathCommands = new Set(['init','scan','status','graph','stale','doctor','workspaces','baseline','boundaries']);
 const json = args.includes('--json');
-const VALUE_FLAGS = new Set(['--fail-on','--limit','--workspace','--stale-policy','--depth','--file','--outcome','--verify','--unexpected','--note','--source','--reason','--changed-by','--superseded-by','--reviewed-by','--refreshed-by']);
+const VALUE_FLAGS = new Set(['--fail-on','--limit','--workspace','--stale-policy','--depth','--file','--outcome','--verify','--unexpected','--note','--source','--reason','--changed-by','--superseded-by','--reviewed-by','--refreshed-by','--agent']);
 
 function help() {
-  console.log('  cmi provenance [--json]\n  cmi evidence <freeze|inspect|restore|rebind> <bundle-path> [--json]');
+  console.log('  cmi provenance [--json]\n  cmi activate [--agent codex|generic] [--json]\n  cmi ambient <user-request> [--json]\n  cmi evidence <freeze|inspect|restore|rebind> <bundle-path> [--json]');
   console.log(`Codex Memory + Project Intelligence v${VERSION}\n\nUsage:\n  cmi init [path]\n  cmi scan [path] [--full] [--json]\n  cmi graph [path] [--json]\n  cmi workspaces [path] [--json]\n  cmi baseline [path] [--json]\n  cmi boundaries [path] [--json]\n  cmi explain-ignore <path> [--directory] [--json]\n  cmi search <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi context <query> [--limit N] [--workspace name-or-path] [--stale-policy demote|include|exclude] [--include-inactive] [--json]\n  cmi prepare <change-goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi memory-gaps <query> [--limit N] [--workspace name-or-path] [--json]\n  cmi impact <file-or-symbol> [--depth N] [--json]\n  cmi change start <goal> [--limit N] [--depth N] [--workspace name-or-path] [--json]\n  cmi change observe <id> [--file path ...] [--json]\n  cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown] [--file path ...] [--verify name=status ...] [--unexpected text ...] [--note text ...] [--json]\n  cmi change show <id> [--json]\n  cmi change list [--status active|completed] [--limit N] [--json]\n  cmi change history [query] [--limit N] [--json]\n  cmi session <start|observe|status|close|show|list|handoff> ...\n  cmi finding <list|show|state> ...\n  cmi evaluate <capture|list|show|report> ...\n  cmi remember <fact|decision|mistake> <text> [--source path ...]\n  cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id] [--json]\n  cmi stale [path] [--fail-on stale|review|any] [--json]\n  cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]\n  cmi snapshot [label]\n  cmi status [path] [--json]\n  cmi doctor [path] [--json]\n  cmi mcp-config [--write] [--bulk-refresh]\n  cmi --version\n\nIncremental scanning is enabled by default. Use --full to rebuild every source node.\nInactive memory is excluded from search/context by default; --include-inactive is an explicit historical-inspection mode.\nBoundary maps, risks, memory-gap suggestions, and historical co-change evidence are advisory and evidence-labeled.\nChange records compare predicted scope with observed changed paths; they do not claim causal or runtime-complete impact.\nMCP durable project writes, including generated scan caches, memory, change, session, and finding records, are disabled unless --write is explicitly requested.\n`);
 }
 
@@ -82,7 +84,7 @@ function allowedFlagsForCommand() {
     'explain-ignore': ['--directory','--json'], search: ['--limit','--workspace','--stale-policy','--include-inactive','--json'], context: ['--limit','--workspace','--stale-policy','--include-inactive','--json'],
     prepare: ['--limit','--depth','--workspace','--json'], 'memory-gaps': ['--limit','--workspace','--json'], impact: ['--depth','--json'], remember: ['--source'],
     'memory-state': ['--reason','--changed-by','--superseded-by','--json'], stale: ['--fail-on','--json'], 'refresh-memory': ['--reviewed-by','--refreshed-by','--reason'],
-    snapshot: [], status: ['--json'], doctor: ['--json'], provenance: ['--json'], evidence: ['--json'], 'mcp-config': ['--write','--bulk-refresh'],
+    snapshot: [], status: ['--json'], doctor: ['--json'], provenance: ['--json'], activate: ['--agent','--json'], ambient: ['--json'], evidence: ['--json'], 'mcp-config': ['--write','--bulk-refresh'],
   };
   if (cmd !== 'change') return new Set(simple[cmd] || []);
   const action = positional(['--limit','--depth','--workspace','--file','--outcome','--verify','--unexpected','--note','--status'])[0];
@@ -291,7 +293,18 @@ try {
         : `${action === 'rebind' ? 'Rebound' : 'Restored'} evidence in ${result.path}\nState: ${result.state} · ${result.restored ? 'written' : 'already present'}\nNext safe action: inspect cmi status --json; portable evidence is not authenticated.`;
     console.log(json ? JSON.stringify(result, null, 2) : human);
   }
-  else if (cmd === 'mcp-config') {
+  else if (cmd === 'activate') {
+  const agent = optionValues('--agent')[0] || 'codex';
+  const result = await activateProject(process.cwd(), { agent });
+  console.log(json ? JSON.stringify(result, null, 2) : formatActivation(result));
+}
+else if (cmd === 'ambient') {
+  const query = positional().join(' ').trim();
+  if (!query) throw new Error('Usage: cmi ambient <user-request> [--json]');
+  const result = await buildAmbientTaskBrief(process.cwd(), query);
+  console.log(json ? JSON.stringify(result, null, 2) : formatAmbientTaskBrief(result));
+}
+else if (cmd === 'mcp-config') {
     const executable = fileURLToPath(new URL('./mcp-entry.js', import.meta.url));
     const env = { CMI_PROJECT_ROOT: process.cwd(), CMI_WRITE_ENABLED: hasFlag('--write') ? '1' : '0' };
     if (hasFlag('--bulk-refresh')) {

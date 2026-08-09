@@ -19,6 +19,7 @@ import {
   formatHandoff,
   formatFindingList,
 } from './session-intelligence.js';
+import { buildAmbientTaskBrief, formatAmbientTaskBrief } from './ambient-intelligence.js';
 import {
   captureEvaluation,
   getEvaluation,
@@ -62,6 +63,7 @@ const observationProperties = {
   questions: { type: 'array', items: { type: 'string', maxLength: 500 }, maxItems: 40 },
 };
 const sessionReadTools = [
+  { name: 'get_ambient_task_brief', title: 'Get ambient task brief', description: 'Route a natural-language user request through CMI project health, Git baseline, task context, optional pre-change preparation, continuation handoff, and conservative workflow hints. Use this early for substantive or terse requests; the user does not need to mention CMI.', inputSchema: { type: 'object', required: ['request'], properties: { request: { type: 'string', minLength: 1, maxLength: 1000 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_work_session_status', title: 'Get work-session status', description: 'Assess the active work session now: current repository state, persistent unresolved findings, session scope, and prioritized evidence-based next actions.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Session ID/prefix; defaults to latest active session.' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'get_work_session_report', title: 'Get work-session report', description: 'Read one active or closed durable session record, including outcome intelligence when closed.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Session ID/prefix or latest.' } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
   { name: 'list_work_sessions', title: 'List work sessions', description: 'List bounded session summaries and their recorded next action.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['active', 'closed'] }, limit: { type: 'integer', minimum: 1, maximum: 100 } } }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
@@ -132,6 +134,10 @@ const sessionPrompts = [
 
 function isLocalTool(name) { return [...sessionReadTools, ...sessionWriteTools, ...evaluationReadTools, ...evaluationWriteTools].some((tool) => tool.name === name); }
 async function callSessionTool(name, args = {}) {
+  if (name === 'get_ambient_task_brief') {
+    const result = await buildAmbientTaskBrief(root, args.request || '');
+    return textResult(formatAmbientTaskBrief(result), result);
+  }
   if (name === 'get_work_session_status') {
     const result = await assessSession(root, args.id || 'latest');
     return textResult(formatSessionAssessment(result), result);
@@ -243,7 +249,7 @@ input.on('line', (line) => {
     if (method === 'initialize') {
       lifecycle = 'initializing';
       forward(message, (response) => {
-        if (response?.result) response.result.instructions = `${response.result.instructions || ''} Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness. Longitudinal reconstruction, follow-up, history-usefulness, and verification-choice outcomes require explicit review; structural evidence diagnostics never imply statistical sufficiency or automatic threshold recalibration.`.trim();
+        if (response?.result) response.result.instructions = `${response.result.instructions || ''} CMI ambient project intelligence is available. For substantive or terse user requests, call get_ambient_task_brief early using the user request as given; users do not need to mention CMI or restate its workflow. Treat its routing as advisory, keep user intent in control, and never promote candidates into durable truth without review. Session continuation intelligence is available. For substantial work, start/observe a work session when writes are enabled; before ending, finalize it and surface unresolved P0/P1 findings plus the highest-priority next action so the user does not need to ask what comes next. Real-repository evaluation intelligence is also available: keep external-real, self-host, and synthetic evidence separate; keep observational and controlled-stress protocols separate; and never treat unreviewed or agent-reviewed evidence as human-reviewed usefulness. Longitudinal reconstruction, follow-up, history-usefulness, and verification-choice outcomes require explicit review; structural evidence diagnostics never imply statistical sufficiency or automatic threshold recalibration.`.trim();
         return response;
       });
       return;
