@@ -18,6 +18,7 @@ This release candidate contains the reviewed Phase 1–3 work after `v0.9.2`. It
 - Added persistence compatibility evidence for the audited `v0.5.0` config/memory/index/graph floor, `v0.7.0` changes, `v0.8.0` sessions, `v0.9.0` findings, and `v0.9.1` evaluations, including no-rewrite checks and the exact bounded `v0.8.0` fallback exception.
 - Added fail-closed handling for future or corrupt durable/config/generated formats, preserving bytes and refusing ordinary downgrade or overwrite paths.
 - Added regression coverage for portable evidence, executable provenance, operational diagnostics, MCP gating, persistence compatibility, future-format protection, and adversarial filesystem cases.
+- Added maintainer/evaluator-side empirical study ledger and harness support for reproducible paired plain-vs-CMI study bookkeeping. The harness is not an agent-facing CMI command and does not establish productivity, time-savings, or general product-value evidence.
 
 ### Changed
 

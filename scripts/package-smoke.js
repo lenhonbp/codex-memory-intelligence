@@ -102,9 +102,10 @@ try {
     const futureConfig = JSON.parse(configBytes);
     futureConfig.version = 999;
     fs.writeFileSync(configPath, `${JSON.stringify(futureConfig, null, 2)}\n`);
+    const futureConfigBytes = fs.readFileSync(configPath);
     const futureStatus = runExpectedFailure(['status'], project);
     if (!/future|unsupported|blocked/i.test(JSON.stringify(futureStatus.value))) throw new Error('Installed future configuration did not fail closed.');
-    if (fs.readFileSync(configPath, 'utf8') === configBytes.toString('utf8')) throw new Error('Future configuration fixture was not changed for the smoke test.');
+    assert.deepEqual(fs.readFileSync(configPath), futureConfigBytes, 'Future configuration bytes changed during installed-package smoke.');
     fs.writeFileSync(configPath, configBytes);
 
     const futureMemoryPath = path.join(project, '.codex-memory', 'memory.md');
