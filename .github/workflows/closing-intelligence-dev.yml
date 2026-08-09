@@ -22,6 +22,18 @@ jobs:
           node-version: 24
       - name: Apply closing-intelligence patch
         run: python3 .github/scripts/closing-intelligence-dev.py
+      - name: Repair managed-template escaping
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/activation.js')
+          text = p.read_text(encoding='utf-8')
+          old = 'append a concise `### CMI Intelligence` section'
+          new = 'append a concise \\`### CMI Intelligence\\` section'
+          if text.count(old) != 1:
+              raise SystemExit(f'activation escaping target count={text.count(old)}')
+          p.write_text(text.replace(old, new), encoding='utf-8')
+          PY
       - name: Syntax-check changed source
         run: |
           node --check src/closing-intelligence.js
