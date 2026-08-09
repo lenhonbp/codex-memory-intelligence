@@ -113,9 +113,15 @@ export async function activateProject(root, options = {}) {
     : [];
 
   await initProject(resolvedRoot);
+  let scan = await scanProject(resolvedRoot);
   const integrations = [];
-  for (const plan of plans) integrations.push(await applyPlan(resolvedRoot, plan));
-  const scan = await scanProject(resolvedRoot);
+  let integrationChanged = false;
+  for (const plan of plans) {
+    integrations.push(await applyPlan(resolvedRoot, plan));
+    integrationChanged ||= plan.changed;
+  }
+  if (integrationChanged) scan = await scanProject(resolvedRoot);
+
   return {
     schemaVersion: 1,
     activated: true,
