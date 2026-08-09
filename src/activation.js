@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { initProject, scanProject } from './core.js';
 
@@ -62,19 +63,47 @@ function normalizedManagedContent(existing, begin, end, block, label) {
   return `${prefix}${prefix ? '\n' : ''}${block}\n`;
 }
 
+async function assertSafeIntegrationParents(root, relative) {
+  const parts = relative.split('/').filter(Boolean).slice(0, -1);
+  let current = root;
+  for (const part of parts) {
+    current = path.join(current, part);
+    let stat;
+    try { stat = await fs.lstat(current); }
+    catch (error) { if (error?.code === 'ENOENT') return; throw error; }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`${relative} has an unsafe integration parent: ${part}. CMI will not follow or replace it.`);
+  }
+}
+
 async function readIntegrationFile(root, relative) {
+  await assertSafeIntegrationParents(root, relative);
   const target = path.join(root, relative);
-  let stat;
-  try { stat = await fs.lstat(target); }
-  catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
-  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`${relative} must be a regular non-symlink file before CMI can manage it.`);
-  if (stat.size > MAX_INTEGRATION_BYTES) throw new Error(`${relative} exceeds the bounded CMI integration size limit.`);
-  return fs.readFile(target, 'utf8');
+  let handle;
+  try {
+    const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+    handle = await fs.open(target, fsConstants.O_RDONLY | noFollow);
+    const opened = await handle.stat();
+    if (!opened.isFile()) throw new Error(`${relative} must be a regular non-symlink file before CMI can manage it.`);
+    if (opened.size > MAX_INTEGRATION_BYTES) throw new Error(`${relative} exceeds the bounded CMI integration size limit.`);
+    if (!noFollow) {
+      const stat = await fs.lstat(target);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.dev !== opened.dev || stat.ino !== opened.ino) throw new Error(`${relative} changed or resolved unsafely while CMI was inspecting it.`);
+    }
+    return await handle.readFile('utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    if (error?.code === 'ELOOP') throw new Error(`${relative} must not be a symbolic link.`);
+    throw error;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 async function atomicWrite(root, relative, content) {
+  await assertSafeIntegrationParents(root, relative);
   const target = path.join(root, relative);
   await fs.mkdir(path.dirname(target), { recursive: true });
+  await assertSafeIntegrationParents(root, relative);
   const temporary = `${target}.${process.pid}.cmi-activate.tmp`;
   await fs.writeFile(temporary, content, { encoding: 'utf8', mode: 0o600 });
   try { await fs.rename(temporary, target); }
