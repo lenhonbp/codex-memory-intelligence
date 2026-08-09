@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 999,
+  "id": "77777777-7777-4777-8777-777777777777",
+  "revision": 1,
+  "status": "active",
+  "goal": "Future session record",
+  "createdAt": "2026-08-01T00:00:00.000Z",
+  "updatedAt": "2026-08-01T00:00:00.000Z",
+  "start": {},
+  "observations": [],
+  "close": null
+}

@@ -8,6 +8,14 @@ export const FINDING_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 
 export const EVIDENCE_TYPES = new Set(['observed', 'reviewed', 'historical-correlation', 'inferred']);
 export const RECOMMENDATION_PRIORITIES = new Set(['P0', 'P1', 'P2', 'P3']);
 export const CONFIDENCE_LEVELS = new Set(['high', 'medium', 'low']);
+const V080_IDLESS_FALLBACK = {
+  priority: 'P3',
+  action: 'No evidence-based follow-up is currently required; begin the next user-prioritized project goal.',
+  reason: 'CMI found no unresolved evidence requiring a more specific action.',
+  evidenceType: 'observed',
+  evidence: [],
+  confidence: 'high',
+};
 
 function object(value) { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 function text(value, max = Infinity) { return typeof value === 'string' && value.trim().length > 0 && value.length <= max; }
@@ -15,6 +23,19 @@ function iso(value) { return typeof value === 'string' && Number.isFinite(Date.p
 function uuidLike(value) { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 function arrayOfText(value, maxItems, maxLength = Infinity) { return Array.isArray(value) && value.length <= maxItems && value.every((item) => typeof item === 'string' && item.length <= maxLength); }
 function add(errors, condition, message) { if (!condition) errors.push(message); }
+function exactV080IdlessFallback(item) {
+  if (!object(item) || item.id !== undefined) return false;
+  const keys = Object.keys(item).sort();
+  const expectedKeys = Object.keys(V080_IDLESS_FALLBACK).sort();
+  return keys.length === expectedKeys.length
+    && keys.every((key, index) => key === expectedKeys[index])
+    && item.priority === V080_IDLESS_FALLBACK.priority
+    && item.action === V080_IDLESS_FALLBACK.action
+    && item.reason === V080_IDLESS_FALLBACK.reason
+    && item.evidenceType === V080_IDLESS_FALLBACK.evidenceType
+    && Array.isArray(item.evidence) && item.evidence.length === 0
+    && item.confidence === V080_IDLESS_FALLBACK.confidence;
+}
 
 export function validateMemoryMetadataContract(metadata, options = {}) {
   const errors = [];
@@ -74,10 +95,11 @@ export function validateFindingContract(item) {
   return { valid: errors.length === 0, errors };
 }
 
-export function validateRecommendationContract(item) {
+export function validateRecommendationContract(item, options = {}) {
   const errors = [];
   if (!object(item)) return { valid: false, errors: ['recommendation must be an object.'] };
-  add(errors, text(item.id, 500), 'recommendation.id is required.');
+  const legacyFallback = options.allowLegacyV080Fallback === true && exactV080IdlessFallback(item);
+  add(errors, legacyFallback || text(item.id, 500), 'recommendation.id is required.');
   add(errors, RECOMMENDATION_PRIORITIES.has(item.priority), 'recommendation.priority is invalid.');
   add(errors, text(item.action, 2000), 'recommendation.action is required.');
   add(errors, text(item.reason, 2000), 'recommendation.reason is required.');
@@ -114,7 +136,8 @@ export function validateHandoffContract(handoff) {
   add(errors, Array.isArray(handoff.activeChanges) && handoff.activeChanges.length <= 20, 'handoff.activeChanges is invalid.');
   add(errors, Array.isArray(handoff.openFindings) && handoff.openFindings.length <= 20 && handoff.openFindings.every((item) => validateFindingContract(item).valid), 'handoff.openFindings contains invalid findings.');
   add(errors, Array.isArray(handoff.nextActions) && handoff.nextActions.length <= 10 && handoff.nextActions.every((item) => validateRecommendationContract(item).valid), 'handoff.nextActions contains invalid recommendations.');
-  add(errors, validateRecommendationContract(handoff.nextAction).valid, 'handoff.nextAction is invalid.');
+  const legacyFallbackPosition = Array.isArray(handoff.nextActions) && handoff.nextActions.length === 0;
+  add(errors, validateRecommendationContract(handoff.nextAction, { allowLegacyV080Fallback: legacyFallbackPosition }).valid, 'handoff.nextAction is invalid.');
   add(errors, Array.isArray(handoff.guardrails) && handoff.guardrails.length <= 12 && handoff.guardrails.every((item) => validateGuardrailContract(item).valid), 'handoff.guardrails contains invalid guardrails.');
   add(errors, Array.isArray(handoff.knowledgeCandidates) && handoff.knowledgeCandidates.length <= 20, 'handoff.knowledgeCandidates is invalid.');
   add(errors, text(handoff.agentInstruction, 4000), 'handoff.agentInstruction is required.');

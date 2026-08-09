@@ -4,6 +4,7 @@ import { checkStaleMemory } from './stale.js';
 import { inspectProjectGraphHealth } from './graph.js';
 import { safeReadMemoryFile, safeReadMemoryJson, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { buildEvidenceHealth } from './evidence-health.js';
+import { inspectProjectConfig } from './config.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md', 'architecture.md', 'agent-instructions.md'];
 const DURABLE_MEMORY_FILES = new Set(['memory.md', 'decisions.md', 'mistakes.md']);
@@ -140,7 +141,9 @@ export async function loadMemory(root, options = {}) {
   for (const file of MEMORY_FILES) {
     if (blockedFiles.has(file)) continue;
     try {
-      chunks.push(...sections(await safeReadMemoryFile(root, file), file).map((chunk) => annotateMemoryChunk(chunk, health)));
+      chunks.push(...sections(await safeReadMemoryFile(root, file), file)
+        .map((chunk) => annotateMemoryChunk(chunk, health))
+        .filter((chunk) => chunk.metadata?.evidenceStatus !== 'blocked'));
     } catch (error) {
       if (DURABLE_MEMORY_FILES.has(file)) throw error;
     }
@@ -157,7 +160,7 @@ async function resolveWorkspaceScope(root, workspaceQuery) {
   let workspaces = [];
   try {
     const index = await safeReadMemoryJson(root, 'project-index.json', { maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES });
-    workspaces = index.workspaces?.workspaces || [];
+    workspaces = index?.schemaVersion === 5 ? index.workspaces?.workspaces || [] : [];
   } catch {}
   const exact = workspaces.filter((workspace) => [workspace.id, workspace.name, workspace.path].some((value) => normalize(value || '') === needle));
   const matches = exact.length ? exact : workspaces.filter((workspace) => [workspace.id, workspace.name, workspace.path].some((value) => normalize(value || '').includes(needle)));
@@ -216,8 +219,13 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
   const workspaceScope = await resolveWorkspaceScope(root, options.workspace);
   const loaded = await loadMemory(root, { withHealth: true });
   if ((loaded.memoryHealth?.counts?.blocked || 0) > 0) {
-    const error = new Error('Durable memory search is blocked because one or more required memory files could not be safely read. Run cmi stale --json and repair storage before relying on search results.');
-    error.code = 'CMI_MEMORY_BLOCKED';
+    const diagnostics = [...(loaded.memoryHealth?.fileErrors || []), ...(loaded.memoryHealth?.metadataErrors || [])];
+    const unsupported = diagnostics.some((item) => item.code === 'CMI_MEMORY_VERSION_UNSUPPORTED');
+    const error = new Error(unsupported
+      ? 'Durable memory search is blocked because memory metadata uses a newer schema. Use a compatible/newer CMI version; current CMI will not reinterpret the entry.'
+      : 'Durable memory search is blocked because one or more required memory sources could not be safely read or validated. Run cmi stale --json and repair storage before relying on search results.');
+    error.code = unsupported ? 'CMI_MEMORY_VERSION_UNSUPPORTED' : 'CMI_MEMORY_BLOCKED';
+    error.diagnostics = diagnostics;
     throw error;
   }
   const stalePolicy = ['include', 'exclude', 'demote'].includes(options.stalePolicy) ? options.stalePolicy : 'demote';
@@ -263,6 +271,11 @@ export async function searchMemory(root, query, limit = 6, options = {}) {
 export async function buildContextPack(root, query, limit = 8, options = {}) {
   const loaded = await loadMemory(root, { withHealth: true });
   const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true }).catch(() => null);
+  const inspectedConfig = await inspectProjectConfig(root);
+  const { config: _config, ...configHealth } = inspectedConfig;
+  const indexVersion = Number.isInteger(index?.schemaVersion) ? index.schemaVersion : null;
+  const indexState = !index ? 'missing' : indexVersion === 5 ? 'current' : indexVersion > 5 ? 'unsupported' : 'obsolete';
+  const indexHealth = { available: Boolean(index), current: indexState === 'current', schemaVersion: indexVersion, state: indexState, rebuildRequired: indexState === 'obsolete', scanAllowed: indexState !== 'unsupported' };
   const results = await searchMemory(root, query, limit, options);
   const decisions = results.filter((item) => item.source === 'decisions.md');
   const risks = results.filter((item) => item.source === 'mistakes.md');
@@ -280,7 +293,7 @@ export async function buildContextPack(root, query, limit = 8, options = {}) {
     health: {
       memory: loaded.memoryHealth?.counts || null,
       graph: loaded.graphHealth,
-      overall: buildEvidenceHealth({ initialized: true, storageSafe: true, indexAvailable: Boolean(index), graphHealth: loaded.graphHealth, memoryHealth: loaded.memoryHealth?.counts || null }),
+      overall: buildEvidenceHealth({ initialized: true, storageSafe: true, configHealth, indexAvailable: indexState === 'current', indexHealth, graphHealth: loaded.graphHealth, memoryHealth: loaded.memoryHealth || null }),
     },
     summary: {
       results: results.length,

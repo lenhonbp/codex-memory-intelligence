@@ -4,10 +4,11 @@ import crypto from 'node:crypto';
 import { resolveProjectFile } from './paths.js';
 import { withMemoryWriteLock } from './memory-lock.js';
 import { safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile } from './storage.js';
-import { validateMemoryMetadataContract } from './durable-contracts.js';
+import { MEMORY_SCHEMA_VERSION, validateMemoryMetadataContract } from './durable-contracts.js';
+import { inspectProjectConfig } from './config.js';
 
 const MEMORY_FILES = ['memory.md', 'decisions.md', 'mistakes.md'];
-const META_PATTERN = /<!--\s*cmi-meta:(\{.*?\})\s*-->/;
+const META_PATTERN = /<!--\s*cmi-meta:([\s\S]*?)\s*-->/;
 const LIFECYCLE_STATES = new Set(['active', 'deprecated', 'rejected', 'superseded']);
 async function hashResolvedFile(filePath) { try { return crypto.createHash('sha256').update(await fs.readFile(filePath)).digest('hex'); } catch { return null; } }
 
@@ -29,16 +30,17 @@ function parseEntries(content, file) {
     const metaMatch = section.match(META_PATTERN);
     let metadata = null;
     let metadataValidation = null;
+    let rawMetadata = null;
     try {
-      const parsed = metaMatch ? JSON.parse(metaMatch[1]) : null;
-      if (parsed) {
-        const validation = validateMemoryMetadataContract(parsed, { allowLegacy: true });
-        if (validation.valid) metadata = parsed;
+      if (metaMatch) {
+        rawMetadata = JSON.parse(metaMatch[1]);
+        const validation = validateMemoryMetadataContract(rawMetadata, { allowLegacy: true });
+        if (validation.valid) metadata = rawMetadata;
         else metadataValidation = validation.errors;
       }
     } catch { metadataValidation = ['Metadata JSON could not be parsed.']; }
     const text = section.replace(/^##[^\n]*\n?/, '').replace(META_PATTERN, '').trim();
-    return { file, heading: heading[1], text, metadata, metadataValidation, start, end };
+    return { file, heading: heading[1], text, metadata, rawMetadata, markerPresent: Boolean(metaMatch), metadataValidation, start, end };
   });
 }
 function lifecycleOf(metadata) {
@@ -63,6 +65,25 @@ function memoryReadDiagnostic(file, error) {
     reason: `Durable memory file could not be safely read: ${file} (${code}).`,
   };
 }
+function memoryMetadataDiagnostic(entry) {
+  const schemaVersion = Number.isInteger(entry.rawMetadata?.schemaVersion) ? entry.rawMetadata.schemaVersion : null;
+  const unsupported = schemaVersion !== null && schemaVersion > MEMORY_SCHEMA_VERSION;
+  const code = unsupported ? 'CMI_MEMORY_VERSION_UNSUPPORTED' : 'CMI_MEMORY_METADATA_INVALID';
+  return {
+    file: entry.file,
+    heading: entry.heading,
+    id: typeof entry.rawMetadata?.id === 'string' ? entry.rawMetadata.id : null,
+    schemaVersion,
+    supportedVersion: MEMORY_SCHEMA_VERSION,
+    code,
+    reason: unsupported
+      ? `Memory metadata schema ${schemaVersion} is newer than this CMI version; use a compatible/newer CMI version and do not refresh or mutate this entry.`
+      : `Memory metadata marker is invalid and cannot be safely interpreted: ${(entry.metadataValidation || ['unknown validation failure']).join(' ')}`,
+  };
+}
+function metadataBlockers(entries) {
+  return entries.filter((entry) => entry.markerPresent && !entry.metadata).map(memoryMetadataDiagnostic);
+}
 async function readTrackedMemoryFiles(root) {
   const entries = [];
   const contents = new Map();
@@ -76,13 +97,24 @@ async function readTrackedMemoryFiles(root) {
       fileErrors.push(memoryReadDiagnostic(file, error));
     }
   }
-  return { entries, contents, fileErrors };
+  return { entries, contents, fileErrors, metadataErrors: metadataBlockers(entries) };
 }
-function blockedMemoryError(fileErrors) {
-  const error = new Error(`Durable memory is blocked because ${fileErrors.length} required file${fileErrors.length === 1 ? '' : 's'} could not be safely read. Run cmi stale --json for diagnostics before mutating memory.`);
-  error.code = 'CMI_MEMORY_BLOCKED';
-  error.diagnostics = fileErrors;
+function blockedMemoryError(diagnostics) {
+  const unsupported = diagnostics.some((item) => item.code === 'CMI_MEMORY_VERSION_UNSUPPORTED');
+  const error = new Error(unsupported
+    ? 'Durable memory is blocked because it contains metadata from a newer schema. Use a compatible/newer CMI version; current CMI will not retrieve, refresh, or mutate durable memory while this state is present.'
+    : `Durable memory is blocked because ${diagnostics.length} required source${diagnostics.length === 1 ? '' : 's'} could not be safely read or validated. Run cmi stale --json for diagnostics before mutating memory.`);
+  error.code = unsupported ? 'CMI_MEMORY_VERSION_UNSUPPORTED' : 'CMI_MEMORY_BLOCKED';
+  error.diagnostics = diagnostics;
   return error;
+}
+function assertTrackedStateWritable(state) {
+  const diagnostics = [...state.fileErrors, ...state.metadataErrors];
+  if (diagnostics.length) throw blockedMemoryError(diagnostics);
+  return state;
+}
+export async function assertMemoryWritable(root) {
+  return assertTrackedStateWritable(await readTrackedMemoryFiles(root));
 }
 async function uniqueTrackedEntry(root, selector) {
   const raw = String(selector || '').trim().toLowerCase();
@@ -109,14 +141,14 @@ async function replaceMetadata(root, target, updater) {
   return nextMetadata;
 }
 export async function loadTrackedMemory(root) {
-  const state = await readTrackedMemoryFiles(root);
-  if (state.fileErrors.length) throw blockedMemoryError(state.fileErrors);
+  const state = assertTrackedStateWritable(await readTrackedMemoryFiles(root));
   return state.entries;
 }
 export async function checkStaleMemory(root) {
-  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
-  const config = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
-  const staleAfterDays = Number(config.staleAfterDays) || 90;
+  const storedIndex = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
+  const index = storedIndex?.schemaVersion === 5 ? storedIndex : null;
+  const configuration = await inspectProjectConfig(root);
+  const staleAfterDays = Number(configuration.config?.staleAfterDays) || 90;
   const now = Date.now();
   const tracked = await readTrackedMemoryFiles(root);
   const results = [];
@@ -126,10 +158,12 @@ export async function checkStaleMemory(root) {
   for (const entry of tracked.entries) {
     const meta = entry.metadata;
     if (!meta) {
-      const reasons = entry.metadataValidation?.length
-        ? [`Memory metadata failed runtime validation: ${entry.metadataValidation.join(' ')}`]
-        : ['Entry predates metadata tracking. Refresh it to establish a baseline.'];
-      results.push({ id: null, file: entry.file, heading: entry.heading, text: entry.text, status: 'untracked', lifecycleState: 'active', reasons });
+      if (entry.markerPresent) {
+        const diagnostic = memoryMetadataDiagnostic(entry);
+        results.push({ id: diagnostic.id, type: entry.rawMetadata?.type || null, file: entry.file, heading: entry.heading, text: '', status: 'blocked', lifecycleState: 'unknown', reasons: [diagnostic.reason], diagnostic });
+      } else {
+        results.push({ id: null, file: entry.file, heading: entry.heading, text: entry.text, status: 'untracked', lifecycleState: 'active', reasons: ['Entry predates metadata tracking. Refresh it to establish a baseline.'] });
+      }
       continue;
     }
     const lifecycle = lifecycleOf(meta);
@@ -159,13 +193,12 @@ export async function checkStaleMemory(root) {
   }
   const counts = { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0, blocked: 0 };
   for (const item of results) counts[item.status] += 1;
-  return { generatedAt: new Date().toISOString(), projectHash: index?.hash || null, staleAfterDays, counts, entries: results, fileErrors: tracked.fileErrors };
+  return { generatedAt: new Date().toISOString(), projectHash: index?.hash || null, staleAfterDays, counts, entries: results, fileErrors: tracked.fileErrors, metadataErrors: tracked.metadataErrors };
 }
 export async function refreshMemory(root, selector = 'all', options = {}) {
   return withMemoryWriteLock(root, async () => {
     const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
-    const preflight = await readTrackedMemoryFiles(root);
-    if (preflight.fileErrors.length) throw blockedMemoryError(preflight.fileErrors);
+    const preflight = assertTrackedStateWritable(await readTrackedMemoryFiles(root));
     let updated = 0;
     const refreshedBy = boundedText(options.refreshedBy || options.reviewedBy, 'human', 100) || 'human';
     const refreshReason = boundedText(options.reason, 'Source fingerprints refreshed against the current project.', 500) || 'Source fingerprints refreshed against the current project.';

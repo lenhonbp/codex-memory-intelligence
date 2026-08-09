@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 5,
+  "generatedAt": "2026-08-01T00:00:00.000Z",
+  "root": "fixture-project",
+  "files": 1,
+  "bytes": 32,
+  "graph": {"sourceFiles": 1, "parsedFiles": 1, "localEdges": 0, "symbols": 1},
+  "workspaces": {"schemaVersion": 1, "count": 0, "byEcosystem": {}, "workspaces": []},
+  "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

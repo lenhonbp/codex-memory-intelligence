@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "22222222-2222-4222-8222-222222222222",
+  "status": "active",
+  "goal": "Preserve a historical change record",
+  "workspace": null,
+  "createdAt": "2026-08-01T00:00:00.000Z",
+  "updatedAt": "2026-08-01T00:00:00.000Z",
+  "before": {
+    "baseline": {"available": false, "changes": []},
+    "predicted": {"files": [], "boundaries": [], "risks": [], "verification": []},
+    "memoryCoverage": null,
+    "provenance": {},
+    "assumptions": [],
+    "historicalEvidence": {},
+    "attribution": "explicit-files-only"
+  },
+  "observations": [],
+  "completion": null,
+  "policy": "Historical change evidence remains bounded and reported rather than causal."
+}

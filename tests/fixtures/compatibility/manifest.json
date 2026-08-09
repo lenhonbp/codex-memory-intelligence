@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "kind": "cmi-persistence-compatibility-fixtures",
+  "policy": "Fixtures are release evidence for bounded compatibility tests. They are minimized from released source/schema shapes and are not private project snapshots.",
+  "fixtures": [
+    {
+      "id": "v0.5-config-memory",
+      "originatingVersion": "0.5.0",
+      "originatingTag": "v0.5.0",
+      "originatingCommit": "e2b40f5c9e84691a31e6b3cb9f175d426c3e52a0",
+      "dataClass": "config-reviewed-memory-and-agent-instructions",
+      "sourceEvidence": ["src/core.js", "schemas/config.schema.json", "schemas/memory-metadata.schema.json", "v0.5.0:src/core.js"],
+      "materialization": "minimized",
+      "transformation": "Retained the released config defaults and legacy memory metadata shape; reduced user-authored Markdown to deterministic secret-free content and empty source references.",
+      "files": ["v0.5.0/config.json", "v0.5.0/memory.md", "v0.5.0/agent-instructions.md"],
+      "expected": {"read": "read-compatible", "write": "read-compatible-no-rewrite", "migration": false, "trust": "legacy-memory-remains-source-labeled"}
+    },
+    {
+      "id": "v0.5-generated",
+      "originatingVersion": "0.5.0",
+      "originatingTag": "v0.5.0",
+      "originatingCommit": "e2b40f5c9e84691a31e6b3cb9f175d426c3e52a0",
+      "dataClass": "generated-index-and-graph",
+      "sourceEvidence": ["schemas/project-index.schema.json", "schemas/project-graph.schema.json", "src/graph.js"],
+      "materialization": "minimized",
+      "transformation": "Reduced the released schema-3 graph to one deterministic source node and retained the released schema-5 index identity; no absolute paths are present.",
+      "files": ["v0.5.0/project-index.json", "v0.5.0/project-graph.json"],
+      "expected": {"read": "index-compatible-graph-rebuild-required", "write": "generated-rebuild-only", "migration": false, "trust": "generated-state-not-current"}
+    },
+    {
+      "id": "v0.7-change",
+      "originatingVersion": "0.7.0",
+      "originatingTag": "v0.7.0",
+      "originatingCommit": "4034aad923dbc6d53e74dfa9b9cb56bcb808fe09",
+      "dataClass": "change-record",
+      "sourceEvidence": ["src/change-intelligence.js", "schemas/change-record.schema.json"],
+      "materialization": "minimized",
+      "transformation": "Retained a released active-record shape with empty bounded observations and deterministic IDs; omitted repository-specific baseline content.",
+      "files": ["v0.7.0/changes/22222222-2222-4222-8222-222222222222.json"],
+      "expected": {"read": "read-compatible", "write": "read-compatible-no-rewrite", "migration": false, "trust": "reported-verification-remains-reported"}
+    },
+    {
+      "id": "v0.8-session",
+      "originatingVersion": "0.8.0",
+      "originatingTag": "v0.8.0",
+      "originatingCommit": "aaae517c75817871b37b9fc55cec8e7b3d1ee100",
+      "dataClass": "session-handoff",
+      "sourceEvidence": ["v0.8.0:src/session-intelligence.js#buildHandoff", "schemas/session-record.schema.json"],
+      "materialization": "minimized",
+      "transformation": "Retained the exact released id-less fallback nextAction values from v0.8.0 buildHandoff; repository state is reduced to empty objects and arrays without altering that compatibility exception.",
+      "files": ["v0.8.0/sessions/33333333-3333-4333-8333-333333333333.json"],
+      "expected": {"read": "read-compatible-no-rewrite", "write": "read-compatible-no-rewrite", "migration": false, "trust": "legacy-fallback-remains-unreviewed-advisory"}
+    },
+    {
+      "id": "v0.9-findings",
+      "originatingVersion": "0.9.0",
+      "originatingTag": "v0.9.0",
+      "originatingCommit": "6ae92975ff93b939f40e8397f29f2eb3d6f203d9",
+      "dataClass": "findings-registry",
+      "sourceEvidence": ["src/durable-contracts.js", "src/session-intelligence.js", "schemas/findings-registry.schema.json"],
+      "materialization": "minimized",
+      "transformation": "Retained one released schema-1 finding with deterministic timestamps, IDs, and secret-free evidence.",
+      "files": ["v0.9.0/findings.json"],
+      "expected": {"read": "read-compatible", "write": "read-compatible-no-rewrite", "migration": false, "trust": "observed-finding-state-preserved"}
+    },
+    {
+      "id": "v0.9.1-evaluation",
+      "originatingVersion": "0.9.1",
+      "originatingTag": "v0.9.1",
+      "originatingCommit": "b7297938f4c390084cf443b8f896e6679e5b0d63",
+      "dataClass": "evaluation-record",
+      "sourceEvidence": ["src/evaluation-contracts.js", "src/evaluation.js", "schemas/evaluation-record.schema.json"],
+      "materialization": "minimized",
+      "transformation": "Retained the released schema-1 observational self-host record contract with null source revision and no reviewer judgment.",
+      "files": ["v0.9.1/evaluations/55555555-5555-4555-8555-555555555555.json"],
+      "expected": {"read": "read-compatible", "write": "read-compatible-no-rewrite", "migration": false, "trust": "unreviewed-caller-attested-record-remains-unreviewed"}
+    },
+    {
+      "id": "future-version-durable",
+      "originatingVersion": "future",
+      "originatingTag": null,
+      "originatingCommit": null,
+      "dataClass": "future-version-durable-records",
+      "sourceEvidence": ["current runtime validators"],
+      "materialization": "synthetic-derived",
+      "transformation": "Changed only schemaVersion to 999 on otherwise valid minimized records; this is a rejection fixture, not historical evidence.",
+      "files": ["future/config.json", "future/memory.md", "future/project-index.json", "future/project-graph.json", "future/changes/66666666-6666-4666-8666-666666666666.json", "future/sessions/77777777-7777-4777-8777-777777777777.json", "future/findings.json", "future/evaluations/88888888-8888-4888-8888-888888888888.json"],
+      "expected": {"read": "unsupported-version-blocked", "write": "no-overwrite", "migration": false, "trust": "fail-closed"}
+    }
+  ]
+}

@@ -4,8 +4,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { buildProjectGraph, loadProjectGraph } from './graph.js';
-import { checkStaleMemory, sourceFingerprints } from './stale.js';
+import { assertGeneratedFormatsWritable, buildProjectGraph, loadProjectGraph } from './graph.js';
+import { assertMemoryWritable, checkStaleMemory, sourceFingerprints } from './stale.js';
 import { resolveProjectFile } from './paths.js';
 import { ensureSafeMemoryRoot, safeEnsureMemoryDir, safeReadMemoryFile, safeReadMemoryJson, safeWriteMemoryFile, safeAppendMemoryFile, safeListMemoryDir, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { looksSensitive } from './sensitive.js';
@@ -15,20 +15,11 @@ import { loadMemory } from './search.js';
 import { withMemoryWriteLock } from './memory-lock.js';
 import { VERSION } from './version.js';
 import { buildEvidenceHealth } from './evidence-health.js';
+import { CONFIG_SCHEMA_VERSION, inspectProjectConfig, normalizeConfig, readProjectConfig, readStoredConfig } from './config.js';
 
 const exec = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
-const DEFAULT_CONFIG = {
-  version: 4,
-  maxFileBytes: 1_000_000,
-  maxSourceBytes: 512_000,
-  maxGraphFiles: 5_000,
-  staleAfterDays: 90,
-  includeHidden: false,
-  incrementalScan: true,
-  workspaceDetection: true,
-  ignorePatterns: [],
-};
+export { CONFIG_SCHEMA_VERSION };
 const EXT_LANGUAGE = new Map([
   ['.js','JavaScript'],['.mjs','JavaScript'],['.cjs','JavaScript'],['.jsx','JavaScript'],
   ['.ts','TypeScript'],['.tsx','TypeScript'],['.py','Python'],['.go','Go'],['.rs','Rust'],
@@ -41,18 +32,10 @@ export async function exists(filePath) { try { await fs.access(filePath); return
 export async function ensureDir(directoryPath) { await fs.mkdir(directoryPath, { recursive: true }); }
 export async function writeIfMissing(filePath, content) { if (!(await exists(filePath))) await fs.writeFile(filePath, content, 'utf8'); }
 
-function normalizeConfig(current = {}) {
-  const ignorePatterns = Array.isArray(current.ignorePatterns) ? current.ignorePatterns.map(String) : [];
-  return {
-    ...DEFAULT_CONFIG,
-    ...current,
-    ignorePatterns,
-    version: Math.max(DEFAULT_CONFIG.version, Number(current.version) || 0),
-  };
-}
-
 export async function initProject(root) {
   const directory = await ensureSafeMemoryRoot(root, { create: true });
+  const currentConfig = await readStoredConfig(root);
+  const migratedConfig = normalizeConfig(currentConfig);
   await safeEnsureMemoryDir(root, 'snapshots');
   await safeWriteMemoryFile(root, 'memory.md', '# Project Memory\n\nDurable facts, conventions, constraints, and operational knowledge.\n', { ifMissing: true });
   await safeWriteMemoryFile(root, 'decisions.md', '# Architecture Decisions\n\nRecord the context, decision, and consequences.\n', { ifMissing: true });
@@ -60,19 +43,16 @@ export async function initProject(root) {
   await safeWriteMemoryFile(root, 'architecture.md', '# Project Architecture\n\nRun `cmi scan` to refresh this file.\n', { ifMissing: true });
   await safeWriteMemoryFile(root, 'agent-instructions.md', '# Agent Instructions\n\n1. Search project memory before broad repository exploration.\n2. Check memory health before relying on old decisions.\n3. Read decisions before architectural changes.\n4. Run impact analysis before changing shared files or symbols.\n5. Read mistakes before risky operations or deployment.\n6. Store only durable knowledge, never secrets or temporary logs.\n7. Refresh project intelligence after structural changes.\n8. Use workspace-scoped search in monorepositories.\n9. Treat MCP durable-memory mutations as opt-in operations that require review.\n', { ifMissing: true });
   await safeWriteMemoryFile(root, '.gitignore', 'project-graph.json\nproject-index.json\nsnapshots/\n', { ifMissing: true });
-  const currentConfig = await safeReadMemoryJson(root, 'config.json', { optional: true }) || {};
-  const migratedConfig = normalizeConfig(currentConfig);
-  if (JSON.stringify(currentConfig) !== JSON.stringify(migratedConfig)) {
+  if (JSON.stringify(currentConfig || {}) !== JSON.stringify(migratedConfig)) {
     await safeWriteMemoryFile(root, 'config.json', JSON.stringify(migratedConfig, null, 2) + '\n');
-  } else if (!(await safeReadMemoryFile(root, 'config.json', { optional: true }))) {
+  } else if (currentConfig === null) {
     await safeWriteMemoryFile(root, 'config.json', JSON.stringify(migratedConfig, null, 2) + '\n');
   }
   return directory;
 }
 
 export async function readConfig(root) {
-  const current = await safeReadMemoryJson(root, 'config.json', { optional: true });
-  return normalizeConfig(current || {});
+  return readProjectConfig(root);
 }
 
 async function walk(root, config, matcher, current = root, output = [], stats = { ignored: 0, symlinks: 0, tooLarge: 0, unreadable: 0 }) {
@@ -166,6 +146,7 @@ function architectureMarkdown(manifest, graph, workspaces, directories, configFi
 
 export async function scanProject(root, options = {}) {
   const started = performance.now();
+  await assertGeneratedFormatsWritable(root);
   await initProject(root);
   const config = await readConfig(root);
   const matcher = await createIgnoreMatcher(root, config);
@@ -225,10 +206,14 @@ export async function remember(root, type, text, options = {}) {
   if (!clean) throw new Error('Memory text cannot be empty');
   if (looksSensitive(clean)) throw new Error('Memory appears to contain a secret. Store a reference, not the credential.');
   const sources = await normalizeSources(root, options.sources || []);
-  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
-  const createdAt = new Date().toISOString();
-  const metadata = { schemaVersion: 1, id: crypto.randomUUID(), type, createdAt, sources, sourceHashes: await sourceFingerprints(root, sources), projectHash: index?.hash || null, lifecycle: { state: 'active' } };
-  await withMemoryWriteLock(root, () => safeAppendMemoryFile(root, fileName, `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`));
+  let metadata = null;
+  await withMemoryWriteLock(root, async () => {
+    await assertMemoryWritable(root);
+    const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true });
+    const createdAt = new Date().toISOString();
+    metadata = { schemaVersion: 1, id: crypto.randomUUID(), type, createdAt, sources, sourceHashes: await sourceFingerprints(root, sources), projectHash: index?.hash || null, lifecycle: { state: 'active' } };
+    await safeAppendMemoryFile(root, fileName, `\n## ${createdAt}\n\n<!-- cmi-meta:${JSON.stringify(metadata)} -->\n\n${clean}\n`);
+  });
   return metadata;
 }
 
@@ -252,36 +237,56 @@ export async function status(root) {
   let directory = null;
   try { directory = await ensureSafeMemoryRoot(root, { create: false }); }
   catch (error) {
-    const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: false, indexAvailable: false, graphHealth: null, memoryHealth: null });
-    return { initialized: true, healthy: false, evidenceHealth, storageHealth: { safe: false, reason: error.message }, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
+    const configHealth = { available: false, state: 'unavailable', healthy: false, usable: false, current: false, storedVersion: null, supportedVersion: CONFIG_SCHEMA_VERSION, code: error.code || 'CMI_UNSAFE_STORAGE', reason: error.message };
+    const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: false, configHealth, indexAvailable: false, graphHealth: null, memoryHealth: null });
+    return { initialized: true, healthy: false, evidenceHealth, storageHealth: { safe: false, reason: error.message }, configHealth, index: null, graph: null, graphHealth: null, workspaces: null, entries: null, memoryHealth: null, snapshots: 0 };
   }
-  if (!directory) return {
-    initialized: false,
-    healthy: false,
-    evidenceHealth: buildEvidenceHealth({ initialized: false, storageSafe: true, indexAvailable: false, graphHealth: null, memoryHealth: null }),
-    storageHealth: { safe: true },
-    index: null,
-    graph: null,
-    graphHealth: null,
-    workspaces: null,
-    entries: { facts: 0, decisions: 0, mistakes: 0 },
-    memoryHealth: { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0, blocked: 0 },
-    snapshots: 0,
+  if (!directory) {
+    const configHealth = { available: false, state: 'missing', healthy: false, usable: false, current: false, storedVersion: null, supportedVersion: CONFIG_SCHEMA_VERSION, code: null, reason: 'Project memory is not initialized.' };
+    return {
+      initialized: false,
+      healthy: false,
+      evidenceHealth: buildEvidenceHealth({ initialized: false, storageSafe: true, configHealth, indexAvailable: false, graphHealth: null, memoryHealth: null }),
+      storageHealth: { safe: true },
+      configHealth,
+      index: null,
+      graph: null,
+      graphHealth: null,
+      workspaces: null,
+      entries: { facts: 0, decisions: 0, mistakes: 0 },
+      memoryHealth: { fresh: 0, stale: 0, review: 0, untracked: 0, inactive: 0, blocked: 0 },
+      snapshots: 0,
+    };
+  }
+  const inspectedConfig = await inspectProjectConfig(root);
+  const { config: _config, ...configHealth } = inspectedConfig;
+  const storedIndex = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
+  const index = storedIndex?.schemaVersion === 5 ? storedIndex : null;
+  const indexState = !storedIndex ? 'missing' : storedIndex.schemaVersion === 5 ? 'current' : storedIndex.schemaVersion > 5 ? 'unsupported' : 'obsolete';
+  const indexHealth = {
+    available: Boolean(storedIndex),
+    current: Boolean(index),
+    schemaVersion: Number.isInteger(storedIndex?.schemaVersion) ? storedIndex.schemaVersion : null,
+    state: indexState,
+    rebuildRequired: indexState === 'obsolete',
+    scanAllowed: indexState !== 'unsupported',
+    reason: indexState === 'unsupported' ? `Project index format ${storedIndex.schemaVersion} is newer than this CMI version; use a compatible/newer CMI version, or preserve and explicitly remove the generated files before rebuilding.` : null,
   };
-  const index = await safeReadMemoryJson(root, 'project-index.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
   const graph = await safeReadMemoryJson(root, 'project-graph.json', { optional: true, maxBytes: DEFAULT_MAX_GENERATED_CACHE_BYTES }).catch(() => null);
   const snapshots = await safeListMemoryDir(root, 'snapshots').catch(() => []);
   const entries = { facts: await countEntries(root, 'memory.md'), decisions: await countEntries(root, 'decisions.md'), mistakes: await countEntries(root, 'mistakes.md') };
   const memoryHealth = await checkStaleMemory(root);
   const loaded = await loadMemory(root, { withHealth: true });
   const graphHealth = loaded.graphHealth;
-  const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: true, indexAvailable: Boolean(index), graphHealth, memoryHealth: memoryHealth.counts });
+  const evidenceHealth = buildEvidenceHealth({ initialized: true, storageSafe: true, configHealth, indexAvailable: Boolean(index), indexHealth, graphHealth, memoryHealth });
   return {
     initialized: true,
     healthy: evidenceHealth.healthy,
     evidenceHealth,
     storageHealth: { safe: true },
+    configHealth,
     index,
+    indexHealth,
     graph: graph?.summary || null,
     graphHealth,
     workspaces: index?.workspaces || null,
@@ -308,16 +313,25 @@ export async function doctor(root) {
   add('memory', initialized ? 'pass' : 'warn', initialized ? 'Project memory is initialized.' : 'Run cmi init to create project memory.');
   const gitVersion = await git(root, ['--version']);
   add('git', gitVersion ? 'pass' : 'warn', gitVersion || 'Git is unavailable; snapshots will contain limited metadata.');
-  const config = await readConfig(root);
-  const matcher = await createIgnoreMatcher(root, config);
-  add('ignore-rules', 'pass', `${matcher.rules.length} custom ignore rule(s) loaded.`);
   if (!initialized) {
+    add('configuration', 'warn', 'Project configuration is unavailable until project memory is initialized.');
+    add('ignore-rules', 'warn', 'Ignore rules are unavailable until project memory is initialized.');
     add('evidence-health', 'fail', 'Evidence state is uninitialized. Run cmi init, then cmi scan before relying on project intelligence.');
   } else {
     const projectStatus = await status(root);
-    add('index', projectStatus.index && projectStatus.graph ? 'pass' : 'warn', projectStatus.index && projectStatus.graph ? 'Project index and graph are available.' : 'Run cmi scan to build project intelligence.');
+    const inspectedConfig = await inspectProjectConfig(root);
+    add('configuration', inspectedConfig.usable ? 'pass' : 'fail', inspectedConfig.usable ? `Project configuration is valid and supported at schema ${CONFIG_SCHEMA_VERSION}.` : `${inspectedConfig.reason} Configuration-dependent evidence and mutations are blocked.`);
+    if (inspectedConfig.usable) {
+      const matcher = await createIgnoreMatcher(root, inspectedConfig.config);
+      add('ignore-rules', 'pass', `${matcher.rules.length} custom ignore rule(s) loaded.`);
+    } else add('ignore-rules', 'fail', 'Ignore rules cannot be trusted because project configuration is blocked.');
+    const indexBlocked = projectStatus.indexHealth?.state === 'unsupported';
+    add('index', projectStatus.indexHealth?.current ? 'pass' : indexBlocked ? 'fail' : 'warn', projectStatus.indexHealth?.current ? 'Project index is available in the current format.' : indexBlocked ? projectStatus.indexHealth.reason : 'Run cmi scan to build project intelligence.');
     const graphBlocked = projectStatus.evidenceHealth?.capabilities?.impactAnalysis === 'blocked';
-    add('graph-health', projectStatus.graphHealth?.healthy ? 'pass' : graphBlocked ? 'fail' : 'warn', projectStatus.graphHealth?.healthy ? 'Project graph is current and complete within configured coverage.' : graphBlocked ? `Project graph is blocked (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, sourceSetChanged=${Boolean(projectStatus.graphHealth?.sourceSetChanged)}, resolverInputsChanged=${Boolean(projectStatus.graphHealth?.resolverInputsChanged)}). Run cmi scan before relying on graph/impact evidence.` : `Project graph is degraded (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, truncated=${Boolean(projectStatus.graphHealth?.truncated)}). Run cmi scan or raise graph limits.`);
+    const graphBlockedDetail = projectStatus.graphHealth?.scanAllowed === false
+      ? projectStatus.graphHealth?.blockedReason || projectStatus.graphHealth?.formatReason || 'Project graph is blocked by unsupported configuration or generated state; use a compatible/newer CMI version or preserve/remove the unsupported files explicitly.'
+      : `Project graph is blocked (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, sourceSetChanged=${Boolean(projectStatus.graphHealth?.sourceSetChanged)}, resolverInputsChanged=${Boolean(projectStatus.graphHealth?.resolverInputsChanged)}). Run cmi scan before relying on graph/impact evidence.`;
+    add('graph-health', projectStatus.graphHealth?.healthy ? 'pass' : graphBlocked ? 'fail' : 'warn', projectStatus.graphHealth?.healthy ? 'Project graph is current and complete within configured coverage.' : graphBlocked ? graphBlockedDetail : `Project graph is degraded (${projectStatus.graphHealth?.staleNodes || 0} stale, ${projectStatus.graphHealth?.missingNodes || 0} missing, truncated=${Boolean(projectStatus.graphHealth?.truncated)}). Run cmi scan or raise graph limits.`);
     const evidenceBlocked = projectStatus.evidenceHealth?.state === 'blocked' || projectStatus.evidenceHealth?.blocked === true;
     add('evidence-health', projectStatus.evidenceHealth?.healthy ? 'pass' : evidenceBlocked ? 'fail' : 'warn', projectStatus.evidenceHealth?.healthy ? 'Current project evidence is healthy.' : `Evidence state is ${projectStatus.evidenceHealth?.state || 'unknown'}; inspect status --json before relying on degraded or blocked evidence.`);
     const blockedMemory = Number(projectStatus.memoryHealth?.blocked || 0);

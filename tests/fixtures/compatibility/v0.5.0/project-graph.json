@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 3,
+  "parserVersion": 3,
+  "generatedAt": "2026-08-01T00:00:00.000Z",
+  "summary": {"sourceFiles": 1, "localEdges": 0, "externalDependencies": 0, "symbols": 1, "truncated": false},
+  "externalDependencies": [],
+  "hubs": [],
+  "reverseDependents": {},
+  "nodes": [{"path":"src/policy.js","language":"JavaScript","fingerprint":"32:1:1","rawImports":[],"imports":[],"symbols":[{"name":"policy","kind":"const","exported":true}]}]
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-01T00:00:00.000Z",
+  "findings": [
+    {
+      "schemaVersion": 1,
+      "id": "44444444-4444-4444-8444-444444444444",
+      "key": "fixture:historical-finding",
+      "state": "open",
+      "category": "historical-fixture",
+      "severity": "low",
+      "title": "Historical finding",
+      "detail": "This deterministic finding proves the released registry shape is preserved.",
+      "confidence": "medium",
+      "evidenceType": "observed",
+      "evidence": ["fixture"],
+      "relatedFiles": [],
+      "sessions": [],
+      "occurrences": 1,
+      "firstSeen": "2026-08-01T00:00:00.000Z",
+      "lastSeen": "2026-08-01T00:00:00.000Z"
+    }
+  ]
+}

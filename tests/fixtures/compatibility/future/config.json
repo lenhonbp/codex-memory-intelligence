@@ -1,0 +1,11 @@
+{
+  "version": 999,
+  "maxFileBytes": 1000000,
+  "maxSourceBytes": 512000,
+  "maxGraphFiles": 5000,
+  "staleAfterDays": 90,
+  "includeHidden": false,
+  "incrementalScan": true,
+  "workspaceDetection": true,
+  "ignorePatterns": []
+}
