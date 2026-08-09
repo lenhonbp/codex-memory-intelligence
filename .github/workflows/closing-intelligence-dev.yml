@@ -22,6 +22,55 @@ jobs:
           node-version: 24
       - name: Apply closing-intelligence patch
         run: python3 .github/scripts/closing-intelligence-dev.py
+      - name: Repair compatibility and carryover semantics
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          closing = Path('src/closing-intelligence.js')
+          text = closing.read_text(encoding='utf-8')
+          repairs = [
+              (
+                  'function findingAlert(finding, activeById) {',
+                  'function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds) {'
+              ),
+              (
+                  "  const carryover = finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed';",
+                  "  const activeChangeId = relatedChangeIds.find((id) => activeById.has(id)) || null;\n  const carryover = finding.category === 'active-change'\n    ? (activeChangeId ? (concurrentActiveIds.has(activeChangeId) || !relatedActiveIds.has(activeChangeId)) : finding.sessionRelevance === 'concurrent-unattributed')\n    : false;"
+              ),
+              (
+                  '    severity: levelForFinding(finding),',
+                  "    severity: carryover ? 'reminder' : levelForFinding(finding),"
+              ),
+              (
+                  '  const activeById = new Map(activeChanges.records.map((item) => [item.id, item]));\n  const projectFindings = allFindings.findings.filter((item) => [\'open\', \'accepted\'].includes(item.state));\n  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById));',
+                  "  const activeById = new Map(activeChanges.records.map((item) => [item.id, item]));\n  const relatedActiveIds = new Set((session.close?.handoff?.activeChanges || []).map((item) => item.id));\n  const concurrentActiveIds = new Set((session.close?.handoff?.concurrentChanges?.active || []).map((item) => item.id));\n  const projectFindings = allFindings.findings.filter((item) => ['open', 'accepted'].includes(item.state));\n  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById, relatedActiveIds, concurrentActiveIds));"
+              ),
+          ]
+          for old, new in repairs:
+              if text.count(old) != 1:
+                  raise SystemExit(f'closing-intelligence repair target count={text.count(old)} for {old[:80]!r}')
+              text = text.replace(old, new)
+          closing.write_text(text, encoding='utf-8')
+
+          mcp = Path('src/mcp-entry.js')
+          text = mcp.read_text(encoding='utf-8')
+          repairs = [
+              (
+                  'append a concise `CMI Intelligence` section with at most three alerts (or CLEAN) so the user can see unresolved cross-session work and evidence-backed consistency reminders without asking.',
+                  'append a concise `CMI Intelligence` section with at most three alerts (or CLEAN), including the highest-priority next action, so the user can see unresolved cross-session work and evidence-backed consistency reminders without asking.'
+              ),
+              (
+                  'or the one-line CLEAN state when no material alert exists. Preserve the distinction between observed evidence, reviewed knowledge, historical correlation, and inference.',
+                  'or the one-line CLEAN state when no material alert exists. Also surface the highest-priority next action without waiting for the user to ask what to do next. Preserve the distinction between observed evidence, reviewed knowledge, historical correlation, and inference.'
+              ),
+          ]
+          for old, new in repairs:
+              if text.count(old) != 1:
+                  raise SystemExit(f'mcp compatibility repair target count={text.count(old)} for {old[:80]!r}')
+              text = text.replace(old, new)
+          mcp.write_text(text, encoding='utf-8')
+          PY
       - name: Repair managed-template escaping
         run: |
           python3 - <<'PY'
