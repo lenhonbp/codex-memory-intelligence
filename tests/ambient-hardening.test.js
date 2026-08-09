@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { activateProject } from '../src/activation.js';
 import { classifyAmbientIntent } from '../src/ambient-intelligence.js';
+import { initProject, scanProject } from '../src/core.js';
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-ambient-hardening-'));
@@ -35,4 +36,25 @@ test('activation preflights unmanaged Codex conflict before writing AGENTS or CM
   assert.equal(await fs.readFile(configPath, 'utf8'), existing);
   assert.equal(await exists(path.join(root, 'AGENTS.md')), false);
   assert.equal(await exists(path.join(root, '.codex-memory')), false);
+});
+
+test('activation refuses unsupported generated evidence before writing agent integration', async () => {
+  const root = await fixture();
+  await initProject(root);
+  await scanProject(root);
+
+  const graphPath = path.join(root, '.codex-memory', 'project-graph.json');
+  const graph = JSON.parse(await fs.readFile(graphPath, 'utf8'));
+  graph.schemaVersion = 999;
+  const futureBytes = `${JSON.stringify(graph, null, 2)}\n`;
+  await fs.writeFile(graphPath, futureBytes);
+
+  await assert.rejects(
+    activateProject(root, { agent: 'codex' }),
+    (error) => error?.code === 'CMI_GENERATED_VERSION_UNSUPPORTED' || /unsupported|future/i.test(String(error?.message || '')),
+  );
+
+  assert.equal(await fs.readFile(graphPath, 'utf8'), futureBytes);
+  assert.equal(await exists(path.join(root, 'AGENTS.md')), false);
+  assert.equal(await exists(path.join(root, '.codex', 'config.toml')), false);
 });
