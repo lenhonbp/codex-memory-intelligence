@@ -15,6 +15,7 @@ import {
   formatHandoff,
   formatFindingList,
 } from './session-intelligence.js';
+import { buildClosingIntelligence, formatClosingIntelligence } from './closing-intelligence.js';
 import {
   captureEvaluation,
   getEvaluation,
@@ -76,7 +77,7 @@ function allowedFlags() {
     const map = {
       start: ['--file','--note','--accomplished','--blocker','--decision','--question','--json'],
       observe: commonObservation.filter((item) => item !== '--outcome'),
-      status: ['--json'], close: commonObservation, show: ['--json'], list: ['--status','--limit','--json'], handoff: ['--json'],
+      status: ['--json'], close: commonObservation, closing: ['--json'], show: ['--json'], list: ['--status','--limit','--json'], handoff: ['--json'],
     };
     return new Set(map[action] || []);
   }
@@ -143,7 +144,7 @@ function evaluationOptions() {
 }
 function print(value, formatted) { console.log(json ? JSON.stringify(value, null, 2) : formatted); }
 function groupHelp(name) {
-  if (name === 'session') return 'Usage: cmi session <start|observe|status|close|show|list|handoff> ...\n\nTrack project work, persist findings, and produce an evidence-based handoff/next action.';
+  if (name === 'session') return 'Usage: cmi session <start|observe|status|close|closing|show|list|handoff> ...\n\nTrack project work, persist findings, and produce an evidence-based handoff/next action plus bounded Closing Intelligence.';
   if (name === 'finding') return 'Usage: cmi finding <list|show|state> ...\n\nInspect and explicitly review persistent project findings.';
   return 'Usage: cmi evaluate <capture|review|list|show|report> ...\n       cmi evaluate <export|import> ...\n\nSource kinds: external-real | self-host | synthetic.\nCollect anonymized field evidence, explicit longitudinal human/agent judgments, and portable local bundles without mixing provenance classes.';
 }
@@ -173,7 +174,14 @@ try {
       print(result, formatSessionAssessment(result));
     } else if (action === 'close') {
       const record = await closeSession(process.cwd(), values[0] || 'latest', sessionOptions());
-      print(record, formatSessionReport(record));
+      if (json) print(record, formatSessionReport(record));
+      else {
+        const closing = await buildClosingIntelligence(process.cwd(), record.id);
+        console.log(`${formatSessionReport(record)}\n\n${formatClosingIntelligence(closing)}`);
+      }
+    } else if (action === 'closing') {
+      const closing = await buildClosingIntelligence(process.cwd(), values[0] || 'latest');
+      print(closing, formatClosingIntelligence(closing));
     } else if (action === 'show') {
       const record = await getSession(process.cwd(), values[0] || 'latest');
       print(record, formatSessionReport(record));
@@ -185,7 +193,7 @@ try {
       const handoff = await getSessionHandoff(process.cwd(), values[0] || 'latest');
       print(handoff, formatHandoff(handoff));
     } else {
-      throw new Error('Usage: cmi session <start|observe|status|close|show|list|handoff> ...');
+      throw new Error('Usage: cmi session <start|observe|status|close|closing|show|list|handoff> ...');
     }
   } else if (command === 'finding') {
     const values = positional(['--status','--limit','--reason','--changed-by','--superseded-by']);
