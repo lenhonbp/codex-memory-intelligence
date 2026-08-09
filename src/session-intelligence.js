@@ -19,6 +19,7 @@ import { SESSION_OUTCOMES, FINDING_STATES, validateSessionRecordContract, valida
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
 const SESSION_DIR = 'sessions';
+const ACTIVE_SESSION_DIR = 'snapshots/active-sessions';
 const FINDINGS_FILE = 'findings.json';
 const MAX_RECORD_BYTES = 1_000_000;
 const MAX_RECORDS = 500;
@@ -64,6 +65,8 @@ function normalizePath(value) {
 function normalizePaths(values) { return bounded(unique((values || []).map(normalizePath)), MAX_PATHS); }
 function sessionsDirectory(root) { return path.join(root, MEMORY_DIR, SESSION_DIR); }
 function sessionPath(root, id) { return path.join(sessionsDirectory(root), `${id}.json`); }
+function activeSessionsDirectory(root) { return path.join(root, MEMORY_DIR, ACTIVE_SESSION_DIR); }
+function activeSessionPath(root, id) { return path.join(activeSessionsDirectory(root), `${id}.json`); }
 function sessionLockPath(root, id) { return path.join(root, MEMORY_DIR, 'snapshots', `session-${id}.lock`); }
 function findingsPath(root) { return path.join(root, MEMORY_DIR, FINDINGS_FILE); }
 function findingsLockPath(root) { return path.join(root, MEMORY_DIR, 'snapshots', 'findings.lock'); }
@@ -73,6 +76,7 @@ async function ensureStorage(root) {
   await initProject(root);
   await safeEnsureMemoryDir(root, SESSION_DIR);
   await safeEnsureMemoryDir(root, 'snapshots');
+  await safeEnsureMemoryDir(root, ACTIVE_SESSION_DIR);
 }
 async function acquireLock(target) {
   return acquireLeaseLock(target, { staleMs: LOCK_STALE_MS, retries: LOCK_RETRIES, retryMs: LOCK_RETRY_MS });
@@ -144,20 +148,30 @@ async function writeSession(root, record) {
   if (!validateSessionRecord(record)) throw new Error('Invalid session record.');
   const lockTarget = sessionLockPath(root, record.id);
   const lock = await acquireLock(lockTarget);
-  try { await atomicJsonWrite(sessionPath(root, record.id), record); }
-  finally { await releaseLock(lockTarget, lock); }
+  try {
+    const target = record.status === 'active' ? activeSessionPath(root, record.id) : sessionPath(root, record.id);
+    await atomicJsonWrite(target, record);
+    if (record.status === 'active') await fs.rm(sessionPath(root, record.id), { force: true }).catch(() => {});
+    else await fs.rm(activeSessionPath(root, record.id), { force: true }).catch(() => {});
+  } finally { await releaseLock(lockTarget, lock); }
 }
 async function readSessionRecords(root) {
   await ensureStorage(root);
-  const names = await fs.readdir(sessionsDirectory(root)).catch(() => []);
-  const candidates = names.filter((name) => /^[0-9a-f-]+\.json$/i.test(name));
-  const records = [];
-  let invalidRecords = 0;
-  for (const name of candidates.slice(0, MAX_RECORDS)) {
-    const record = await safeReadJson(path.join(sessionsDirectory(root), name), validateSessionRecord);
-    if (record) records.push(record); else invalidRecords += 1;
+  const sources = [sessionsDirectory(root), activeSessionsDirectory(root)];
+  const candidates = [];
+  for (const directory of sources) {
+    const names = await fs.readdir(directory).catch(() => []);
+    for (const name of names.filter((item) => /^[0-9a-f-]+\.json$/i.test(item))) candidates.push({ directory, name });
   }
-  records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const byId = new Map();
+  let invalidRecords = 0;
+  for (const item of candidates.slice(0, MAX_RECORDS)) {
+    const record = await safeReadJson(path.join(item.directory, item.name), validateSessionRecord);
+    if (!record) { invalidRecords += 1; continue; }
+    const previous = byId.get(record.id);
+    if (!previous || String(record.updatedAt).localeCompare(String(previous.updatedAt)) >= 0) byId.set(record.id, record);
+  }
+  const records = [...byId.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   return { records, invalidRecords, truncated: candidates.length > MAX_RECORDS };
 }
 async function resolveSession(root, selector, options = {}) {
@@ -259,6 +273,7 @@ async function committedPathsSince(root, startHead, currentHead) {
 }
 function sessionRepositoryBaseline(repository) {
   if (!repository?.available) return repository;
+  if (repository.rawClean !== undefined) return { ...repository, projectClean: repository.clean, projectChanges: bounded(repository.changes || [], 200), cmiInternalChangesOmitted: repository.cmiInternalChangesOmitted || 0 };
   const projectChanges = [];
   let cmiInternalChangesOmitted = 0;
   for (const item of repository.changes || []) {

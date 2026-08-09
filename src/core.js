@@ -130,18 +130,16 @@ function importantFiles(paths) {
 function architectureMarkdown(manifest, graph, workspaces, directories, configFiles) {
   const graphSummary = [
     `- Source files analyzed: ${graph.summary.sourceFiles}`,
-    `- Parsed this scan: ${graph.summary.parsedFiles}`,
-    `- Reused from previous scan: ${graph.summary.reusedFiles}`,
     `- Local import edges: ${graph.summary.localEdges}`,
     `- Cross-workspace edges: ${graph.summary.crossWorkspaceEdges}`,
     `- Symbols indexed: ${graph.summary.symbols}`,
     `- External dependencies observed: ${graph.summary.externalDependencies}`,
+    `- Non-code local dependencies observed: ${graph.summary.nonCodeDependencies || 0}`,
     `- Unresolved local imports: ${graph.summary.unresolvedImports}`,
-    `- Scan duration: ${graph.summary.durationMs} ms`,
   ].join('\n');
   const hubs = graph.hubs.filter((item) => item.dependents > 0).slice(0, 10);
   const workspaceSection = workspaces.count ? formatWorkspaces(workspaces).replace(/^# Project workspaces\n\n/, '') : '- No configured workspaces detected';
-  return `# Project Architecture\n\nGenerated: ${manifest.generatedAt}\nIndex: \`${manifest.hash.slice(0, 12)}\`\n\n## Detected stack\n${manifest.stack.length ? manifest.stack.map((item) => `- ${item}`).join('\n') : '- Unknown'}\n\n## Workspaces\n${workspaceSection}\n\n## Languages and formats\n${manifest.languages.map((item) => `- ${item.language}: ${item.files} files, ${item.bytes} bytes`).join('\n') || '- None'}\n\n## Repository shape\n${directories.map(([directory, count]) => `- \`${directory}\`: ${count} files`).join('\n')}\n\n## Likely entry points\n${manifest.entryCandidates.map((item) => `- \`${item}\``).join('\n') || '- None detected'}\n\n## Important configuration and guidance\n${configFiles.map((item) => `- \`${item}\``).join('\n') || '- None detected'}\n\n## Graph intelligence\n${graphSummary}\n\n### Shared or high-impact files\n${hubs.length ? hubs.map((item) => `- \`${item.path}\`: ${item.dependents} dependents, ${item.imports} local imports, ${item.symbols} symbols${item.workspace ? `, workspace ${item.workspace}` : ''}`).join('\n') : '- No shared modules detected'}\n\n## Ignore and safety summary\n- Ignored entries: ${manifest.ignore.ignored}\n- Symbolic links skipped: ${manifest.ignore.symlinks}\n- Oversized files skipped: ${manifest.ignore.tooLarge}\n- Unreadable entries skipped: ${manifest.ignore.unreadable}\n- Custom ignore rules: ${manifest.ignore.rules}\n\n## Agent operating context\n- Indexed files: ${manifest.files}\n- Indexed bytes: ${manifest.bytes}\n- Search durable knowledge with \`cmi search "query"\`.\n- Scope monorepo retrieval with \`cmi context "query" --workspace name-or-path\`.\n- Check affected files and workspaces with \`cmi impact "file-or-symbol"\`.\n- Explain exclusions with \`cmi explain-ignore path\`.\n- Update this index after dependencies, folders, entry points, or shared APIs change.\n`;
+  return `# Project Architecture\n\nIndex: \`${manifest.hash.slice(0, 12)}\`\n\n## Detected stack\n${manifest.stack.length ? manifest.stack.map((item) => `- ${item}`).join('\n') : '- Unknown'}\n\n## Workspaces\n${workspaceSection}\n\n## Languages and formats\n${manifest.languages.map((item) => `- ${item.language}: ${item.files} files, ${item.bytes} bytes`).join('\n') || '- None'}\n\n## Repository shape\n${directories.map(([directory, count]) => `- \`${directory}\`: ${count} files`).join('\n')}\n\n## Likely entry points\n${manifest.entryCandidates.map((item) => `- \`${item}\``).join('\n') || '- None detected'}\n\n## Important configuration and guidance\n${configFiles.map((item) => `- \`${item}\``).join('\n') || '- None detected'}\n\n## Graph intelligence\n${graphSummary}\n\n### Shared or high-impact files\n${hubs.length ? hubs.map((item) => `- \`${item.path}\`: ${item.dependents} dependents, ${item.imports} local imports, ${item.symbols} symbols${item.workspace ? `, workspace ${item.workspace}` : ''}`).join('\n') : '- No shared modules detected'}\n\n## Ignore and safety summary\n- Ignored entries: ${manifest.ignore.ignored}\n- Symbolic links skipped: ${manifest.ignore.symlinks}\n- Oversized files skipped: ${manifest.ignore.tooLarge}\n- Unreadable entries skipped: ${manifest.ignore.unreadable}\n- Custom ignore rules: ${manifest.ignore.rules}\n\n## Agent operating context\n- Indexed files: ${manifest.files}\n- Indexed bytes: ${manifest.bytes}\n- Search durable knowledge with \`cmi search "query"\`.\n- Scope monorepo retrieval with \`cmi context "query" --workspace name-or-path\`.\n- Check affected files and workspaces with \`cmi impact "file-or-symbol"\`.\n- Explain exclusions with \`cmi explain-ignore path\`.\n- Update this index after dependencies, folders, entry points, or shared APIs change.\n`;
 }
 
 export async function scanProject(root, options = {}) {
@@ -292,7 +290,7 @@ export async function status(root) {
     workspaces: index?.workspaces || null,
     entries,
     memoryHealth: memoryHealth.counts,
-    snapshots: snapshots.length,
+    snapshots: snapshots.filter((name) => name.endsWith('.json')).length,
   };
 }
 
