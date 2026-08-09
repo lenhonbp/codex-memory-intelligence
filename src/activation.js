@@ -35,12 +35,26 @@ cwd = "."
 env = { CMI_WRITE_ENABLED = "1" }
 ${CODEX_END}`;
 
+function occurrences(text, value) {
+  let count = 0;
+  let offset = 0;
+  while (true) {
+    const index = text.indexOf(value, offset);
+    if (index < 0) return count;
+    count += 1;
+    offset = index + value.length;
+  }
+}
+
 function normalizedManagedContent(existing, begin, end, block, label) {
   const text = existing ?? '';
-  const start = text.indexOf(begin);
-  const finish = text.indexOf(end);
-  if ((start >= 0) !== (finish >= 0) || (start >= 0 && finish < start)) throw new Error(`${label} contains a partial or malformed CMI managed block. Repair it explicitly before activation.`);
-  if (start >= 0) {
+  const startCount = occurrences(text, begin);
+  const endCount = occurrences(text, end);
+  if (startCount !== endCount || startCount > 1) throw new Error(`${label} contains partial, duplicated, or malformed CMI managed blocks. Repair them explicitly before activation.`);
+  if (startCount === 1) {
+    const start = text.indexOf(begin);
+    const finish = text.indexOf(end);
+    if (finish < start) throw new Error(`${label} contains a malformed CMI managed block. Repair it explicitly before activation.`);
     const after = finish + end.length;
     return `${text.slice(0, start)}${block}${text.slice(after)}`;
   }
@@ -67,34 +81,40 @@ async function atomicWrite(root, relative, content) {
   catch (error) { await fs.rm(temporary, { force: true }).catch(() => {}); throw error; }
 }
 
-async function mergeAgents(root) {
+async function planAgents(root) {
   const existing = await readIntegrationFile(root, 'AGENTS.md');
   const next = normalizedManagedContent(existing, AGENTS_BEGIN, AGENTS_END, AGENTS_BLOCK, 'AGENTS.md');
-  if (next !== existing) await atomicWrite(root, 'AGENTS.md', next);
-  return { path: 'AGENTS.md', changed: next !== existing, managed: true };
+  return { path: 'AGENTS.md', existing, next, changed: next !== existing, managed: true };
 }
 
-async function mergeCodexConfig(root) {
+async function planCodexConfig(root) {
   const existing = await readIntegrationFile(root, '.codex/config.toml');
   const text = existing ?? '';
   if (/^\s*\[mcp_servers\.cmi\]\s*$/m.test(text) && !text.includes(CODEX_BEGIN)) {
     throw new Error('.codex/config.toml already contains an unmanaged [mcp_servers.cmi] section. CMI will not overwrite it; reconcile that configuration explicitly first.');
   }
   const next = normalizedManagedContent(existing, CODEX_BEGIN, CODEX_END, CODEX_BLOCK, '.codex/config.toml');
-  if (next !== existing) await atomicWrite(root, '.codex/config.toml', next);
-  return { path: '.codex/config.toml', changed: next !== existing, managed: true, writeEnabled: true };
+  return { path: '.codex/config.toml', existing, next, changed: next !== existing, managed: true, writeEnabled: true };
+}
+
+async function applyPlan(root, plan) {
+  if (plan.changed) await atomicWrite(root, plan.path, plan.next);
+  const { existing, next, ...result } = plan;
+  return result;
 }
 
 export async function activateProject(root, options = {}) {
   const resolvedRoot = path.resolve(root);
   const agent = String(options.agent || 'codex').trim().toLowerCase();
   if (!['codex', 'generic'].includes(agent)) throw new Error('Activation agent must be codex or generic.');
+
+  const plans = agent === 'codex'
+    ? [await planAgents(resolvedRoot), await planCodexConfig(resolvedRoot)]
+    : [];
+
   await initProject(resolvedRoot);
   const integrations = [];
-  if (agent === 'codex') {
-    integrations.push(await mergeAgents(resolvedRoot));
-    integrations.push(await mergeCodexConfig(resolvedRoot));
-  }
+  for (const plan of plans) integrations.push(await applyPlan(resolvedRoot, plan));
   const scan = await scanProject(resolvedRoot);
   return {
     schemaVersion: 1,
