@@ -4,7 +4,7 @@ import { buildContextPack } from './search.js';
 import { getSessionHandoff } from './session-intelligence.js';
 
 const CONTINUE = /(?:\blàm\s+tiếp\b|\btiếp\s+tục\b|\bresume\b|\bcontinue\b|\bpick\s+up\b|\bhôm\s+qua\b|\blast\s+(?:time|session)\b)/iu;
-const MUTATE = /(?:\bsửa\b|\bfix\b|\bthêm\b|\badd\b|\bimplement\b|\btriển\s+khai\b|\btạo\b|\bcreate\b|\bupdate\b|\bcập\s+nhật\b|\brefactor\b|\bđổi\b|\bchange\b|\bxóa\b|\bremove\b|\blàm\s+cho\b|\bmake\b)/iu;
+const MUTATE = /(?:\bsửa\b|\bfix\b|\bthêm\b|\badd\b|\bimplement\b|\btriển\s+khai\b|\btạo\b|\bcreate\b|\bupdate\b|\bcập\s+nhật\b|\brefactor\b|đổi|\bchange\b|\bxóa\b|\bremove\b|\blàm\s+cho\b|\bmake\b)/iu;
 const REVIEW = /(?:ổn\s+chưa|\breview\b|\baudit\b|đánh\s+giá|có\s+lỗi\s+gì|\bwhat(?:'s|\s+is)?\s+wrong\b|\bis\s+this\s+(?:ok|okay|good)\b)/iu;
 const INVESTIGATE = /(?:\bkiểm\s+tra\b|\binvestigat\w*\b|\bdebug\b|\btìm\s+hiểu\b|\bphân\s+tích\b|\banaly[sz]e\b|\btại\s+sao\b|\bwhy\b)/iu;
 
