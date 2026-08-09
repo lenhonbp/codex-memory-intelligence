@@ -334,6 +334,8 @@ Restore and rebind verify the frozen source/scan policy before writing. A same-s
 
 Portable evidence is a local, digest-verified transport format, not an authenticated backup or proof of source authorship. CMI does not export source files, but it refuses to freeze obvious credential-like content in intended evidence files. The manifest freezes a bounded, validated scan/ignore policy plus resolver/workspace inputs so a clean checkout without `.codex-memory` can reproduce the same source boundary. Source identity is byte-exact unless exact Git repository/revision and clean-worktree evidence justify the narrower UTF-8 LF checkout-compatibility identity; content-only destinations reject newline-only byte changes.
 
+A compatible relocation verifies source identity and policy; it does not promise that restored generated graph/index caches are immediately fresh at the new filesystem location. Local freshness fingerprints can change when otherwise identical source files are copied. In that case `cmi status --json` reports the graph as stale/blocked and recommends `cmi scan` instead of claiming healthy current evidence. The scan safely regenerates local graph/index intelligence, after which `status` and `doctor` become healthy when no other issue remains. This recovery scan does not rewrite durable semantic memory, memory-review metadata, or change/session/finding/evaluation history.
+
 To diagnose which installation is actually running:
 
 ```bash
