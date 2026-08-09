@@ -44,7 +44,7 @@ jobs:
               ),
               (
                   '  const activeById = new Map(activeChanges.records.map((item) => [item.id, item]));\n  const projectFindings = allFindings.findings.filter((item) => [\'open\', \'accepted\'].includes(item.state));\n  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById));',
-                  "  const activeById = new Map(activeChanges.records.map((item) => [item.id, item]));\n  const relatedActiveIds = new Set((session.close?.handoff?.activeChanges || []).map((item) => item.id));\n  const concurrentActiveIds = new Set((session.close?.handoff?.concurrentChanges?.active || []).map((item) => item.id));\n  const projectFindings = allFindings.findings.filter((item) => ['open', 'accepted'].includes(item.state));\n  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById, relatedActiveIds, concurrentActiveIds));"
+                  "  const activeById = new Map(activeChanges.records.map((item) => [item.id, item]));\n  const relatedActiveIds = new Set((session.close?.handoff?.activeChanges || []).filter((item) => item.relation !== 'sole-active-continuation' || (item.sharedTerms || []).length > 0).map((item) => item.id));\n  const concurrentActiveIds = new Set((session.close?.handoff?.concurrentChanges?.active || []).map((item) => item.id));\n  const projectFindings = allFindings.findings.filter((item) => ['open', 'accepted'].includes(item.state));\n  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById, relatedActiveIds, concurrentActiveIds));"
               ),
           ]
           for old, new in repairs:
