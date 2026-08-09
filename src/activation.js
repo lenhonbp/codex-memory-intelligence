@@ -30,7 +30,7 @@ ${AGENTS_END}`;
 const CODEX_BLOCK = `${CODEX_BEGIN}
 [mcp_servers.cmi]
 command = "npx"
-args = ["--no-install", "cmi-mcp"]
+args = ["--no", "--package=codex-memory-intelligence", "cmi-mcp"]
 cwd = "."
 env = { CMI_WRITE_ENABLED = "1" }
 ${CODEX_END}`;
