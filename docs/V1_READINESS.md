@@ -1,16 +1,16 @@
 # CMI v1.0 Readiness Audit
 
-Phase 3 backward-compatibility, migration-evidence, and empirical-record reconciliation audit. This document records the state of the repository at the Phase 3 starting baseline and is not a v1.0 declaration.
+Phase 4 release-candidate, backward-compatibility, migration-evidence, and empirical-record reconciliation audit. This document records the state of the reviewed release candidate and is not a v1.0 declaration.
 
 Audit date: 2026-08-09 (Asia/Ho_Chi_Minh)
-Phase 3 starting baseline: `58c0ade19e71b75439c975fabb9d79353931a0c3` (`main`)
-Implementation branch: `feat/v0.10-phase3-migration-compat`
-Public/package version: `0.9.2`
-Phase 3 target: `v0.10.0` readiness review; no tag, publish, or release is authorized by this audit.
+Phase 4 starting baseline: `fce8cd9f1fa4647f9d5ab05a1351cdd5083e6197` (`main`)
+Implementation branch: `release-prep/v0.10.0`
+Release-candidate/package version: `0.10.0`; latest published npm version remains `0.9.2`
+Phase 4 target: `v0.10.0` release-candidate review; no tag, publish, or release is authorized by this audit.
 
 ## Executive disposition
 
-The three Tech Lead remediation blockers have local fixes and executable regression coverage. Final engineering disposition is determined externally by the final-head hosted CI and CodeQL gate, not asserted by this source document. The compatibility fixtures and runtime checks cover the representative released persistence floor without requiring a general migration command; future and corrupt formats fail closed. This is not a claim of production readiness, v1.0 readiness, statistical sufficiency, or CMI productivity value.
+The Phase 1–3 remediation work has executable regression coverage, and Phase 4 adds release metadata, packed-artifact, and workflow-readiness evidence. Final engineering disposition is determined externally by the final-head hosted CI and CodeQL gate, not asserted by this source document. The compatibility fixtures and runtime checks cover the representative released persistence floor without requiring a general migration command; future and corrupt formats fail closed. This is not a claim of production readiness, v1.0 readiness, statistical sufficiency, or CMI productivity value.
 
 This source audit does not independently declare the branch ready: Tech Lead rereview is allowed only when the final commit has passed the required hosted matrix and CodeQL. Empirical studies remain explicitly classified below, and missing repository-side ledger state is not converted into positive product evidence.
 
@@ -28,11 +28,11 @@ This source audit does not independently declare the branch ready: Tech Lead rer
 | Durable persistence compatibility | Not yet evidenced for v1 | [`PERSISTENCE_COMPATIBILITY.md`](PERSISTENCE_COMPATIBILITY.md), seven provenance-recorded fixture families, 12 compatibility tests, exact v0.8 fallback evidence, future/corrupt no-overwrite checks, and full-suite coverage across config, memory, graph/index, changes, sessions, findings, and evaluations | Ready for audited historical range; broader release/version support, portable predecessor policy, and v1 stability decision remain open |
 | Security and parser safety | Ready for audited scope | Symlink/path/TOCTOU and strict JSON regression coverage; CodeQL is a supporting hosted gate | Heuristic parsers remain advisory, not compiler-grade |
 | Performance | Non-blocking follow-up | Incremental scan and benchmark smoke paths exist; no material regression observed in this audit | Record a reproducible baseline if performance becomes a v1 claim |
-| Release/package hygiene | Ready for current public line | npm latest and package metadata remain `0.9.2`; publish workflow has successful trusted-publish runs for the public line | No `v0.10.0` release is part of Phase 3 |
+| Release/package hygiene | Ready for release-candidate review | Candidate metadata is `0.10.0`; packed package, clean-install, release-check, and workflow audits are recorded in the Phase 4 PR; latest public npm remains `0.9.2` | Tech Lead authorization, final hosted matrix, CodeQL, and the authorized publish workflow remain before publication |
 | Cross-platform hosted verification | Required final-head gate | Earlier PR #34 workflow and CodeQL runs passed before the requested remediation; they do not certify a later head | The final head must pass Ubuntu/macOS/Windows × Node 22/24 and CodeQL before Tech Lead rereview; current run IDs belong in the PR/report |
 | Empirical product value | Not yet evidenced | Study 002 remains descriptive-only; Study 001 remains incomplete; Study 003 has a preserved hosted descriptive record with an explicit protocol deviation but an unreconciled repository-side ledger | Do not claim productivity impact or v1 readiness from these studies |
 
-Status meanings: `Ready for audited scope` means the current contract has direct evidence and no known in-scope blocker; `Not yet evidenced` means a future v1 gate is still open, not that a failure was found; `Non-blocking follow-up` is useful operational work outside the Phase 3 release gate.
+Status meanings: `Ready for audited scope` means the current contract has direct evidence and no known in-scope blocker; `Not yet evidenced` means a future v1 gate is still open, not that a failure was found; `Non-blocking follow-up` is useful operational work outside the Phase 4 release gate.
 
 ## CLI/MCP contract matrix
 
@@ -72,7 +72,7 @@ The Phase 3 policy and executable matrix are documented in [`docs/PERSISTENCE_CO
 
 This inventory follows the current source contracts: `initProject()` creates durable memory/config/instructions plus the internal `.gitignore`; `scanProject()` regenerates `architecture.md`, `project-index.json`, and `project-graph.json`; `snapshot()` writes under the ignored `snapshots/` directory; change/session/finding/evaluation modules atomically persist their records; and portable restore/rebind persists `portable-provenance.json`. The internal ignore file currently covers only `project-graph.json`, `project-index.json`, and `snapshots/`, so a tracked durable or generated file remains an observable repository change.
 
-Before v1, the project may add fields and diagnostics while preserving the current error envelope and evidence labels. It must not silently reinterpret an old reviewed record, silently overwrite an existing destination, or turn caller-attested evaluation into independent proof. `0.9.2` is the current public line; `v0.10.0` remains unreleased until the tech lead accepts the readiness matrix and hosted checks.
+Before v1, the project may add fields and diagnostics while preserving the current error envelope and evidence labels. It must not silently reinterpret an old reviewed record, silently overwrite an existing destination, or turn caller-attested evaluation into independent proof. `0.9.2` remains the latest public npm line while this `0.10.0` candidate is reviewed; v1 remains a separate future decision.
 
 ## Self-dogfood record
 
@@ -131,6 +131,6 @@ No study was restarted, no new measured condition was run, and Study 002 was not
 
 ## Acceptance gates
 
-Before the draft PR is handed to the tech lead, the branch must have: clean `git diff --check`; full `npm run verify`; benchmark, package, release-check, CLI, and MCP smoke results; no version/tag/release mutation; green Ubuntu/macOS/Windows Node 22/24 CI; green CodeQL; a documented study/issue disposition; and a PR body containing the Phase 3 scope, compatibility matrix, fixture provenance, verification record, known limitations, and explicit no-merge/no-release statement.
+Before the draft PR is handed to the tech lead, the branch must have: clean `git diff --check`; full `npm run verify`; benchmark, package, release-check, CLI, and MCP smoke results; no version/tag/release mutation; green Ubuntu/macOS/Windows Node 22/24 CI; green CodeQL; a documented study/issue disposition; and a PR body containing the Phase 1–4 scope, compatibility matrix, fixture provenance, verification record, known limitations, and explicit no-merge/no-release statement.
 
 Known limitations are deliberate: static analysis is heuristic, portable bundles are not authenticated backups, evaluation provenance is caller-attested, Studies 001 and 003 do not currently support a positive product-value claim, and the compatibility guarantee is limited to the audited historical floor documented in `PERSISTENCE_COMPATIBILITY.md`.

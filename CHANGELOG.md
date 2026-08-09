@@ -4,20 +4,41 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
-This section describes current `main` / unreleased v0.10.0 work. It is not part of the published npm `v0.9.2` package; see the `[0.9.2]` section for the public release contents.
+Future unreleased changes go here.
 
-### Fixed
+## [0.10.0] - 2026-08-09
 
-- Made fresh-project `cmi doctor` diagnostics fail closed with an actionable `cmi init`/`cmi scan` recovery path, and made human `cmi status` use the same trust-critical blocked exit code as JSON mode.
-- Kept only untracked local `.codex-memory/` state out of repository-baseline dirty-change summaries while preserving tracked, staged, renamed, and ordinary project changes.
-- Added a structured, non-mutating next action to portable-evidence mismatch errors and surfaced that action in human CLI output.
+This release candidate contains the reviewed Phase 1–3 work after `v0.9.2`. It is prepared for release review; publication remains separately authorized.
 
 ### Added
 
-- Added digest-verified, path-independent portable evidence freeze/inspect/restore/rebind workflows with explicit exact, compatible-relocated, compatible-git-checkout, compatible-content-only, and mismatch outcomes; frozen manifests now bind a bounded scan/ignore policy and resolver/workspace inputs.
-- Added canonical executable provenance diagnostics for actual script/runtime, package root/version, source checkout revision, install kind, and multi-install ambiguity, with CLI and MCP parity.
-- Added adversarial portable-evidence and provenance regression coverage, including corruption, traversal, symlink, revision mismatch, blocked evidence, destination conflict, relocation, worktree, CLI JSON, MCP gating, and package-install fixtures.
-- Added the Phase 2 [v1 readiness audit](docs/V1_READINESS.md), including CLI/MCP contract parity, compatibility policy, dogfood evidence, and explicit empirical-evidence dispositions.
+- Added bounded portable project-evidence bundles with deterministic manifests, SHA-256 artifact verification, path-independent identity, exact/relocated/Git-checkout/content-only compatibility outcomes, explicit restore and rebind operations, destination-conflict protection, and recorded rebind provenance.
+- Added executable provenance for the actual runtime/script, package root and version, source-checkout revision and cleanliness where available, install kind, observable candidates, and genuine multi-install ambiguity, with CLI/MCP parity.
+- Added actionable uninitialized-project recovery and configuration/evidence health diagnostics across status, doctor, search/context, prepare, and impact; human and JSON trust-critical outcomes now share blocked semantics.
+- Added persistence compatibility evidence for the audited `v0.5.0` config/memory/index/graph floor, `v0.7.0` changes, `v0.8.0` sessions, `v0.9.0` findings, and `v0.9.1` evaluations, including no-rewrite checks and the exact bounded `v0.8.0` fallback exception.
+- Added fail-closed handling for future or corrupt durable/config/generated formats, preserving bytes and refusing ordinary downgrade or overwrite paths.
+- Added regression coverage for portable evidence, executable provenance, operational diagnostics, MCP gating, persistence compatibility, future-format protection, and adversarial filesystem cases.
+- Added maintainer/evaluator-side empirical study ledger and harness support for reproducible paired plain-vs-CMI study bookkeeping. The harness is not an agent-facing CMI command and does not establish productivity, time-savings, or general product-value evidence.
+
+### Changed
+
+- Repository-baseline summaries now omit only untracked local `.codex-memory/` state; tracked, staged, renamed, and ordinary project changes remain visible.
+- Portable evidence now binds the bounded scan, ignore, resolver, and workspace inputs needed to reproduce source boundaries after relocation.
+- Durable compatibility is read-only/no-rewrite for the audited historical floor; generated state may be rebuilt only when its format is obsolete and supported, while unsupported state remains blocked.
+- The release candidate keeps MCP mutation tools hidden or rejected by default; explicit write mode is required for portable-evidence and durable mutations.
+
+### Compatibility
+
+- The audited historical floor is bounded and representative, not a promise to support every pre-v1 commit or every future schema. No explicit migration command is required for the audited fixtures.
+- Future memory metadata, configuration, graph, and index formats fail closed without ordinary scan/refresh mutation or byte overwrite.
+
+### Evidence limits
+
+- Static parsing and impact output remain heuristic/advisory rather than compiler-grade or complete runtime analysis.
+- Portable bundles provide integrity checking, not authentication, backup authenticity, or source-authorship proof.
+- Executable provenance reports observable runtime/install evidence; it does not prove source authorship and preserves ambiguity when multiple installs are visible.
+- Evaluation and empirical records remain observational/caller-attested where documented. This release does not independently prove productivity, time savings, or general product value.
+- Study 001 remains incomplete and Study 003 remains unreconciled; no new empirical study was run. This release does not claim v1 readiness.
 
 ## [0.9.2] - 2026-08-08
 

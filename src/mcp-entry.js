@@ -290,5 +290,11 @@ function stop() {
   child.stdin.end();
   child.kill();
 }
+input.on('close', () => {
+  child.stdin.end();
+  if (child.exitCode !== null) process.exit(0);
+  child.once('exit', () => process.exit(0));
+  setTimeout(() => { if (child.exitCode === null) child.kill(); }, 1000).unref();
+});
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

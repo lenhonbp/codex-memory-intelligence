@@ -6,10 +6,12 @@ import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { initProject, scanProject, remember, status } from '../src/core.js';
-import { checkStaleMemory } from '../src/stale.js';
+import { initProject, scanProject, remember, status, doctor } from '../src/core.js';
+import { checkStaleMemory, setMemoryLifecycle } from '../src/stale.js';
+import { startChangeRecord, completeChangeRecord } from '../src/change-intelligence.js';
 import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidence } from '../src/portable-evidence.js';
 import { collectExecutableProvenance } from '../src/provenance.js';
+import { VERSION } from '../src/version.js';
 
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../src/cli-entry.js', import.meta.url));
@@ -77,6 +79,67 @@ test('restore is exact at the original location and compatible after relocation'
   assert.equal(provenance.original.manifestIdentity, bundle.identity.digest);
   assert.equal(provenance.verification.state, 'compatible-relocated');
   assert.equal(provenance.trust.authenticated, false);
+});
+
+test('compatible relocation reports stale graph recovery and scan preserves durable semantic evidence', async () => {
+  const root = await project('cmi-portable-recovery-');
+  const reviewed = await remember(root, 'decision', 'Relocation recovery must preserve reviewed semantic evidence.', { sources: ['src/index.js'] });
+  await setMemoryLifecycle(root, reviewed.id, 'active', {
+    changedBy: 'portable-test-reviewer',
+    reason: 'Reviewed before freezing portable evidence.',
+  });
+  const change = await startChangeRecord(root, 'Record durable history before portable relocation');
+  await completeChangeRecord(root, change.id, {
+    outcome: 'succeeded',
+    notes: ['Completed before freezing portable evidence.'],
+  });
+
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-portable-recovery-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  const relocated = path.join(parent, 'relocated');
+  await copyWithoutMemory(root, relocated);
+  await fs.utimes(path.join(relocated, 'src', 'index.js'), new Date('2001-01-01T00:00:00.000Z'), new Date('2001-01-01T00:00:00.000Z'));
+
+  const restored = await restorePortableEvidence(relocated, bundle.path, { rebind: true });
+  assert.equal(restored.state, 'compatible-relocated');
+  assert.equal(restored.restored, true);
+
+  const durablePaths = [
+    'memory.md',
+    'decisions.md',
+    'mistakes.md',
+    `changes/${change.id}.json`,
+  ];
+  const beforeRecovery = new Map(await Promise.all(durablePaths.map(async (relative) => [
+    relative,
+    await fs.readFile(path.join(relocated, '.codex-memory', relative)),
+  ])));
+  assert.match(beforeRecovery.get('decisions.md').toString('utf8'), /"reviewedBy":"portable-test-reviewer"/);
+
+  const stale = await status(relocated);
+  assert.equal(stale.healthy, false);
+  assert.equal(stale.evidenceHealth.state, 'blocked');
+  assert.equal(stale.evidenceHealth.domains.graph.state, 'stale');
+  assert.equal(stale.evidenceHealth.domains.graph.current, false);
+  assert.equal(stale.evidenceHealth.domains.memory.state, 'healthy');
+  assert.equal(stale.evidenceHealth.capabilities.historicalRecords, 'available');
+  assert.ok(stale.evidenceHealth.recommendations.some((item) => item.command === 'cmi scan'));
+  assert.equal((await doctor(relocated)).healthy, false);
+
+  await scanProject(relocated);
+  const recovered = await status(relocated);
+  assert.equal(recovered.healthy, true);
+  assert.equal(recovered.evidenceHealth.state, 'healthy');
+  assert.equal(recovered.evidenceHealth.domains.graph.state, 'healthy');
+  assert.equal((await doctor(relocated)).healthy, true);
+
+  for (const relative of durablePaths) {
+    assert.deepEqual(
+      await fs.readFile(path.join(relocated, '.codex-memory', relative)),
+      beforeRecovery.get(relative),
+      `${relative} changed during recovery scan`,
+    );
+  }
 });
 
 test('frozen scan and ignore policy reproduces custom config across clean relocation', async () => {
@@ -336,7 +399,7 @@ test('canonical executable provenance resolves the invoked source checkout and e
   const result = await collectExecutableProvenance({ projectRoot: process.cwd() });
   assert.equal(result.kind, 'cmi-executable-provenance');
   assert.equal(result.observed.packageName, 'codex-memory-intelligence');
-  assert.equal(result.observed.packageVersion, '0.9.2');
+  assert.equal(result.observed.packageVersion, VERSION);
   assert.equal(result.observed.installKind, 'source-checkout');
   assert.match(result.observed.sourceRevision, /^[0-9a-f]{40}$/);
   assert.equal(result.ambiguity.candidates[0].source, 'actual-invocation');
@@ -352,7 +415,7 @@ test('CLI provenance JSON identifies the actual script rather than a cwd package
   const result = await run(['provenance', '--json'], root);
   assert.equal(result.code, 0);
   const parsed = JSON.parse(result.stdout);
-  assert.equal(parsed.observed.packageVersion, '0.9.2');
+  assert.equal(parsed.observed.packageVersion, VERSION);
   assert.notEqual(parsed.observed.packageVersion, '99.99.99');
   assert.ok(parsed.ambiguity.candidates.some((item) => item.source === 'project-local-candidate'));
 });

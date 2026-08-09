@@ -26,9 +26,9 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-`v0.9.2` is the current public release line for **Evidence Integrity + Real-Repository Evaluation**. The published package includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange. It does not include the portable project-evidence or executable-provenance commands added after the `v0.9.2` tag. The npm badge above remains the authoritative indicator of the version currently published to the registry.
+The current repository release candidate is `v0.10.0`; it is prepared for review and is not published. The latest published npm release remains `v0.9.2` until release authorization. The npm badge above is authoritative for registry state. The published package includes unified evidence health, Git-history continuity guardrails, runtime durable-contract validation, controlled external-real stress evidence, post-hoc review, longitudinal human/agent evaluation outcomes, repeated-repository aggregation, and portable anonymized evaluation corpus exchange.
 
-Current `main` contains unreleased v0.10.0 work, including portable project evidence, executable provenance, and Phase 2 operational UX/readiness changes. Install `v0.9.2` from npm for the public release contract; do not infer current-main commands from that package.
+This candidate adds portable project evidence, executable provenance, operational UX/readiness hardening, and the audited persistence compatibility floor. Install `v0.9.2` from npm for the currently published contract; do not infer candidate-only commands from that package until `v0.10.0` is authorized and published.
 
 Source metadata can briefly lead registry publication during a reviewed release preparation; install availability should always be checked against the npm badge rather than inferred from the repository version alone.
 
@@ -309,7 +309,7 @@ cmi mcp-config [--write] [--bulk-refresh]
 cmi --version
 ```
 
-The following commands are present in current `main` as unreleased v0.10.0 work and are not included in the public npm `v0.9.2` package:
+The following commands are present in the `v0.10.0` release candidate and are not included in the public npm `v0.9.2` package until publication:
 
 ```text
 cmi provenance [--json]
@@ -319,7 +319,7 @@ cmi evidence restore <bundle-path> [--json]
 cmi evidence rebind <bundle-path> [--json]
 ```
 
-## Current main / unreleased v0.10.0: portable evidence and executable provenance
+## v0.10.0 release candidate: portable evidence and executable provenance
 
 In the current checkout, freeze the current `.codex-memory` state into a bounded directory bundle whose manifest contains path-independent source-content identity, Git repository/revision evidence when observable, CMI version/source provenance, a deterministic artifact inventory, and SHA-256 digests. These commands are not available from npm `v0.9.2`:
 
@@ -333,6 +333,8 @@ cmi evidence rebind ../cmi-evidence-freeze --json
 Restore and rebind verify the frozen source/scan policy before writing. A same-state restore is `exact`; a compatible checkout at another path is `compatible-relocated`; a clean checkout proven by exact Git repository/revision evidence with bounded LF compatibility is `compatible-git-checkout`; a destination with unavailable Git identity may be reported as `compatible-content-only`. Mismatches, policy drift, dirty-worktree evidence, corrupted manifests/artifacts, unsafe paths, symlinks, blocked evidence, and existing conflicting destinations fail closed. Existing evidence is never silently overwritten. Rebind records the original identity, requested operation, and verification result in `.codex-memory/portable-provenance.json` without changing semantic memory-review provenance.
 
 Portable evidence is a local, digest-verified transport format, not an authenticated backup or proof of source authorship. CMI does not export source files, but it refuses to freeze obvious credential-like content in intended evidence files. The manifest freezes a bounded, validated scan/ignore policy plus resolver/workspace inputs so a clean checkout without `.codex-memory` can reproduce the same source boundary. Source identity is byte-exact unless exact Git repository/revision and clean-worktree evidence justify the narrower UTF-8 LF checkout-compatibility identity; content-only destinations reject newline-only byte changes.
+
+A compatible relocation verifies source identity and policy; it does not promise that restored generated graph/index caches are immediately fresh at the new filesystem location. Local freshness fingerprints can change when otherwise identical source files are copied. In that case `cmi status --json` reports the graph as stale/blocked and recommends `cmi scan` instead of claiming healthy current evidence. The scan safely regenerates local graph/index intelligence, after which `status` and `doctor` become healthy when no other issue remains. This recovery scan does not rewrite durable semantic memory, memory-review metadata, or change/session/finding/evaluation history.
 
 To diagnose which installation is actually running:
 

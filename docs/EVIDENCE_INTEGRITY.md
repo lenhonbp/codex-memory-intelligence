@@ -20,6 +20,8 @@ Blocked JSON output keeps the normal machine-readable error envelope (`{ "ok": f
 
 Portable restore/rebind mismatches include `details.recommendedAction` with `mutatesCmiState: false` and no automatic command. This deliberately requires review of the listed source, revision, policy, or worktree mismatch before retrying; the failed operation writes no CMI evidence. Human CLI output renders the same non-mutating review instruction without replacing the structured JSON details.
 
+Successful compatibility verification after relocation is separate from generated-cache freshness. Copying source-identical files can change local filesystem fingerprints, so restored graph/index evidence may be stale even when restore or rebind correctly reports `compatible-relocated`, `compatible-git-checkout`, or `compatible-content-only`. `status --json` must expose that stale/blocked graph state and an actionable `cmi scan` recovery rather than report healthy current graph evidence. `cmi scan` rebuilds the generated graph/index for the new location; when no other problem exists, `status` and `doctor` then become healthy. The recovery scan does not re-attest or rewrite durable semantic memory, its review metadata, or change/session/finding/evaluation history.
+
 ## Evidence health
 
 `status --json` and context packs expose a versioned Evidence Health Model with:

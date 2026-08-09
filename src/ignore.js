@@ -80,6 +80,44 @@ function builtinReason(relative, includeHidden) {
   return null;
 }
 
+function diagnosticError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function resolveDiagnosticPath(root, candidate) {
+  const rootAbsolute = path.resolve(root);
+  const raw = String(candidate ?? '');
+  if (!raw || raw.includes('\0')) throw diagnosticError('CMI_IGNORE_PATH_INVALID', 'Ignore diagnostic path is empty or invalid.');
+  if (raw.replace(/\\/g, '/').split('/').includes('..')) {
+    throw diagnosticError('CMI_IGNORE_PATH_INVALID', `Ignore diagnostic path cannot contain parent-directory segments: ${candidate}`);
+  }
+  const target = path.resolve(rootAbsolute, raw);
+  const relative = path.relative(rootAbsolute, target);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw diagnosticError('CMI_IGNORE_PATH_OUTSIDE', `Ignore diagnostic path must stay inside the selected project: ${candidate}`);
+  }
+  return { root: rootAbsolute, relative: slash(relative) };
+}
+
+async function findSymlinkInPath(root, relative) {
+  const parts = relative.split('/').filter(Boolean);
+  let current = root;
+  for (let index = 0; index < parts.length; index += 1) {
+    current = path.join(current, parts[index]);
+    let stat;
+    try { stat = await fs.lstat(current); }
+    catch (error) {
+      if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null;
+      throw diagnosticError('CMI_IGNORE_PATH_INSPECTION_FAILED', `Ignore diagnostic path could not be inspected safely: ${relative}`);
+    }
+    if (stat.isSymbolicLink()) return slash(path.relative(root, current));
+    if (index < parts.length - 1 && !stat.isDirectory()) return null;
+  }
+  return null;
+}
+
 export async function createIgnoreMatcher(root, config = {}) {
   let fileContent = '';
   try { fileContent = await fs.readFile(path.join(root, '.cmiignore'), 'utf8'); } catch {}
@@ -115,6 +153,20 @@ export async function createIgnoreMatcher(root, config = {}) {
 }
 
 export async function explainIgnore(root, candidate, options = {}) {
+  const resolved = resolveDiagnosticPath(root, candidate);
+  const symlinkPath = await findSymlinkInPath(resolved.root, resolved.relative);
+  if (symlinkPath) {
+    return {
+      ignored: true,
+      locked: true,
+      source: 'built-in',
+      pattern: 'symbolic link',
+      reason: symlinkPath === resolved.relative
+        ? 'Symbolic links are always excluded; the link target was not followed.'
+        : `Paths beneath symbolic links are always excluded (${symlinkPath}); the link target was not followed.`,
+      path: resolved.relative,
+    };
+  }
   const matcher = await createIgnoreMatcher(root, options.config || {});
-  return matcher.explain(candidate, Boolean(options.directory));
+  return matcher.explain(resolved.relative, Boolean(options.directory));
 }
