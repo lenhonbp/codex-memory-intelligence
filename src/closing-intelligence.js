@@ -161,7 +161,12 @@ function nextActionReferencesAlert(nextAction, alert) {
 function normalizeNextAction(session, alerts) {
   const nextAction = session.close?.handoff?.nextAction || null;
   if (!nextAction) return null;
-  const carryover = alerts.find((alert) => alert.kind === 'unfinished-work' && alert.severity === 'reminder' && nextActionReferencesAlert(nextAction, alert));
+  const linkedAlert = alerts.find((alert) => nextActionReferencesAlert(nextAction, alert)) || null;
+  const referencedFindings = nextAction.relatedFindingIds || [];
+  if (referencedFindings.length && !linkedAlert) return null;
+  if (['P0', 'P1'].includes(nextAction.priority) && !linkedAlert) return null;
+  if (linkedAlert?.findingState === 'accepted') return null;
+  const carryover = linkedAlert?.kind === 'unfinished-work' && linkedAlert.severity === 'reminder' ? linkedAlert : null;
   if (!carryover || nextAction.priority === 'P3') return nextAction;
   const subject = carryover.subject || carryover.title.replace(/^Unfinished previous work:\s*/i, '');
   return {
@@ -195,6 +200,12 @@ export async function buildClosingIntelligence(root, selector = 'latest') {
   const counts = { blocker: 0, warning: 0, reminder: 0, info: 0, totalCandidates: candidates.length, shown: alerts.length };
   for (const alert of candidates) if (counts[alert.severity] !== undefined) counts[alert.severity] += 1;
   const state = alerts.length ? alerts[0].severity : 'clean';
+  const nextAction = normalizeNextAction(session, candidates);
+  if (state === 'clean' && ['P0', 'P1'].includes(nextAction?.priority)) {
+    const error = new Error('Closing Intelligence invariant failed: CLEAN cannot carry a material P0/P1 next action without a current alert.');
+    error.code = 'CMI_CLOSING_INCONSISTENT';
+    throw error;
+  }
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -202,8 +213,8 @@ export async function buildClosingIntelligence(root, selector = 'latest') {
     state,
     alerts,
     counts,
-    nextAction: normalizeNextAction(session, candidates),
-    policy: 'Closing Intelligence is a bounded read model over existing CMI session, change, finding, and reviewed-memory evidence. It shows at most three alerts, does not create durable truth, and does not treat reviewed-rule relevance or heuristic consistency as proof of a violation.',
+    nextAction,
+    policy: 'Closing Intelligence is a bounded read model over current CMI finding/change/reviewed-memory evidence plus the closed-session snapshot. Historical session next actions are suppressed when their finding lifecycle is no longer current. It shows at most three alerts, does not create durable truth, and does not treat reviewed-rule relevance or heuristic consistency as proof of a violation.',
   };
 }
 
