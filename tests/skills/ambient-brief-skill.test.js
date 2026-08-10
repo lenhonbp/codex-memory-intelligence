@@ -10,7 +10,7 @@ const skillPath = path.join(repositoryRoot, 'skills', 'cmi-ambient-brief', 'SKIL
 const skillsDocPath = path.join(repositoryRoot, 'docs', 'SKILLS.md');
 
 async function read(filePath) {
-  return fs.readFile(filePath, 'utf8');
+  return (await fs.readFile(filePath, 'utf8')).replace(/\r\n/g, '\n');
 }
 
 test('cmi-ambient-brief Skill file exists', async () => {
