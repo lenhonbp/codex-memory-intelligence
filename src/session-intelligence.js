@@ -449,7 +449,7 @@ function actionFor(finding) {
     'session-blocker': `Resolve or explicitly defer the blocker: ${finding.detail}`,
     'verification-missing': 'Run and record the verification required for the related completed change before treating it as fully validated.',
     'verification-incomplete': `Complete the pending verification: ${finding.title.replace(/^Verification incomplete:\s*/, '')}.`,
-    'active-change': 'Complete or explicitly abandon the related active change record before starting unrelated work.',
+    'active-change': 'Resume the related active Change when it is prioritized, or explicitly defer it; do not complete it until the requested work is actually finished.',
     'project-intelligence-missing': 'Run `cmi scan` before relying on project context or impact guidance.',
     'graph-drift': 'Run `cmi scan`, then refresh task context/impact before making further dependent changes.',
     'stale-memory': 'Run `cmi stale` and review stale entries; refresh, deprecate, reject, or supersede them based on current evidence.',

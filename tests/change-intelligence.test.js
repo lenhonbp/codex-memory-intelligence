@@ -98,15 +98,20 @@ test('AFTER completion distinguishes reported verification from observed command
     unexpectedImpact: ['Profile cache also required invalidation.'],
     notes: ['Retry behavior still needs provider-level validation.'],
   });
-  assert.equal(completed.status, 'completed');
-  assert.equal(completed.completion.outcome, 'partial');
-  assert.equal(completed.completion.verifications[0].provenance, 'reported');
-  assert.equal(completed.completion.verifications[1].provenance, 'observed-command');
-  assert.equal(completed.completion.verifications[1].exitCode, 0);
-  assert.ok(completed.completion.learningCandidates.some((item) => item.type === 'failure-mode'));
-  assert.ok(completed.completion.learningCandidates.some((item) => item.type === 'unexpected-impact'));
-  assert.match(completed.completion.policy, /never writes project memory automatically/i);
+  assert.equal(completed.status, 'active');
+  assert.equal(completed.completion, null);
+  assert.equal(completed.progress.outcome, 'partial');
+  assert.equal(completed.progress.verifications[0].provenance, 'reported');
+  assert.equal(completed.progress.verifications[1].provenance, 'observed-command');
+  assert.equal(completed.progress.verifications[1].exitCode, 0);
+  assert.ok(completed.progress.learningCandidates.some((item) => item.type === 'failure-mode'));
+  assert.ok(completed.progress.learningCandidates.some((item) => item.type === 'unexpected-impact'));
+  assert.match(completed.progress.policy, /active Change/i);
   assert.equal(validateChangeRecord(completed).valid, true);
+  const finished = await completeChangeRecord(root, record.id, { outcome: 'succeeded', notes: ['Final integration completed.'] });
+  assert.equal(finished.status, 'completed');
+  assert.equal(finished.completion.outcome, 'succeeded');
+  assert.equal(finished.completion.verifications[0].name, 'npm test');
   await assert.rejects(() => observeChangeRecord(root, record.id), /immutable/i);
   await assert.rejects(() => startChangeRecord(root, 'api_key=abcdefghijk secret migration'), /secret/i);
 });

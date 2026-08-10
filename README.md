@@ -270,6 +270,8 @@ Built-in dependency/generated paths and symbolic links cannot be re-included. Hi
 
 ## Commands
 
+Session completion is independent from Change completion. If implementation is intentionally partial, paused, or awaiting review, keep the Change active and close the session; the handoff carries it under `activeChanges`. Complete the Change only when the requested work is finished. An explicit `abandoned` outcome is terminal.
+
 ```text
 cmi init [path]
 cmi scan [path] [--full] [--json]

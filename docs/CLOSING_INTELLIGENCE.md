@@ -20,6 +20,8 @@ The footer is product presence, not advertising copy: it should demonstrate valu
 
 Closing Intelligence reads current persistent findings and active Change Intelligence records. If Feature A remains active while the user later works on unrelated Feature B, B's closing view can show `Unfinished previous work: Feature A`. Starting B does not silently abandon A, and the reminder disappears only when current evidence/lifecycle no longer supports it.
 
+Session completion != Change completion. Closing a session with a partial, paused, or review-pending Change keeps that Change under the handoff's `activeChanges`; unfinished work is a non-blocking reminder by default. A Change appears under `completedChanges` only after its own terminal lifecycle operation succeeds.
+
 CMI does not block a user from changing priorities. Carryover work is a reminder unless stronger evidence makes it directly relevant or blocking.
 
 ## Consistency and reviewed rules

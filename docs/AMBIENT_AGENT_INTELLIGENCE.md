@@ -44,4 +44,6 @@ Intent routing is deterministic and deliberately bounded to `continue`, `mutate`
 
 ## Field UX remediation
 
-This development line also makes unchanged architecture scans byte-stable, stores active sessions under ignored transient state until finalization, reports raw Git cleanliness separately from product-scope cleanliness, classifies existing relative CSS/static imports as non-code local dependencies rather than unresolved source imports, and suppresses generic memory/test advice when there is no task-specific evidence.
+This development line also makes unchanged architecture scans byte-stable, stores active sessions under ignored transient state until finalization, reports raw Git cleanliness separately from product-scope cleanliness, classifies existing relative CSS/static imports as non-code local dependencies rather than unresolved source imports, suppresses generic memory/test advice when there is no task-specific evidence, and preserves intentionally partial Change Intelligence records as active cross-session work.
+
+Session completion is independent from Change completion. When a user requests a pause, review checkpoint, or partial implementation, observe the actual progress and verification, keep the related Change active, and close only the session so the handoff exposes it under `activeChanges`. Complete the Change only after the requested work is actually finished; explicit abandonment remains a separate terminal outcome.

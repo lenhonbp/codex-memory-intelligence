@@ -65,6 +65,8 @@ function changesDirectory(root) { return path.join(root, MEMORY_DIR, CHANGE_DIR)
 function recordPath(root, id) { return path.join(changesDirectory(root), `${id}.json`); }
 function lockPath(root, id) { return path.join(changesDirectory(root), `${id}.lock`); }
 function summaryOf(record) {
+  const evidence = record.completion || record.progress || null;
+  const latestObservation = record.observations?.at(-1);
   return {
     id: record.id,
     status: record.status,
@@ -73,10 +75,10 @@ function summaryOf(record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     completedAt: record.completion?.completedAt || null,
-    outcome: record.completion?.outcome || null,
+    outcome: evidence?.outcome || null,
     revision: record.revision || 1,
-    observedChangedFiles: record.completion?.finalObservation?.observedChangedFiles?.length
-      ?? record.observations?.at(-1)?.observedChangedFiles?.length
+    observedChangedFiles: latestObservation?.observedChangedFiles?.length
+      ?? evidence?.finalObservation?.observedChangedFiles?.length
       ?? 0,
   };
 }
@@ -110,6 +112,14 @@ export function validateChangeRecord(record) {
   if (!record.before || typeof record.before !== 'object' || Array.isArray(record.before)) errors.push('before evidence is required.');
   if (!Array.isArray(record.observations)) errors.push('observations must be an array.');
   if (record.status === 'active' && record.completion !== null) errors.push('active records must not contain completion.');
+  if (record.progress !== undefined && record.progress !== null) {
+    if (record.status !== 'active') errors.push('progress is only valid on active records.');
+    if (!validIsoDate(record.progress.pausedAt)) errors.push('progress.pausedAt must be an ISO date-time string.');
+    if (record.progress.outcome !== 'partial') errors.push('progress.outcome must be partial.');
+    if (!record.progress.finalObservation || typeof record.progress.finalObservation !== 'object' || Array.isArray(record.progress.finalObservation)) errors.push('active progress requires final observation evidence.');
+    if (!Array.isArray(record.progress.verifications) || !record.progress.verifications.every(validateVerificationRecord)) errors.push('progress.verifications contains invalid evidence.');
+    if (!Array.isArray(record.progress.unexpectedImpact) || !Array.isArray(record.progress.notes) || !Array.isArray(record.progress.learningCandidates)) errors.push('progress evidence arrays are invalid.');
+  }
   if (record.status === 'completed') {
     if (!record.completion || typeof record.completion !== 'object' || Array.isArray(record.completion)) errors.push('completed records require completion evidence.');
     else {
@@ -370,19 +380,21 @@ function normalizeTextItems(values, label) {
 }
 
 function actualFilesFromRecord(record) {
+  if (record.observations?.length) return record.observations.at(-1)?.observedChangedFiles || [];
   return record.completion?.finalObservation?.observedChangedFiles
-    || record.observations?.at(-1)?.observedChangedFiles
+    || record.progress?.finalObservation?.observedChangedFiles
     || [];
 }
 
 function relevantRecordText(record) {
-  const final = record.completion?.finalObservation;
+  const evidence = record.completion || record.progress || {};
+  const final = record.observations?.at(-1) || evidence.finalObservation;
   return [
     record.goal,
     ...(actualFilesFromRecord(record) || []),
     ...(final?.observedBoundaries || []).map((item) => item.label),
-    ...(record.completion?.unexpectedImpact || []),
-    ...(record.completion?.notes || []),
+    ...(evidence.unexpectedImpact || []),
+    ...(evidence.notes || []),
   ].join('\n');
 }
 
@@ -611,6 +623,10 @@ export async function observeChangeRecord(root, selector, options = {}) {
     comparison,
   };
   record.observations = [...(record.observations || []), observation].slice(-100);
+  if (record.progress) {
+    record.progress.pausedAt = observation.observedAt;
+    record.progress.finalObservation = observation;
+  }
   record.revision = (record.revision || 1) + 1;
   record.updatedAt = observation.observedAt;
   await writeRecord(root, record);
@@ -624,9 +640,13 @@ export async function completeChangeRecord(root, selector, options = {}) {
   record = await resolveRecord(root, record.id);
   const outcome = String(options.outcome || 'unknown').trim().toLowerCase();
   if (!VALID_OUTCOMES.has(outcome)) throw new Error(`Outcome must be one of: ${[...VALID_OUTCOMES].join(', ')}.`);
-  const verifications = bounded((options.verifications || []).map(normalizeVerification), MAX_TEXT_ITEMS);
-  const unexpectedImpact = normalizeTextItems(options.unexpectedImpact || [], 'Unexpected impact');
-  const notes = normalizeTextItems(options.notes || [], 'Completion note');
+  const requestedVerifications = bounded((options.verifications || []).map(normalizeVerification), MAX_TEXT_ITEMS);
+  const previousProgress = record.progress || {};
+  const verificationsByName = new Map((previousProgress.verifications || []).map((item) => [item.name.toLowerCase(), item]));
+  for (const item of requestedVerifications) verificationsByName.set(item.name.toLowerCase(), item);
+  const verifications = bounded([...verificationsByName.values()], MAX_TEXT_ITEMS);
+  const unexpectedImpact = normalizeTextItems(unique([...(previousProgress.unexpectedImpact || []), ...(options.unexpectedImpact || [])]), 'Unexpected impact');
+  const notes = normalizeTextItems(unique([...(previousProgress.notes || []), ...(options.notes || [])]), 'Completion note');
   const finalObservation = record.observations.at(-1);
   const learningCandidates = [];
   if (finalObservation?.comparison?.missedByPrediction?.length) {
@@ -663,7 +683,26 @@ export async function completeChangeRecord(root, selector, options = {}) {
     });
   }
   const completedAt = new Date().toISOString();
+  if (outcome === 'partial') {
+    record.status = 'active';
+    record.revision = (record.revision || 1) + 1;
+    record.updatedAt = completedAt;
+    record.completion = null;
+    record.progress = {
+      pausedAt: completedAt,
+      outcome,
+      finalObservation,
+      verifications,
+      unexpectedImpact,
+      notes,
+      learningCandidates,
+      policy: 'Partial progress is preserved on the active Change. Complete it only after the requested work is actually finished; progress does not write project memory automatically.',
+    };
+    await writeRecord(root, record);
+    return record;
+  }
   record.status = 'completed';
+  record.progress = null;
   record.revision = (record.revision || 1) + 1;
   record.updatedAt = completedAt;
   record.completion = {
@@ -681,11 +720,13 @@ export async function completeChangeRecord(root, selector, options = {}) {
 }
 
 export function formatChangeRecord(record) {
-  const latest = record.completion?.finalObservation || record.observations?.at(-1);
+  const evidence = record.completion || record.progress || null;
+  const latest = record.observations?.at(-1) || evidence?.finalObservation;
   const changed = latest?.observedChangedFiles || [];
   const missed = latest?.comparison?.missedByPrediction || [];
-  const verification = record.completion?.verifications || [];
-  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${record.completion?.outcome || 'not completed'}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
+  const verification = evidence?.verifications || [];
+  const outcome = record.status === 'active' && record.progress ? `${evidence.outcome} (paused; Change remains active)` : evidence?.outcome || 'not completed';
+  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${outcome}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
 }
 
 export function formatChangeInsights(result) {

@@ -116,6 +116,21 @@
       "required": ["completedAt", "outcome", "finalObservation", "verifications", "unexpectedImpact", "notes", "learningCandidates", "policy"],
       "additionalProperties": false
     },
+    "progress": {
+      "type": ["object", "null"],
+      "properties": {
+        "pausedAt": { "type": "string", "format": "date-time" },
+        "outcome": { "const": "partial" },
+        "finalObservation": { "type": "object" },
+        "verifications": { "type": "array", "maxItems": 20, "items": { "$ref": "#/properties/completion/properties/verifications/items" } },
+        "unexpectedImpact": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "notes": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "learningCandidates": { "type": "array", "items": { "type": "object" } },
+        "policy": { "type": "string" }
+      },
+      "required": ["pausedAt", "outcome", "finalObservation", "verifications", "unexpectedImpact", "notes", "learningCandidates", "policy"],
+      "additionalProperties": false
+    },
     "policy": { "type": "string" }
   },
   "additionalProperties": false
