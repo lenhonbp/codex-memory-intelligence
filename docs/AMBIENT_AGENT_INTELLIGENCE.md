@@ -16,7 +16,19 @@ Codex builds project instructions when a run/session starts, so start a new Code
 
 ## Natural task routing
 
-`cmi ambient "<user request>"` and the MCP tool `get_ambient_task_brief` provide a read-only task brief containing current evidence health, raw/product Git state, relevant project context when available, optional pre-change preparation for mutation requests, continuation handoff, and conservative workflow hints.
+`cmi ambient "<user request>"` and the MCP tool `get_ambient_task_brief` provide a read-only task brief containing current evidence health, raw/product Git state, relevant project context when available, optional pre-change preparation for mutation requests, continuation handoff, and conservative workflow hints. The brief is not a session and cannot support a Closing Intelligence footer by itself.
+
+For every substantive task, the supported Codex integration starts or resumes a durable work session, including for read-only investigation, review, and verification. When MCP is unavailable, the local CLI is the equivalent lifecycle surface:
+
+```bash
+cmi ambient "<user request>" --json
+cmi session start "<goal>" --json
+cmi session observe <id|latest> --accomplished "..." --file path/to/checked-file --json
+cmi session close <id|latest> --outcome investigated --json
+cmi session closing <id|latest> --json
+```
+
+`cmi status`, `cmi doctor`, and the ambient brief remain useful health/context evidence, but they are not substitutes for session start/observe/close. A `### CMI Intelligence` footer may say `CLEAN` only when `cmi session closing` or the equivalent MCP Closing Intelligence surface returned a real closed-session result with no material alerts. If lifecycle writes are unavailable or closing fails, report project/evidence health separately and say that Closing Intelligence was not finalized; do not synthesize a Closing-style footer from healthy status data.
 
 Intent routing is deterministic and deliberately bounded to `continue`, `mutate`, `review`, `investigate`, or `unknown`. Unknown is a valid outcome. Classification does not authorize edits or broaden scope.
 

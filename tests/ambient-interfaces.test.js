@@ -112,6 +112,40 @@ test('CLI activate configures Codex once and CLI ambient accepts a terse user re
   assert.ok(brief.workflow.some((item) => /Change Intelligence/i.test(item)));
 });
 
+test('activated Codex fallback preserves the durable session and truthful Closing contract when MCP is unavailable', async () => {
+  const root = await fixture();
+  const activated = await runCli(['activate', '--json'], root);
+  assert.equal(activated.code, 0, activated.stderr);
+  const activation = JSON.parse(activated.stdout);
+  assert.ok(activation.scan.sourceFiles >= 1);
+  const agents = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
+
+  for (const status of ['active', 'closed']) {
+    const sessions = await runCli(['session', 'list', '--status', status, '--json'], root);
+    assert.equal(sessions.code, 0, sessions.stderr);
+    assert.deepEqual(JSON.parse(sessions.stdout).records, []);
+  }
+
+  assert.match(agents, /local executable fallback.*cmi ambient/i);
+  assert.match(agents, /start or resume a durable CMI work session before substantive project work/i);
+  assert.match(agents, /cmi session start/i);
+  assert.match(agents, /cmi session observe/i);
+  assert.match(agents, /cmi session close/i);
+  assert.match(agents, /cmi session closing/i);
+  assert.match(agents, /only from that actual closed-session Closing Intelligence result/i);
+  assert.match(agents, /never synthesize a Closing-style.*CLEAN.*health-only/i);
+  assert.match(agents, /Closing Intelligence was not finalized/i);
+
+  const started = await runCli(['session', 'start', 'field-style project health verification', '--json'], root);
+  assert.equal(started.code, 0, started.stderr);
+  const sessionId = JSON.parse(started.stdout).id;
+  const closed = await runCli(['session', 'close', sessionId, '--outcome', 'investigated', '--accomplished', 'Verified project health.', '--json'], root);
+  assert.equal(closed.code, 0, closed.stderr);
+  const closing = await runCli(['session', 'closing', sessionId, '--json'], root);
+  assert.equal(closing.code, 0, closing.stderr);
+  assert.equal(JSON.parse(closing.stdout).state, 'clean');
+});
+
 test('CLI activation fails closed on unmanaged conflicting Codex CMI configuration', async () => {
   const root = await fixture();
   await fs.mkdir(path.join(root, '.codex'));

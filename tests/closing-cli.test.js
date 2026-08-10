@@ -35,3 +35,11 @@ test('human session close appends branded Closing Intelligence and standalone cl
   assert.ok(Array.isArray(closing.alerts));
   assert.ok(closing.alerts.length >= 1 && closing.alerts.length <= 3);
 });
+
+test('closing fails closed when health evidence exists without a durable closed session', async () => {
+  const root = await fixture();
+  assert.throws(
+    () => run(root, ['session', 'closing', 'latest', '--json']),
+    (error) => /No closed CMI session exists for Closing Intelligence/i.test(String(error.stderr || '')),
+  );
+});

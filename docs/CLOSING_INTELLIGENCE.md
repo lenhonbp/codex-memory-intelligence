@@ -4,7 +4,7 @@ Closing Intelligence is CMI's bounded end-of-work read model. It exists so unres
 
 ## Agent-facing contract
 
-After a supported agent finalizes a substantial CMI work session, it should append a concise `### CMI Intelligence` section to its normal user-visible answer.
+After a supported agent finalizes a substantial CMI work session, it should append a concise `### CMI Intelligence` section to its normal user-visible answer. The section is authoritative only when backed by a real closed session and a Closing Intelligence result; project/evidence health alone is not Closing Intelligence.
 
 CMI shows at most three alerts, ordered by materiality:
 
@@ -51,4 +51,4 @@ MCP:
 
 ## Evidence limits
 
-Closing Intelligence does not create project truth, prove universal agent compliance, or establish productivity/time-savings claims. Agent adapters can require presentation behavior only on clients that actually honor project instructions/MCP.
+Closing Intelligence does not create project truth, prove universal agent compliance, or establish productivity/time-savings claims. Agent adapters can require presentation behavior only on clients that actually honor project instructions/MCP. If the session cannot be started or closed, the agent must report that Closing Intelligence was not finalized and may report verified project/evidence health separately, but must not present health-only evidence as a Closing-style `CLEAN` result.
