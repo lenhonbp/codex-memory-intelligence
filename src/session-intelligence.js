@@ -200,10 +200,6 @@ async function readFindingsRegistry(root) {
   });
   return registry || { schemaVersion: 1, updatedAt: nowIso(), findings: [] };
 }
-async function findingsRegistryExists(root) {
-  try { await fs.lstat(findingsPath(root)); return true; }
-  catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
-}
 async function writeFindingsRegistry(root, registry) {
   const validation = validateFindingRegistryContract(registry);
   if (!validation.valid) throw new Error(`Invalid findings registry: ${validation.errors.join(' ')}`);
@@ -378,13 +374,23 @@ function makeFinding(category, severity, title, detail, options = {}) {
 function verificationNames(records) {
   return new Set(records.flatMap((record) => record.completion?.verifications || []).map((item) => String(item.name || '').trim().toLowerCase()));
 }
+export function classifySessionGraphEvidence(project = {}) {
+  if (!project.initialized) return 'uninitialized';
+  const graph = project.graph;
+  if (!graph || graph.state === 'missing') return 'missing';
+  if (graph.available === false) return 'unavailable';
+  if (graph.current !== true) return 'drifted';
+  return 'current';
+}
+
 function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, mutationPaths, staleReport, gitContinuity }) {
   const findings = [];
   const graph = current.project.graph;
-  if (!current.project.initialized || !graph) {
+  const graphEvidence = classifySessionGraphEvidence(current.project);
+  if (graphEvidence === 'uninitialized') {
     findings.push(makeFinding('project-intelligence-missing', 'high', 'Project intelligence is incomplete', 'CMI does not have a current project graph/index, so context and impact guidance are incomplete.', { target: 'graph-index', evidence: ['project-status'] }));
-  } else if (!graph.current) {
-    findings.push(makeFinding('graph-drift', graph.missingNodes > 0 ? 'high' : 'medium', 'Project graph has drifted from source', `Graph evidence is stale or missing (${graph.staleNodes || 0} stale, ${graph.missingNodes || 0} missing node(s)).`, { target: 'graph', evidence: ['source-fingerprint-mismatch'] }));
+  } else if (graphEvidence === 'drifted') {
+    findings.push(makeFinding('graph-drift', graph.missingNodes > 0 ? 'high' : 'medium', 'Project graph has drifted from source', `Stored graph evidence no longer matches current source (${graph.staleNodes || 0} stale, ${graph.missingNodes || 0} missing node(s)).`, { target: 'graph', evidence: ['source-fingerprint-mismatch'] }));
   }
   if ((staleReport.counts?.stale || 0) > 0) findings.push(makeFinding('stale-memory', 'medium', 'Reviewed project memory is stale', `${staleReport.counts.stale} tracked memory entr${staleReport.counts.stale === 1 ? 'y is' : 'ies are'} stale against current source evidence.`, { target: 'memory', evidence: ['source-linked-memory'] }));
   const reviewCount = (staleReport.counts?.review || 0) + (staleReport.counts?.untracked || 0);
@@ -549,12 +555,19 @@ function summaryText(outcome, scopePaths, completedDetails, openFindings, recomm
   const next = recommendations[0]?.action || 'No evidence-based follow-up is currently required; the project is ready for a new user-prioritized goal.';
   return `Session outcome: ${outcome}. ${scopePaths.length} project path(s) were associated with the session and ${completedDetails.length} related change record(s) completed during it. ${blocking} high/critical relevant open finding(s) remain. Next: ${next}`;
 }
-async function persistDetectedFindings(root, sessionId, detected) {
-  const registryExists = await findingsRegistryExists(root);
+function canAutoResolveFinding(finding, state) {
+  if (['graph-drift', 'project-intelligence-missing'].includes(finding.category)) {
+    return classifySessionGraphEvidence(state?.project) === 'current';
+  }
+  return true;
+}
+
+async function persistDetectedFindings(root, sessionId, detected, state) {
   const registry = await readFindingsRegistry(root);
   const timestamp = nowIso();
   const seenKeys = new Set();
-  const current = [];
+  const observed = [];
+  let changed = false;
   for (const item of detected) {
     seenKeys.add(item.key);
     let existing = registry.findings.find((finding) => finding.key === item.key && finding.state === 'open');
@@ -569,23 +582,27 @@ async function persistDetectedFindings(root, sessionId, detected) {
       existing.confidence = item.confidence;
       existing.evidenceType = item.evidenceType;
       existing.sessionRelevance = item.sessionRelevance;
-      current.push(existing);
+      observed.push(existing);
+      changed = true;
     } else {
       existing = { schemaVersion: 1, id: crypto.randomUUID(), state: 'open', ...item, firstSeen: timestamp, lastSeen: timestamp, occurrences: 1, sessions: [sessionId] };
       registry.findings.push(existing);
-      current.push(existing);
+      observed.push(existing);
+      changed = true;
     }
   }
   for (const finding of registry.findings) {
-    if (finding.state !== 'open' || !finding.autoResolvable || seenKeys.has(finding.key)) continue;
+    if (finding.state !== 'open' || !finding.autoResolvable || seenKeys.has(finding.key) || !canAutoResolveFinding(finding, state)) continue;
     finding.state = 'resolved';
     finding.stateChangedAt = timestamp;
     finding.stateChangedBy = 'cmi-auto-evidence';
     finding.stateReason = 'The deterministic condition was not present in the latest closed session assessment.';
+    changed = true;
   }
+  if (registry.findings.length > 1000) changed = true;
   registry.findings = registry.findings.slice(-1000);
-  if (registry.findings.length || registryExists) await writeFindingsRegistry(root, registry);
-  return current;
+  if (changed) await writeFindingsRegistry(root, registry);
+  return observed;
 }
 async function loadOpenFindings(root) {
   const registry = await readFindingsRegistry(root);
@@ -692,7 +709,7 @@ export async function closeSession(root, selector, options = {}) {
       record = await resolveSession(root, record.id, { status: 'active' });
     }
     const assessment = await buildAssessment(root, record);
-    const currentFindings = await persistDetectedFindings(root, record.id, assessment.detectedFindings);
+    const currentFindings = await persistDetectedFindings(root, record.id, assessment.detectedFindings, assessment.current);
     const openFindings = await loadOpenFindings(root);
     const planningSignals = assessment.intelligence.planning?.signals || [];
     const recommendations = buildRecommendations(openFindings, assessment.intelligence.history, assessment.completedChanges, planningSignals);
