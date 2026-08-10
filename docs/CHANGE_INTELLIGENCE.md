@@ -2,6 +2,8 @@
 
 CMI change intelligence is a local, evidence-driven loop for coding agents. It is designed to make project-specific work improve over time without pretending that heuristic output is ground truth.
 
+Change and session lifecycles are independent: session completion != Change completion. A Change remains `active` when implementation is intentionally partial, paused, or awaiting review, even after the work session closes. Complete the Change only when the requested work is finished; `abandoned` is the explicit terminal path for canceled work.
+
 The loop has three stages:
 
 ```text
@@ -74,6 +76,18 @@ cmi change complete <id> \
   --verify "payment retry integration=passed"
 ```
 
+For an intentional partial checkpoint, preserve the active Change and record the session as partial. A `partial` Change outcome is progress evidence, not terminal completion:
+
+```bash
+cmi change complete <id> \
+  --outcome partial \
+  --verify "npm test=passed" \
+  --note "Stopped before final integration for review."
+cmi session close <session-id> --outcome partial
+```
+
+The Change remains active and appears under `activeChanges` in the closed-session handoff. Resume it in a later session and use a terminal outcome only when the requested work is actually finished.
+
 Record unexpected impact only when it was actually observed:
 
 ```bash
@@ -115,7 +129,7 @@ Write-enabled tools add:
 - `observe_change_record`
 - `complete_change_record`
 
-The `run_change_intelligence_loop` MCP prompt guides a connected agent through BEFORE → DURING → AFTER. Enabling writes does not authorize CMI to execute arbitrary project commands. The agent still runs tests, builds, profilers, migrations, or other tools through its normal environment and records only the resulting evidence status/provenance in CMI.
+The `run_change_intelligence_loop` MCP prompt guides a connected agent through BEFORE → DURING → AFTER. Enabling writes does not authorize CMI to execute arbitrary project commands. The agent still runs tests, builds, profilers, migrations, or other tools through its normal environment and records only the resulting evidence status/provenance in CMI. The prompt distinguishes terminal Change completion from intentional partial progress so closing a session does not finalize an unfinished Change.
 
 ## Historical intelligence
 

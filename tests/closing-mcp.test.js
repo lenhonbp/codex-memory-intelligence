@@ -71,3 +71,30 @@ test('MCP exposes read-only Closing Intelligence and finalize returns branded cl
     assert.equal(closing.result.structuredContent.alerts.length, finalized.result.structuredContent.closingIntelligence.alerts.length);
   } finally { stop(server); }
 });
+
+test('MCP preserves partial Change progress as active across session close, then permits completion', async () => {
+  const root = await fixture();
+  const server = startMcp(root, { CMI_WRITE_ENABLED: '1' });
+  try {
+    await initialize(server);
+    const call = (id, name, args) => {
+      server.send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+      return server.waitFor((message) => message.id === id);
+    };
+    const session = await call(10, 'start_work_session', { goal: 'implement worker checkpoint' });
+    const sessionId = session.result.structuredContent.id;
+    const change = await call(11, 'start_change_record', { goal: 'worker checkpoint implementation' });
+    const changeId = change.result.structuredContent.id;
+    await call(12, 'observe_change_record', { id: changeId, files: ['src/worker.js'] });
+    const partial = await call(13, 'complete_change_record', { id: changeId, outcome: 'partial', files: ['src/worker.js'], verifications: [{ name: 'worker unit', status: 'passed' }] });
+    assert.equal(partial.result.structuredContent.status, 'active');
+    assert.equal(partial.result.structuredContent.progress.outcome, 'partial');
+    const finalized = await call(14, 'finalize_work_session', { id: sessionId, outcome: 'partial', notes: ['Paused before final integration for review.'] });
+    const handoff = finalized.result.structuredContent.close.handoff;
+    assert.ok(handoff.activeChanges.some((item) => item.id === changeId));
+    assert.ok(!handoff.completedChanges.some((item) => item.id === changeId));
+    const completed = await call(15, 'complete_change_record', { id: changeId, outcome: 'succeeded', verifications: [{ name: 'worker integration', status: 'passed' }] });
+    assert.equal(completed.result.structuredContent.status, 'completed');
+    assert.equal(completed.result.structuredContent.completion.outcome, 'succeeded');
+  } finally { stop(server); }
+});

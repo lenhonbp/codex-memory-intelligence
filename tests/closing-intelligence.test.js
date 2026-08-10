@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { scanProject, remember } from '../src/core.js';
 import { setMemoryLifecycle } from '../src/stale.js';
-import { startChangeRecord, completeChangeRecord } from '../src/change-intelligence.js';
-import { startSession, closeSession } from '../src/session-intelligence.js';
+import { startChangeRecord, observeChangeRecord, completeChangeRecord, listChangeRecords } from '../src/change-intelligence.js';
+import { startSession, observeSession, closeSession, getSessionHandoff } from '../src/session-intelligence.js';
 import { buildClosingIntelligence, formatClosingIntelligence } from '../src/closing-intelligence.js';
 import { activateProject } from '../src/activation.js';
 
@@ -40,6 +40,33 @@ test('unfinished feature A remains visible after unrelated feature B closes, the
   await closeSession(root, sessionC.id, { outcome: 'investigated', notes: ['No implementation change.'] });
   const closingC = await buildClosingIntelligence(root, sessionC.id);
   assert.ok(!closingC.alerts.some((item) => item.relatedChangeIds.includes(changeA.id)));
+});
+
+test('intentional partial session closes without finalizing its active Change', async () => {
+  const root = await fixture();
+  await activateProject(root, { agent: 'generic' });
+  const session = await startSession(root, 'implement feature A profile flow');
+  const change = await startChangeRecord(root, 'feature A profile flow');
+  await fs.appendFile(path.join(root, 'src', 'feature-a.js'), 'export const profileCheckpoint = true;\n');
+  await observeChangeRecord(root, change.id, { files: ['src/feature-a.js'] });
+  await observeSession(root, session.id, { accomplished: ['Implemented the reversible profile checkpoint.'], notes: ['Verification passed for the checkpoint; final integration is intentionally deferred for review.'] });
+
+  const closed = await closeSession(root, session.id, { outcome: 'partial', notes: ['Stopped before final integration for user review.'] });
+  assert.equal(closed.status, 'closed');
+  const handoff = await getSessionHandoff(root, session.id);
+  assert.ok(handoff.activeChanges.some((item) => item.id === change.id));
+  assert.ok(!handoff.completedChanges.some((item) => item.id === change.id));
+  const active = await listChangeRecords(root, { status: 'active' });
+  const completed = await listChangeRecords(root, { status: 'completed' });
+  assert.ok(active.records.some((item) => item.id === change.id));
+  assert.ok(!completed.records.some((item) => item.id === change.id));
+
+  const closing = await buildClosingIntelligence(root, session.id);
+  assert.equal(closing.counts.blocker, 0);
+  const reminder = closing.alerts.find((item) => item.relatedChangeIds.includes(change.id));
+  assert.ok(reminder);
+  assert.equal(reminder.severity, 'reminder');
+  assert.equal(reminder.violationEstablished, false);
 });
 
 test('reviewed UI rule is surfaced as applicability evidence without inventing a Figma violation', async () => {

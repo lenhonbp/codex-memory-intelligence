@@ -49,6 +49,9 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.match(agents1, /cmi-managed:start/);
   assert.match(config1, /\[mcp_servers\.cmi\]/);
   assert.match(config1, /CMI_WRITE_ENABLED = "1"/);
+  assert.match(agents1, /If the requested work is complete, complete the Change/i);
+  assert.match(agents1, /keep the Change active/i);
+  assert.doesNotMatch(agents1, /then complete the change record and finalize the session/i);
   await activateProject(root, { agent: 'codex' });
   assert.equal(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'), agents1);
   assert.equal(await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8'), config1);
@@ -105,6 +108,7 @@ test('ambient mutation brief supplies workflow without mutating durable memory',
   const after = await status(root);
   assert.equal(brief.classification.intent, 'mutate');
   assert.ok(brief.workflow.some((item) => /Change Intelligence/i.test(item)));
+  assert.ok(brief.workflow.some((item) => /keep it active and finalize only the session/i.test(item)));
   assert.equal(after.entries.facts, before.entries.facts);
   assert.equal(after.entries.decisions, before.entries.decisions);
   assert.equal(after.entries.mistakes, before.entries.mistakes);

@@ -117,7 +117,7 @@ Session-continuation write tools add:
 
 Memory/finding ID prefixes used for reviewed mutations must resolve uniquely. CMI rejects ambiguous prefixes rather than mutating multiple entries.
 
-Completed change records are immutable through the public change-record API. Closed session records are durable outcome/history rather than an editable scratchpad; continued work should start another session/change record.
+Completed change records are immutable through the public change-record API. A partial Change remains active and may be carried by a closed-session handoff; only a terminal Change outcome makes it immutable. Closed session records are durable outcome/history rather than an editable scratchpad, so continued work should start another session and resume the existing active Change when appropriate.
 
 ## Close-session integration contract
 
