@@ -4,15 +4,16 @@
 
 This repository currently has **no native Skill runtime or loader**.
 
-Mission 1 adds a **repository-level reusable Skill contract PoC** only:
+Mission 1 adds a **repository-level reusable Skill contract PoC** with the following open-format Skill artifacts:
 
 - `skills/cmi-ambient-brief/SKILL.md`
+- `skills/cmi-continue/SKILL.md`
 
-`cmi-ambient-brief` is structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes it automatically.
+These Skills are structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes them automatically.
 
-The Skill remains a **repository-level Skill artifact**. CMI activation still does **not** automatically discover or apply Skills. Agent-specific discovery, install placement (for example under an agent’s own skills directory), and plugins remain **edge concerns** and are **not** implemented in this repository mission.
+The Skills remain **repository-level Skill artifacts**. CMI activation still does **not** automatically discover or apply Skills. Agent-specific discovery, install placement (for example under an agent’s own skills directory), and plugins remain **edge concerns** and are **not** implemented in this repository mission.
 
-The Skill is intentionally **not** listed in `package.json` `files` and is **not** published to npm consumers in this phase. Packaging and distribution remain a later architecture decision.
+The Skills are intentionally **not** listed in `package.json` `files` and are **not** published to npm consumers in this phase. Packaging and distribution remain a later architecture decision.
 
 Do not claim that installing `codex-memory-intelligence` from npm delivers Skills.
 Do not claim that npm installation activates Skills.
@@ -40,7 +41,7 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
 | **Optional future vendor adapters** | Edge-only mappings to a specific agent’s Skill discovery/install paths; must call the same CMI surfaces. Not present in Mission 1 beyond the portable open-format contract. |
 | **Optional future distribution** | How Skills ship (npm, separate pack, etc.). Explicitly out of scope for Mission 1. |
 
-## Mission 1 Skill
+## Mission 1 Skills
 
 ### `cmi-ambient-brief`
 
@@ -54,6 +55,27 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
 - **Not published:** `skills/` remains excluded from the package publication set.
 
 See `skills/cmi-ambient-brief/SKILL.md` for the full contract.
+
+### `cmi-continue`
+
+- **Open format:** Agent Skills-compatible `SKILL.md` with required frontmatter `name: cmi-continue` and a `description` that states purpose and when to use it.
+- **Surface:** existing Session Continuation Intelligence and related read-only surfaces (thin adapter; no new core behavior).
+- **Orientation:** resume unfinished work from durable handoff evidence while re-checking current repository, per-Change lifecycle, and open-finding evidence.
+- **MCP (read-only):** `get_session_handoff` (optional `id`), `get_repository_baseline` (no args), optional bounded `list_change_records` with `status: "active"` (optional `limit`), decisive `get_change_record` with required `id` for each relevant historical `handoff.activeChanges` entry, `list_project_findings` with `state: "open"` (optional `limit`), and optional `get_project_finding` with required `id`.
+- **CLI fallbacks:** exact project-local entrypoints
+  `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session handoff --json`,
+  `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" baseline --json`,
+  `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" change list --status active --json`,
+  `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" change show <id-or-prefix> --json`,
+  `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" finding list --status open --json`
+- **Classification:** strictly **read-only**; no session/Change/finding/memory lifecycle mutation.
+- **Invariant:** session completion remains independent from Change completion; handoff `activeChanges` is historical. Use `get_change_record` for each relevant handoff Change id to establish current lifecycle. `list_change_records` is only a bounded inventory — absence from that list is not lifecycle proof.
+- **Recommendation boundary:** handoff `nextAction`/`nextActions` priorities (including P0/P1) are historical recommendation snapshots; current open findings expose severity, not recomputed P0/P1 rankings.
+- **Not automatic:** not wired into activation; externally supplied or selected workflow artifact for external agent tooling (CMI has no Skill loader).
+- **Not published:** `skills/` remains excluded from the package publication set.
+- **Not claimed:** Codex/Grok runtime discovery is not validated by this repository artifact alone.
+
+See `skills/cmi-continue/SKILL.md` for the full contract.
 
 ## Non-goals (Mission 1)
 
@@ -74,13 +96,12 @@ Explicitly excluded:
 
 ## Future candidates (not implemented)
 
-Names only; no contracts or code in Mission 1:
+Names only; no contracts or code beyond the implemented Skills above:
 
 - `cmi-activate`
 - `cmi-work-session`
 - `cmi-change-loop`
 - `cmi-closing`
-- `cmi-continue`
 - `cmi-evidence-health`
 - `cmi-memory-review`
 
