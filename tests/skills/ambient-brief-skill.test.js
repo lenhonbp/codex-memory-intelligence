@@ -7,10 +7,37 @@ import { buildAmbientTaskBrief } from '../../src/ambient-intelligence.js';
 
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const skillPath = path.join(repositoryRoot, 'skills', 'cmi-ambient-brief', 'SKILL.md');
+const skillDirectoryName = path.basename(path.dirname(skillPath));
 const skillsDocPath = path.join(repositoryRoot, 'docs', 'SKILLS.md');
 
 async function read(filePath) {
   return (await fs.readFile(filePath, 'utf8')).replace(/\r\n/g, '\n');
+}
+
+/**
+ * Minimal local YAML frontmatter parser for required Skill fields only.
+ * Does not install a YAML dependency; supports simple `key: value` lines.
+ */
+function parseSkillFrontmatter(skillText) {
+  const match = skillText.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return null;
+  const fields = {};
+  for (const line of match[1].split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const separator = trimmed.indexOf(':');
+    if (separator <= 0) continue;
+    const key = trimmed.slice(0, separator).trim();
+    let value = trimmed.slice(separator + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    fields[key] = value;
+  }
+  return { raw: match[1], fields };
 }
 
 test('cmi-ambient-brief Skill file exists', async () => {
@@ -18,16 +45,49 @@ test('cmi-ambient-brief Skill file exists', async () => {
   assert.equal(stat.isFile(), true);
 });
 
-test('docs/SKILLS.md exists and describes repository-only non-published PoC', async () => {
+test('Skill SKILL.md starts with Agent Skills YAML frontmatter (name + description)', async () => {
+  const skill = await read(skillPath);
+  assert.match(skill, /^---\n/);
+  const frontmatter = parseSkillFrontmatter(skill);
+  assert.ok(frontmatter, 'SKILL.md must open with YAML frontmatter delimited by ---');
+
+  assert.ok(Object.hasOwn(frontmatter.fields, 'name'), 'frontmatter must include name');
+  assert.ok(Object.hasOwn(frontmatter.fields, 'description'), 'frontmatter must include description');
+
+  const { name, description } = frontmatter.fields;
+  assert.equal(name, 'cmi-ambient-brief');
+  assert.equal(name, skillDirectoryName, 'name must match parent directory');
+  assert.ok(name.length <= 64, 'name must be <= 64 characters');
+  assert.match(name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'name must be lowercase letters/numbers/hyphens without leading/trailing/consecutive hyphens');
+
+  assert.equal(typeof description, 'string');
+  assert.ok(description.length > 0, 'description must be non-empty');
+  assert.ok(description.length <= 1024, `description must be <= 1024 characters (got ${description.length})`);
+
+  assert.match(description, /ambient task brief|Ambient Intelligence|get_ambient_task_brief/i);
+  assert.match(description, /when beginning|when the user asks|Use when/i);
+  assert.doesNotMatch(description, /automatically applied by (CMI )?activation|CMI automatically|auto-applies/i);
+  assert.match(description, /does not auto-apply|not auto-apply|external tooling may select/i);
+  assert.match(description, /read-only/i);
+  assert.doesNotMatch(description, /npm install (delivers|activates)|package install activates|native Skill loader/i);
+  assert.match(description, /npm install does not deliver|does not deliver or activate/i);
+  assert.doesNotMatch(description, /write-enabled|enables durable writes|mutates memory/i);
+});
+
+test('docs/SKILLS.md exists and describes repository-only non-published open-format PoC', async () => {
   const doc = await read(skillsDocPath);
   assert.match(doc, /no native Skill runtime or loader/i);
   assert.match(doc, /repository-level reusable Skill contract PoC/i);
+  assert.match(doc, /Agent Skills open format|open format/i);
   assert.match(doc, /not published to npm|not listed in `package\.json`|Do not claim that installing/i);
   assert.match(doc, /Non-goals/i);
   assert.match(doc, /Issue #41/);
   assert.match(doc, /repository-level reusable Skill contract PoC/i);
   assert.match(doc, /\*\*not\*\* published to npm consumers|npm distribution of the `skills\/` tree/i);
   assert.match(doc, /Do not claim that installing .* from npm delivers Skills/i);
+  assert.match(doc, /activation still does \*\*not\*\* automatically discover|does \*\*not\*\* automatically discover or apply Skills/i);
+  assert.match(doc, /edge concerns/i);
+  assert.match(doc, /Do not claim that this repository has proven Codex or Grok runtime/i);
 });
 
 test('package.json published files list does not ship the skills tree', async () => {

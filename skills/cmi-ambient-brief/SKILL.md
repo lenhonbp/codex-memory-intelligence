@@ -1,3 +1,8 @@
+---
+name: cmi-ambient-brief
+description: Provide a bounded, evidence-labeled CMI ambient task brief by invoking existing Ambient Intelligence (MCP get_ambient_task_brief or the documented project-local ambient CLI). Use when beginning substantive repository work or when the user asks for an ambient brief, task context, or what CMI knows about a request. Strictly read-only thin adapter; external tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+---
+
 # Skill: cmi-ambient-brief
 
 ## 1. Purpose
