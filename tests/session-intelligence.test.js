@@ -123,9 +123,19 @@ test('deterministic graph-drift findings auto-resolve when the condition disappe
   let open = await listFindings(root, { state: 'open' });
   assert.ok(open.findings.some((item) => item.category === 'graph-drift'));
 
+  const registryPath = path.join(root, '.codex-memory', 'findings.json');
+  const beforeMissing = await fs.readFile(registryPath, 'utf8');
+  await fs.rm(path.join(root, '.codex-memory', 'project-graph.json'));
+  await fs.rm(path.join(root, '.codex-memory', 'project-index.json'));
+  const missing = await startSession(root, 'confirm missing evidence is not proof that drift resolved');
+  await closeSession(root, missing.id, { outcome: 'investigated', notes: ['Graph artifacts are intentionally absent.'] });
+  assert.equal(await fs.readFile(registryPath, 'utf8'), beforeMissing);
+  open = await listFindings(root, { state: 'open' });
+  assert.ok(open.findings.some((item) => item.category === 'graph-drift'));
+
   await scanProject(root);
-  const second = await startSession(root, 'confirm refreshed intelligence');
-  await closeSession(root, second.id, { outcome: 'investigated', notes: ['Graph was refreshed and checked.'] });
+  const refreshed = await startSession(root, 'confirm refreshed intelligence');
+  await closeSession(root, refreshed.id, { outcome: 'investigated', notes: ['Graph was refreshed and checked.'] });
   open = await listFindings(root, { state: 'open' });
   assert.ok(!open.findings.some((item) => item.category === 'graph-drift'));
 });
