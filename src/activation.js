@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { initProject, scanProject } from './core.js';
+import { CMI_LOCAL_ENTRYPOINT, findLocalCliEntrypoint, localCliInvocation } from './local-cli.js';
 
 const MAX_INTEGRATION_BYTES = 1_000_000;
 const AGENTS_BEGIN = '<!-- cmi-managed:start -->';
@@ -9,14 +10,16 @@ const AGENTS_END = '<!-- cmi-managed:end -->';
 const CODEX_BEGIN = '# cmi-managed:start';
 const CODEX_END = '# cmi-managed:end';
 
-const AGENTS_BLOCK = `${AGENTS_BEGIN}
+function agentsBlock(localCli) {
+  const localCommand = localCliInvocation(localCli?.relativeEntrypoint || CMI_LOCAL_ENTRYPOINT);
+  return `${AGENTS_BEGIN}
 ## CMI ambient project intelligence
 
 CMI is activated for this project. The user may give short, natural requests and does not need to mention CMI or restate its workflow.
 
 For every substantive repository task:
-- Get a CMI ambient task brief early, using the user's request verbatim when practical. Prefer the MCP tool \`get_ambient_task_brief\`; if MCP is unavailable, use the local executable fallback \`cmi ambient "<user request>" --json\` (or \`npx cmi ambient "<user request>" --json\` when CMI is only available through npx). This brief is read-only health/context evidence, not a completed session.
-- Start or resume a durable CMI work session before substantive project work, including read-only investigation, review, and verification. With MCP, use \`start_work_session\`; with the local executable fallback, use \`cmi session start \"<goal>\" --json\` (or the equivalent \`npx cmi session start ...\`). Record meaningful progress and verification with \`observe_work_session\` or \`cmi session observe\`.
+- Get a CMI ambient task brief early, using the user's request verbatim when practical. Prefer the MCP tool \`get_ambient_task_brief\`; if MCP is unavailable, the local executable fallback for \`cmi ambient\` is the exact project-local CMI package from the project root: \`${localCommand} ambient \"<user request>\" --json\`. Do not begin with bare \`cmi\`: a PATH miss is not evidence that CMI is unavailable. This brief is read-only health/context evidence, not a completed session.
+- Start or resume a durable CMI work session before substantive project work, including read-only investigation, review, and verification. With MCP, use \`start_work_session\`; for the local \`cmi session start\` operation, use \`${localCommand} session start \"<goal>\" --json\`. Record meaningful progress and verification with \`observe_work_session\` or the local \`cmi session observe\` operation via \`${localCommand} session observe ...\`.
 - Treat CMI intent classification, boundaries, impact, history, findings, and recommendations as advisory evidence, not authorization or product truth.
 - For implementation/refactor/fix work, start a CMI work session and a Change Intelligence record before editing when durable writes are available; inspect relevant context/impact; observe actual changed paths; run the project's real verification; then complete the change record and finalize the session.
 - For investigation/review work, retrieve context first and use the work session for the substantive task. Do not create a change record unless edits actually begin.
@@ -24,13 +27,14 @@ For every substantive repository task:
 - Do not broaden the user's task merely because CMI recommends additional work. Surface material P0/P1 evidence, but keep user intent in control.
 - Never promote inferred advice, memory-gap suggestions, session candidates, or change-learning candidates into durable project truth without explicit review.
 - Never claim a test/build/deploy succeeded unless it was actually run and observed through the agent's normal environment.
-- Before ending substantial work, finalize the CMI session. With MCP, use \`finalize_work_session\` and retrieve its \`closingIntelligence\` (or \`get_closing_intelligence\`). With the local executable fallback, use \`cmi session close <id|latest> --outcome ... --json\`, then \`cmi session closing <id|latest> --json\` (or the equivalent \`npx cmi session ...\`). Append a concise \`### CMI Intelligence\` section only from that actual closed-session Closing Intelligence result: show at most three alerts, never omit material P0/P1 evidence, and show CLEAN only when the closing result exists and has no material alert.
+- Before ending substantial work, finalize the CMI session. With MCP, use \`finalize_work_session\` and retrieve its \`closingIntelligence\` (or \`get_closing_intelligence\`). For the local \`cmi session close\` and \`cmi session closing\` operations, use \`${localCommand} session close <id|latest> --outcome ... --json\`, then \`${localCommand} session closing <id|latest> --json\`. Append a concise \`### CMI Intelligence\` section only from that actual closed-session Closing Intelligence result: show at most three alerts, never omit material P0/P1 evidence, and show CLEAN only when the closing result exists and has no material alert.
 - Do not use \`cmi ambient\`, \`cmi status\`, \`cmi doctor\`, or health/index/graph evidence as a substitute for starting or closing a session, and never synthesize a Closing-style \`CLEAN\` footer from those health-only results.
-- If no write-capable MCP or local CLI lifecycle is usable, or the session cannot be closed, do not claim Closing Intelligence or emit a Closing-style CLEAN footer. Report verified project/evidence health separately under a non-closing label and state that CMI Closing Intelligence was not finalized because no closed-session evidence is available.
+- If MCP is unavailable and the exact local entrypoint \`${localCommand}\` is absent or unusable, no local CLI lifecycle is usable. Only then report that CMI lifecycle is unavailable. If a session cannot be closed, do not claim Closing Intelligence or emit a Closing-style CLEAN footer. Report verified project/evidence health separately under a non-closing label and state that CMI Closing Intelligence was not finalized because no closed-session evidence is available.
 - Treat reviewed design, architecture, policy, and other consistency-rule relevance as a requirement to check, not proof of a violation. Only call something a violation when evidence establishes it.
 
 If CMI is unavailable or blocked, continue only with evidence you can actually establish and state the limitation. Do not ask the user to rewrite a short prompt into a CMI-specific prompt.
 ${AGENTS_END}`;
+}
 
 const CODEX_BLOCK = `${CODEX_BEGIN}
 [mcp_servers.cmi]
@@ -116,7 +120,8 @@ async function atomicWrite(root, relative, content) {
 
 async function planAgents(root) {
   const existing = await readIntegrationFile(root, 'AGENTS.md');
-  const next = normalizedManagedContent(existing, AGENTS_BEGIN, AGENTS_END, AGENTS_BLOCK, 'AGENTS.md');
+  const localCli = await findLocalCliEntrypoint(root);
+  const next = normalizedManagedContent(existing, AGENTS_BEGIN, AGENTS_END, agentsBlock(localCli), 'AGENTS.md');
   return { path: 'AGENTS.md', existing, next, changed: next !== existing, managed: true };
 }
 

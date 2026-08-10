@@ -18,15 +18,17 @@ Codex builds project instructions when a run/session starts, so start a new Code
 
 `cmi ambient "<user request>"` and the MCP tool `get_ambient_task_brief` provide a read-only task brief containing current evidence health, raw/product Git state, relevant project context when available, optional pre-change preparation for mutation requests, continuation handoff, and conservative workflow hints. The brief is not a session and cannot support a Closing Intelligence footer by itself.
 
-For every substantive task, the supported Codex integration starts or resumes a durable work session, including for read-only investigation, review, and verification. When MCP is unavailable, the local CLI is the equivalent lifecycle surface:
+For every substantive task, the supported Codex integration starts or resumes a durable work session, including for read-only investigation, review, and verification. When MCP is unavailable, invoke the exact project-local package entrypoint from the project root; do not depend on `node_modules/.bin` being on `PATH`:
 
 ```bash
-cmi ambient "<user request>" --json
-cmi session start "<goal>" --json
-cmi session observe <id|latest> --accomplished "..." --file path/to/checked-file --json
-cmi session close <id|latest> --outcome investigated --json
-cmi session closing <id|latest> --json
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" ambient "<user request>" --json
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session start "<goal>" --json
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session observe <id|latest> --accomplished "..." --file path/to/checked-file --json
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session close <id|latest> --outcome investigated --json
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session closing <id|latest> --json
 ```
+
+The path above is a bounded local resolution: it identifies the installed `codex-memory-intelligence` package and runs its shipped CLI entrypoint with Node. A failed bare `cmi` command must not terminate this sequence. Do not replace it with `npx cmi` for lifecycle work: npm execution can select a cached or registry package rather than the activated project's exact dependency. If the exact local entrypoint is absent or unusable and MCP is unavailable, the lifecycle is unavailable and that limitation must be reported honestly.
 
 `cmi status`, `cmi doctor`, and the ambient brief remain useful health/context evidence, but they are not substitutes for session start/observe/close. A `### CMI Intelligence` footer may say `CLEAN` only when `cmi session closing` or the equivalent MCP Closing Intelligence surface returned a real closed-session result with no material alerts. If lifecycle writes are unavailable or closing fails, report project/evidence health separately and say that Closing Intelligence was not finalized; do not synthesize a Closing-style footer from healthy status data.
 
