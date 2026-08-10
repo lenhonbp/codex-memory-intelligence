@@ -39,9 +39,11 @@ Closing Intelligence introduces no new durable notification database or persiste
 CLI:
 
 ```bash
-cmi session closing latest
-cmi session closing <session-id> --json
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session closing latest
+node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session closing <session-id> --json
 ```
+
+For an activated project without MCP, use this exact project-local package entrypoint rather than assuming the `cmi` bin directory is exposed through `PATH`. Do not use a network-capable `npx` fallback for lifecycle calls.
 
 MCP:
 

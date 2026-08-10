@@ -6,9 +6,11 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { scanProject } from '../src/core.js';
+import { findLocalCliEntrypoint } from '../src/local-cli.js';
 
 const cli = fileURLToPath(new URL('../src/cli-entry.js', import.meta.url));
 const mcp = fileURLToPath(new URL('../src/mcp-entry.js', import.meta.url));
+const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 
 async function fixture(prefix = 'cmi-ambient-interface-') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -83,6 +85,47 @@ function stopMcp(server) {
   server.child.kill();
 }
 
+async function installLocalPackage(root) {
+  const packageRoot = path.join(root, 'node_modules', 'codex-memory-intelligence');
+  await fs.mkdir(path.dirname(packageRoot), { recursive: true });
+  await fs.cp(path.join(repositoryRoot, 'src'), path.join(packageRoot, 'src'), { recursive: true });
+  await fs.copyFile(path.join(repositoryRoot, 'package.json'), path.join(packageRoot, 'package.json'));
+  await fs.mkdir(path.join(root, '.no-cmi-path'));
+  return path.join(packageRoot, 'src', 'cli-entry.js');
+}
+
+function runLocalCli(entrypoint, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [entrypoint, ...args], {
+      cwd,
+      env: { ...process.env, PATH: path.join(cwd, '.no-cmi-path') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (error) => resolve({ code: null, stdout, stderr, error }));
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+function runBareCmi(cwd) {
+  return new Promise((resolve) => {
+    const child = spawn('cmi', ['--version'], {
+      cwd,
+      env: { ...process.env, PATH: path.join(cwd, '.no-cmi-path') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (error) => resolve({ code: null, stdout, stderr, error }));
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
 test('CLI activate configures Codex once and CLI ambient accepts a terse user request', async () => {
   const root = await fixture();
   const activated = await runCli(['activate', '--json'], root);
@@ -144,6 +187,64 @@ test('activated Codex fallback preserves the durable session and truthful Closin
   const closing = await runCli(['session', 'closing', sessionId, '--json'], root);
   assert.equal(closing.code, 0, closing.stderr);
   assert.equal(JSON.parse(closing.stdout).state, 'clean');
+});
+
+test('activated fallback resolves the project-local CLI after a bare PATH miss and preserves full lifecycle', async () => {
+  const root = await fixture();
+  const entrypoint = await installLocalPackage(root);
+  const resolved = await findLocalCliEntrypoint(root);
+  assert.equal(resolved.relativeEntrypoint, 'node_modules/codex-memory-intelligence/src/cli-entry.js');
+  const activated = await runCli(['activate', '--json'], root);
+  assert.equal(activated.code, 0, activated.stderr);
+  const agents = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
+  assert.match(agents, /local executable fallback for `cmi ambient`/i);
+  assert.match(agents, /node "\.\/node_modules\/codex-memory-intelligence\/src\/cli-entry\.js" ambient/);
+  assert.match(agents, /a PATH miss is not evidence that CMI is unavailable/i);
+  assert.match(agents, /only then report that CMI lifecycle is unavailable/i);
+
+  const bare = await runBareCmi(root);
+  assert.equal(bare.error?.code, 'ENOENT');
+  const ambient = await runLocalCli(entrypoint, ['ambient', 'Sửa lỗi combat', '--json'], root);
+  assert.equal(ambient.code, 0, ambient.stderr);
+  assert.equal(JSON.parse(ambient.stdout).classification.intent, 'mutate');
+
+  const started = await runLocalCli(entrypoint, ['session', 'start', 'local fallback lifecycle', '--json'], root);
+  assert.equal(started.code, 0, started.stderr);
+  const sessionId = JSON.parse(started.stdout).id;
+  const observed = await runLocalCli(entrypoint, ['session', 'observe', sessionId, '--accomplished', 'Observed local CLI progress.', '--file', 'src/main.js', '--json'], root);
+  assert.equal(observed.code, 0, observed.stderr);
+  const closed = await runLocalCli(entrypoint, ['session', 'close', sessionId, '--outcome', 'investigated', '--json'], root);
+  assert.equal(closed.code, 0, closed.stderr);
+  const closing = await runLocalCli(entrypoint, ['session', 'closing', sessionId, '--json'], root);
+  assert.equal(closing.code, 0, closing.stderr);
+  assert.equal(JSON.parse(closing.stdout).session.id, sessionId);
+});
+
+test('resolved local CLI carries mutation lifecycle while an intentionally incomplete change remains durable', async () => {
+  const root = await fixture();
+  const entrypoint = await installLocalPackage(root);
+  const activated = await runCli(['activate', '--json'], root);
+  assert.equal(activated.code, 0, activated.stderr);
+
+  const started = await runLocalCli(entrypoint, ['session', 'start', 'local mutation fallback', '--json'], root);
+  const sessionId = JSON.parse(started.stdout).id;
+  const change = await runLocalCli(entrypoint, ['change', 'start', 'update local combat behavior', '--json'], root);
+  assert.equal(change.code, 0, change.stderr);
+  const changeId = JSON.parse(change.stdout).id;
+  await fs.writeFile(path.join(root, 'src', 'main.js'), 'export function run() { return false; }\n');
+  const changeObservation = await runLocalCli(entrypoint, ['change', 'observe', changeId, '--file', 'src/main.js', '--json'], root);
+  assert.equal(changeObservation.code, 0, changeObservation.stderr);
+  const sessionObservation = await runLocalCli(entrypoint, ['session', 'observe', sessionId, '--accomplished', 'Observed the incomplete mutation.', '--file', 'src/main.js', '--json'], root);
+  assert.equal(sessionObservation.code, 0, sessionObservation.stderr);
+  const closed = await runLocalCli(entrypoint, ['session', 'close', sessionId, '--outcome', 'investigated', '--json'], root);
+  assert.equal(closed.code, 0, closed.stderr);
+  const closing = JSON.parse((await runLocalCli(entrypoint, ['session', 'closing', sessionId, '--json'], root)).stdout);
+  assert.ok(closing.alerts.some((alert) => alert.kind === 'unfinished-work'));
+  assert.ok(closing.alerts.every((alert) => alert.severity !== 'blocker'));
+
+  const activeChanges = await runLocalCli(entrypoint, ['change', 'list', '--status', 'active', '--json'], root);
+  assert.equal(activeChanges.code, 0, activeChanges.stderr);
+  assert.equal(JSON.parse(activeChanges.stdout).records.some((record) => record.id === changeId), true);
 });
 
 test('CLI activation fails closed on unmanaged conflicting Codex CMI configuration', async () => {
