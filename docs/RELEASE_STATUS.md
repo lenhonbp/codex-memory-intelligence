@@ -2,75 +2,91 @@
 
 Updated: 2026-08-11
 
-## v0.11.0 RELEASE CANDIDATE — NOT YET PUBLISHED
+## v0.11.0 PUBLIC RELEASE
 
-This document describes the **release-preparation** state for candidate `v0.11.0`. It is **not** a claim that `v0.11.0` is the public npm `latest` package yet.
+`v0.11.0` is the current public CMI release. The feature-development program is complete and the project is now in maintenance mode.
 
-### Candidate summary
+### Public release summary
 
 | Field | Value |
 |-------|--------|
-| Candidate version | `0.11.0` |
+| Public release | `v0.11.0` |
+| npm package | `codex-memory-intelligence@0.11.0` |
+| npm dist-tag | `latest` |
+| Release commit/tag target | `a351406d7c68210b447d184b8d338f22032704a2` |
 | Base feature-complete subject | `c05098fa82ddf85a4443e3769801baf78e12c200` |
 | Planned Skills implemented | **8/8** |
-| Planned Skills packaged in npm `files` | **8/8** |
-| Package smoke (skills + no auto-activation) | pass (on preparation branch after version bump) |
-| Public npm latest (until publication succeeds) | still `v0.10.0` |
+| Planned Skills shipped in npm package | **8/8** |
+| Publish workflow | run `#9` / Actions run `31455405087` — success |
+| Post-merge main CI | run `#734` / Actions run `31455388444` — success |
+| Post-merge CodeQL | run `#233` / Actions run `31455388450` — success |
+| Release-branch CI | run `#735` / Actions run `31455405124` — success |
+| Temporary `release/v0.11.0` branch | removed by successful publish workflow |
+| GitHub Release | [CMI v0.11.0](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.11.0) |
 
-### Scope
+The authorized publish workflow verified release metadata, the full repository test suite, benchmark smoke, packed installation, npm publication, npm registry visibility, GitHub Release creation, and temporary release-branch cleanup. npm publication used Trusted Publishing, published with the `latest` tag, and emitted a signed provenance statement to the Sigstore transparency log (log index `2415874549`).
 
-`v0.11.0` packages the post-`v0.10.0` feature-complete line:
+### Release scope
+
+`v0.11.0` publishes the feature-complete post-`v0.10.0` line:
 
 - Codex/generic CMI activation integration;
 - Ambient Agent Intelligence;
 - Closing Intelligence;
-- Session/Change continuation improvements including incomplete-active Change preservation;
-- eight Agent Skill open-format adapters (read-only and write-aware thin adapters);
-- npm shipment of Skill artifacts without auto-activation or Skill installation by `cmi activate`;
+- Session/Change continuation improvements, including preservation of intentionally incomplete active Changes;
+- the explicit lifecycle rule that session completion does not imply Change completion;
+- all eight planned Agent Skill open-format adapters;
+- npm shipment of the eight Skill artifacts under `skills/`;
+- no npm auto-activation or automatic runtime Skill installation;
+- `cmi activate` does not install Skills;
 - no CMI-native Skill loader.
 
 ### Governance / field evidence
 
 | Item | State |
 |------|--------|
-| Mission 1.5 bounded Skill field evidence | exists (Grok partial; Codex earlier matrix incomplete) |
-| Mission 1.8B final Codex S0–S7 on final subject | **runtime-blocked before S0** (ChatGPT-auth model capacity; API-key fallback unavailable) |
+| Mission 1.8B final Codex S0–S7 on final pre-release subject | **NOT EXECUTED — runtime blocked before S0** |
 | Issue #41 | closed **NOT_PLANNED** — **not** S0–S7 PASS |
-| Study #30 (Study 003 preregistration) | closed **NOT_PLANNED** — no manufactured study results |
+| Study #30 (Study 003 preregistration) | closed **NOT_PLANNED** / deferred — no manufactured results |
+| CMI field blockers | `0` |
+| CMI field majors | `0` |
+| CMI field minors | `0` |
+
+The final Codex S0–S7 matrix was **not executed** on `c05098fa82ddf85a4443e3769801baf78e12c200`. The available ChatGPT-auth Codex runtime was capacity-blocked and the operator environment had no API key for fallback. This remains an external runtime limitation; it is not recorded as a CMI field PASS or FAIL for those final scenarios.
 
 ### Evidence limits
 
-- Final Codex S0–S7 matrix was **not executed** on `c05098f…` due to external runtime availability. That is a **runtime limitation**, not a recorded CMI product field failure or pass.
-- No productivity/time-savings proof.
-- Static analysis remains heuristic/advisory.
-- Agent clients may ignore project instructions/MCP.
-- Package shipment does not prove runtime Skill discovery.
-- No universal Codex/Grok Skill installation path claim.
-- Not a v1 readiness claim.
+- No claim that final Codex S0–S7 field acceptance passed.
+- No productivity-improvement or time-savings claim.
+- No causal or comparative result is inferred from incomplete Study 003.
+- Static parsing, impact, and boundary inference remain heuristic/advisory rather than compiler-grade.
+- Agent clients may ignore project instructions or MCP guidance.
+- Package shipment does not prove runtime Skill discovery or automatic Skill selection.
+- No universal Codex/Grok Skill installation path is claimed.
+- This release is not a v1-readiness claim.
 
-### Publication status
+## Maintenance mode
 
 ```text
-candidate prepared = YES (after this release-preparation merge/PR)
-npm published v0.11.0 = NO (until separately authorized publication workflow)
-GitHub Release v0.11.0 = NO (until publication)
+CMI_FEATURE_DEVELOPMENT = COMPLETE
+CMI_PUBLIC_RELEASE = v0.11.0
+CMI_MODE = MAINTENANCE
+PLANNED_SKILLS = 8/8
+OPEN_PLANNED_PRODUCT_FEATURES = 0
+ACTIVE_EMPIRICAL_ROADMAP = 0
+NEXT_CMI_MISSION = NONE
 ```
 
-## Current public release (until v0.11.0 publishes)
+No additional feature Mission should be invented unless a genuine release/security/maintenance need is separately established. Future work is maintenance, security, bug remediation, or separately authorized research.
 
-- Release: `v0.10.0`
-- npm package: `codex-memory-intelligence@0.10.0`
-- See historical notes below for the accepted `v0.10.0` publication record.
+## Historical wording note
+
+The immutable `v0.11.0` tag was created from the reviewed release-preparation snapshot. Some text inside that tagged snapshot therefore uses pre-publication wording such as “release candidate” or “publication remains separately authorized.” That wording records the state immediately before publication. This document on `main` is the repository-level post-publication status record.
 
 ## Historical: v0.10.0 public release
 
 - Release: `v0.10.0`
 - npm package: `codex-memory-intelligence@0.10.0`
-- npm dist-tag used by the authorized workflow: `latest`
 - Release commit/tag target: `7218634b5ee54165dcedefe57fea5f6cb2a080fd`
 - GitHub Release: [CMI v0.10.0](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.10.0)
 - Independent packed-package black-box acceptance: Issue #36 — `BLACK_BOX_ACCEPTED`
-
-## Maintenance mode
-
-After successful `v0.11.0` publication, the product owner intends **maintenance mode**: no additional planned feature Missions in the original roadmap. Future work is unplanned maintenance, security, or separately authorized research—not a continuation of the prerelease feature program.
