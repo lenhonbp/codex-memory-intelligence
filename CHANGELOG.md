@@ -4,6 +4,31 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-11
+
+Maintenance release for the public licensing and project-identity cutover. No CMI product-behavior change is claimed by this release.
+
+### Added
+
+- Added `LICENSING.md` documenting the source-available licensing model, the legacy MIT boundary, and the separate commercial-license path.
+- Added `NOTICE` and `BRAND_POLICY.md` so official-project provenance, attribution, and fork/brand boundaries travel with the repository and npm package.
+- Added a structured real-repository field-feedback issue template focused on useful signals, noisy/misleading behavior, missing behavior, reproducible evidence, and public-data safety.
+
+### Changed
+
+- Repository source after the 2026-08-11 licensing cutover is offered under **PolyForm Perimeter License 1.0.1** rather than MIT.
+- `v0.11.0` and all earlier public releases remain under the MIT terms shipped with those versions; this release does not retroactively revoke previously granted MIT rights.
+- npm package metadata now uses `SEE LICENSE IN LICENSE` and includes `LICENSING.md`, `NOTICE`, and `BRAND_POLICY.md` in the published package.
+- README terminology now describes post-cutover CMI source as **source-available**, documents the licensing boundary, and invites evidence-based field feedback from real repositories.
+- Material code contributions require pre-coordination until a formal contributor licensing agreement is available; bug reports, field evidence, documentation suggestions, and design feedback remain welcome.
+
+### Evidence limits
+
+- The licensing/identity changes reduce ambiguity around future competing products and official-project provenance; they do not erase rights attached to prior MIT releases.
+- PolyForm Perimeter is a source-available license and this release should not be described as OSI-approved open source.
+- No new productivity, effectiveness, compatibility, or universal-agent claim is established by the licensing maintenance release.
+- Product field evidence continues to be bounded by the documented v0.11.0 Grok/Codex results unless separately re-evaluated.
+
 ## [0.11.0] - 2026-08-11
 
 Feature-complete planned Skill inventory and post-`v0.10.0` agent-integration work. Publication remains separately authorized after this release-preparation commit.

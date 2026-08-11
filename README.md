@@ -27,18 +27,18 @@ CMI intentionally separates **observed evidence**, **reviewed durable knowledge*
 
 ## Current release
 
-**`v0.11.0` / `codex-memory-intelligence@0.11.0` is the current public npm release and npm `latest`.** The planned feature-development program is complete and CMI is in **maintenance mode**.
+**`v0.11.1` / `codex-memory-intelligence@0.11.1` is the licensing-maintenance release for the source-available cutover.** It contains the same maintenance-mode product line as `v0.11.0` plus the licensing, provenance, contribution, and field-feedback changes documented below.
 
-Field evidence for the public release:
+Product field evidence remains bounded by the previously observed `v0.11.0` subject because `v0.11.1` does not claim a new product-behavior change:
 
 - **Grok F0–F7:** **PASS** on the public `v0.11.0` subject in the observed field environment.
 - **Codex final S0–S7:** **NOT EXECUTED — runtime blocked before S0** on the final pre-release field gate.
 
 The Grok result is a separate bounded field result; it does not rewrite the historical Codex result and does not imply universal agent validation.
 
-> **Licensing boundary:** `v0.11.0` and earlier public releases remain MIT-licensed under the terms shipped with those versions. Repository source after the 2026-08-11 licensing cutover uses the **PolyForm Perimeter License 1.0.1**. See [Licensing](LICENSING.md).
+> **Licensing boundary:** `v0.11.0` and earlier public releases remain MIT-licensed under the terms shipped with those versions. `v0.11.1` and repository source after the 2026-08-11 licensing cutover use the **PolyForm Perimeter License 1.0.1**. See [Licensing](LICENSING.md).
 
-See [Current Release Status](docs/RELEASE_STATUS.md) and [Grok v0.11.0 Final Field Acceptance](docs/field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
+See [Current Release Status](docs/RELEASE_STATUS.md), [Changelog](CHANGELOG.md), and [Grok v0.11.0 Final Field Acceptance](docs/field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
 
 ## Try CMI and share field feedback
 
@@ -68,7 +68,7 @@ npx cmi --version
 
 Requires **Node.js 22 or newer**.
 
-The current npm `latest` is the legacy MIT-licensed `v0.11.0` release. The license for any future release is determined by the `LICENSE` file and release metadata shipped with that exact version.
+`v0.11.1` is the first release intended to ship the post-cutover **PolyForm Perimeter License 1.0.1** terms. `v0.11.0` and earlier package versions remain under the MIT license included with those exact releases.
 
 ## Quick start
 
