@@ -62,6 +62,8 @@ function graphDomain(graphHealth) {
     complete,
     staleNodes: finiteCount(graphHealth.staleNodes),
     missingNodes: finiteCount(graphHealth.missingNodes),
+    stalePaths: (graphHealth.stalePaths || []).slice(0, 200),
+    missingPaths: (graphHealth.missingPaths || []).slice(0, 200),
     truncated: Boolean(graphHealth.truncated),
     sourceSetChanged: Boolean(graphHealth.sourceSetChanged),
     resolverInputsChanged: Boolean(graphHealth.resolverInputsChanged),

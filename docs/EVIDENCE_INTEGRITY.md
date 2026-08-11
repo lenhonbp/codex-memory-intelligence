@@ -33,6 +33,8 @@ Successful compatibility verification after relocation is separate from generate
 
 A current but truncated graph is `degraded` and graph/impact capability is `partial`. A stale/missing graph is `blocked` for graph/impact current-evidence claims. Stale or review-required memory degrades durable-memory trust without pretending all local historical evidence is unusable.
 
+Session/Closing presentation may classify one narrow stale-graph case as a non-blocking refresh reminder: the session started with current graph evidence, every stale node path is inside the session's attributed mutation scope, and no structural/configuration/discovery drift is present. This does not change Evidence Health: the graph remains stale and graph/impact capability remains blocked until `cmi scan`. Pre-existing, unexplained, missing-node, source-set, resolver/workspace, scan-policy, discovery, or format drift remains material.
+
 ## Git-history continuity
 
 Change/session attribution now checks whether the recorded start HEAD is an ancestor of the current HEAD before using a start-to-current Git diff as committed-path evidence.

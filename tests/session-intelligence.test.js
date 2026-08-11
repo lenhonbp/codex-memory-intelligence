@@ -74,22 +74,56 @@ test('no-code investigation closes with a handoff and explicit next action', asy
   assert.ok(handoff.openQuestions.length === 1);
 });
 
-test('graph drift and uncaptured changed scope produce evidence-based next actions', async () => {
+test('same-session source drift is a non-blocking refresh reminder while uncaptured change remains material', async () => {
   const root = await gitFixture();
   if (!root) return;
   const session = await startSession(root, 'change service behavior');
   await fs.writeFile(path.join(root, 'src', 'service.js'), 'export function service() { return false; }\n');
 
   const live = await assessSession(root, session.id);
-  assert.ok(live.findings.some((item) => item.category === 'graph-drift'));
+  const drift = live.findings.find((item) => item.category === 'graph-drift');
+  assert.ok(drift);
+  assert.equal(drift.severity, 'low');
+  assert.ok(drift.evidence.includes('session-source-mutation'));
+  assert.deepEqual(drift.relatedFiles, ['src/service.js']);
+  assert.ok(live.recommendations.some((item) => item.priority === 'P3' && /cmi scan/i.test(item.action)));
 
   const closed = await closeSession(root, session.id, { files: ['src/service.js'] });
+  const closedDrift = closed.close.findings.find((item) => item.category === 'graph-drift');
   const categories = new Set(closed.close.findings.map((item) => item.category));
-  assert.ok(categories.has('graph-drift'));
+  assert.ok(closedDrift);
+  assert.equal(closedDrift.severity, 'low');
   assert.ok(categories.has('uncaptured-session-change'));
-  assert.ok(closed.close.recommendations.some((item) => item.priority === 'P1' && /cmi scan/i.test(item.action)));
+  assert.ok(closed.close.recommendations.some((item) => item.priority === 'P1' && /change record/i.test(item.action)));
   assert.ok(closed.close.guardrails.some((item) => item.id === 'do-not-trust-stale-graph'));
   assert.equal(closed.close.outcome, 'partial');
+});
+
+test('graph drift that predates the session remains a material P1 finding', async () => {
+  const root = await gitFixture();
+  if (!root) return;
+  await fs.writeFile(path.join(root, 'src', 'service.js'), 'export function service() { return false; }\n');
+  const session = await startSession(root, 'inspect already-stale intelligence');
+  const live = await assessSession(root, session.id);
+  const drift = live.findings.find((item) => item.category === 'graph-drift');
+  assert.ok(drift);
+  assert.equal(drift.severity, 'medium');
+  assert.ok(!drift.evidence.includes('session-source-mutation'));
+  assert.ok(live.recommendations.some((item) => item.priority === 'P1' && /cmi scan/i.test(item.action)));
+});
+
+test('source-set graph drift remains material even when introduced during the session', async () => {
+  const root = await gitFixture();
+  if (!root) return;
+  const session = await startSession(root, 'add another source module');
+  await fs.writeFile(path.join(root, 'src', 'extra.js'), 'export const extra = true;\n');
+  const live = await assessSession(root, session.id);
+  const drift = live.findings.find((item) => item.category === 'graph-drift');
+  assert.ok(drift);
+  assert.equal(drift.severity, 'medium');
+  assert.ok(!drift.evidence.includes('session-source-mutation'));
+  assert.ok(live.current.project.graph.sourceSetChanged);
+  assert.ok(live.recommendations.some((item) => item.priority === 'P1' && /cmi scan/i.test(item.action)));
 });
 
 test('unresolved blockers persist across sessions until explicitly resolved', async () => {

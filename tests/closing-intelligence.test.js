@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import os from 'node:os';
 import path from 'node:path';
 import { scanProject, remember } from '../src/core.js';
@@ -10,6 +12,8 @@ import { startSession, observeSession, closeSession, getSessionHandoff } from '.
 import { buildClosingIntelligence, formatClosingIntelligence } from '../src/closing-intelligence.js';
 import { activateProject } from '../src/activation.js';
 
+const execFileAsync = promisify(execFile);
+
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-closing-'));
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
@@ -17,6 +21,21 @@ async function fixture() {
   await fs.writeFile(path.join(root, 'src', 'feature-a.js'), 'export const featureA = true;\n');
   await fs.writeFile(path.join(root, 'src', 'feature-b.js'), 'export const featureB = true;\n');
   await scanProject(root);
+  return root;
+}
+
+async function gitFixture() {
+  const root = await fixture();
+  try {
+    await execFileAsync('git', ['init'], { cwd: root });
+    await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root });
+    await execFileAsync('git', ['config', 'user.name', 'CMI Test'], { cwd: root });
+    await execFileAsync('git', ['add', '.'], { cwd: root });
+    await execFileAsync('git', ['commit', '-m', 'Initial'], { cwd: root });
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
   return root;
 }
 
@@ -69,6 +88,20 @@ test('intentional partial session closes without finalizing its active Change', 
   assert.equal(reminder.violationEstablished, false);
 });
 
+test('same-session source-only graph drift closes as a non-blocking refresh reminder', async () => {
+  const root = await gitFixture();
+  if (!root) return;
+  const session = await startSession(root, 'update feature A implementation');
+  await fs.appendFile(path.join(root, 'src', 'feature-a.js'), 'export const updatedFeatureA = true;\n');
+  await closeSession(root, session.id, { outcome: 'partial', files: ['src/feature-a.js'] });
+  const closing = await buildClosingIntelligence(root, session.id);
+  const drift = closing.alerts.find((item) => item.kind === 'graph-drift');
+  assert.ok(drift);
+  assert.equal(drift.severity, 'reminder');
+  assert.equal(drift.violationEstablished, false);
+  assert.ok(drift.evidence.includes('session-source-mutation'));
+});
+
 test('reviewed UI rule is surfaced as applicability evidence without inventing a Figma violation', async () => {
   const root = await fixture();
   await fs.mkdir(path.join(root, 'docs'), { recursive: true });
@@ -115,4 +148,6 @@ test('Codex activation instructs the agent to append bounded evidence-based CMI 
   assert.match(agents, /at most three alerts/i);
   assert.match(agents, /CLEAN/i);
   assert.match(agents, /not proof of a violation/i);
+  assert.match(agents, /do not rely on graph\/impact output as current evidence/i);
+  assert.match(agents, /do not scan merely to make Closing Intelligence CLEAN/i);
 });
