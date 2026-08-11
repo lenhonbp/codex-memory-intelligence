@@ -2,9 +2,44 @@
 
 Updated: 2026-08-11
 
-## v0.11.1 PUBLIC RELEASE
+## v0.11.2 PUBLIC RELEASE
 
-`v0.11.1` is the current supported public CMI release. The planned feature-development program is complete and the project is in maintenance mode.
+`v0.11.2` is the current supported public CMI release. It is a maintenance patch for graph-drift signal quality discovered through repeated real-project Project 001 sessions; the planned feature-development program remains complete and the project remains in maintenance mode.
+
+### Public release summary
+
+| Field | Value |
+|---|---|
+| Public release | `v0.11.2` |
+| npm package | `codex-memory-intelligence@0.11.2` |
+| npm dist-tag | `latest` |
+| Release commit/tag target | `cdfaae5a22d7254130958a21f7fa12dabd01436d` |
+| Publish workflow | run `#11` / Actions run `31515580657` — success |
+| Post-merge main CI | run `#802` / Actions run `31515550678` — success |
+| Post-merge CodeQL | run `#257` / Actions run `31515550657` — success |
+| Temporary `release/v0.11.2` branch | removed by successful publish workflow |
+| GitHub Release | [CMI v0.11.2](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.11.2) |
+| GitHub Release id | `368724266` |
+| Public-source license | PolyForm Perimeter License 1.0.1 |
+
+The authorized publish workflow verified release-target identity, release metadata, the repository test suite, benchmark smoke, packed installation, npm Trusted Publishing, registry visibility, GitHub Release creation, and temporary release-branch cleanup.
+
+### Maintenance fix scope
+
+- Graph evidence remains honestly stale and graph/impact claims remain blocked until `cmi scan` refreshes generated intelligence.
+- When a session starts from current graph evidence and every stale source node is fully explained by that session's attributed source mutation scope, with no structural/configuration/discovery/format drift, Session/Closing Intelligence now presents the condition as a non-blocking refresh reminder rather than a material warning.
+- Pre-existing, unexplained, missing-node, source-set, resolver/workspace, scan-policy, discovery, and generated-format drift remain material.
+- The exact Project 001 field pattern — source edit → commit → clean worktree → close session — is covered by regression tests.
+- Historical `prediction-gap` semantics are unchanged.
+
+### Evidence limits
+
+- This release proves publication and the bounded graph-drift regression fix; it does not establish a universal productivity, time-savings, or agent-effectiveness claim.
+- The Project 001 observation is real-repository field evidence for this specific signal-quality defect, not a replacement for the historical Grok F0–F7 protocol.
+- Stale graph evidence is not relabeled healthy, and CMI still does not auto-run `cmi scan` merely to produce Closing `CLEAN`.
+
+## v0.11.1 HISTORICAL RELEASE
+`v0.11.1` was the first public release after the licensing/provenance cutover. It is retained as historical release evidence; `v0.11.2` is the current supported release.
 
 For installation and source downloads, new users should use the latest supported release:
 
@@ -60,7 +95,7 @@ The current CMI product line includes:
 
 ## Field evidence boundary
 
-The most recent product-behavior field evidence remains the bounded `v0.11.0` field subject because `v0.11.1` does not claim a product-behavior change.
+The latest maintenance behavior evidence is the bounded Project 001 graph-drift field regression shipped in `v0.11.2`. The formal agent-neutral Grok F0–F7 acceptance protocol remains the historical `v0.11.0` subject and is preserved separately rather than being rewritten by this maintenance fix.
 
 A final agent-neutral F0–F7 field protocol was run against the public `codex-memory-intelligence@0.11.0` subject using Grok runtime surfaces available in the observed environment.
 
@@ -94,7 +129,7 @@ No CMI product defect was established by that bounded field run.
 
 | Item | State |
 |---|---|
-| Current supported public release | **v0.11.1** |
+| Current supported public release | **v0.11.2** |
 | Final Grok F0–F7 on public `v0.11.0` product subject | **PASS** |
 | CMI Grok field validated | **YES** |
 | Mission 1.8B final Codex S0–S7 on final pre-release subject | **NOT EXECUTED — runtime blocked before S0** |
@@ -122,8 +157,8 @@ The successful Grok F0–F7 run is a separate bounded field result. It must not 
 
 ```text
 CMI_FEATURE_DEVELOPMENT = COMPLETE
-CMI_PUBLIC_RELEASE = v0.11.1
-CMI_SUPPORTED_RELEASE = v0.11.1
+CMI_PUBLIC_RELEASE = v0.11.2
+CMI_SUPPORTED_RELEASE = v0.11.2
 CMI_MODE = MAINTENANCE
 PLANNED_SKILLS = 8/8
 OPEN_PLANNED_PRODUCT_FEATURES = 0

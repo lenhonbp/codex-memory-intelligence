@@ -20,8 +20,8 @@ The repository README and security policy should point new users to the latest s
 
 As of 2026-08-11, the supported public release is:
 
-- `v0.11.1`
-- npm: `codex-memory-intelligence@0.11.1`
+- `v0.11.2`
+- npm: `codex-memory-intelligence@0.11.2`
 
 Security fixes and compatibility guidance target the current supported release unless a specific exception is documented.
 
@@ -60,7 +60,7 @@ rather than directing new users to the general Releases index when the intent is
 
 `v0.11.0` and earlier public releases remain under the MIT license shipped with those exact versions.
 
-`v0.11.1` and repository source after the 2026-08-11 licensing cutover use the PolyForm Perimeter License 1.0.1, subject to `LICENSE`, `LICENSING.md`, `NOTICE`, and `BRAND_POLICY.md`.
+`v0.11.1` and later public releases, plus repository source after the 2026-08-11 licensing cutover, use the PolyForm Perimeter License 1.0.1, subject to `LICENSE`, `LICENSING.md`, `NOTICE`, and `BRAND_POLICY.md`.
 
 Changing the current license does not retroactively revoke rights already granted under earlier release licenses.
 
