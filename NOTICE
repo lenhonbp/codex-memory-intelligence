@@ -1,13 +1,16 @@
 Codex Memory Intelligence (CMI)
 Copyright (c) 2026 Lê Thành Nhơn
 
-The software code in this repository is currently licensed under the terms in LICENSE.
+The software code in the current repository state is licensed under the terms in LICENSE.
+
+Repository source after the 2026-08-11 licensing cutover uses the PolyForm Perimeter License 1.0.1. Public releases and tags already distributed under MIT — including v0.11.0 and earlier — retain the MIT terms that accompanied those versions. See LICENSING.md for the version boundary.
 
 The software license does not grant permission to use the project name, "Codex Memory Intelligence", the abbreviation "CMI", logos, visual identity, or other project branding in a way that implies an unofficial fork, modified distribution, hosted service, or commercial product is the original project or is endorsed by the project author.
 
-Truthful references to the project, links to the original repository, and attribution required by the software license are not restricted by this notice.
+Truthful references to the project, links to the original repository, and attribution required by the applicable software license are not restricted by this notice.
 
-Modified or redistributed versions should clearly identify that they are modified and independently maintained, and should preserve all notices required by LICENSE.
+Modified or redistributed versions should clearly identify that they are modified and independently maintained, and should preserve all notices required by the applicable license.
 
 Original project: https://github.com/lenhonbp/codex-memory-intelligence
+Project licensing: LICENSING.md
 Project identity policy: BRAND_POLICY.md
