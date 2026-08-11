@@ -26,13 +26,13 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-The current **public** npm release remains `v0.10.0` until `v0.11.0` is separately published. This repository prepares **feature-complete `v0.11.0`**: activation, Ambient and Closing Intelligence, Session/Change continuation improvements, and **all eight planned Skill artifacts** shipped in the npm package under `skills/`.
+The current **public** release is **`v0.11.0` / `codex-memory-intelligence@0.11.0`**. The planned feature-development program is complete and CMI is now in **maintenance mode**. `v0.11.0` includes activation, Ambient and Closing Intelligence, Session/Change continuation improvements, preservation of intentionally incomplete active Changes, and **all eight planned Skill artifacts** shipped in the npm package under `skills/`.
 
 **Skill distribution:** npm package ships Skills; npm installation does **not** activate/install them into agent runtimes; `cmi activate` does **not** install Skills; CMI has **no** native Skill loader. See [docs/SKILLS.md](docs/SKILLS.md) and [docs/RELEASE_STATUS.md](docs/RELEASE_STATUS.md).
 
-Evidence limits still apply: inference is advisory and is never automatically promoted into reviewed durable project truth. Final Codex S0–S7 acceptance on the last pre-release subject was **not** completed (external runtime capacity / unavailable API-auth fallback)—see release evidence limits in the changelog.
+Evidence limits still apply: inference is advisory and is never automatically promoted into reviewed durable project truth. Final Codex S0–S7 acceptance on the last pre-release subject was **not** completed (external runtime capacity / unavailable API-auth fallback). `v0.11.0` therefore does not claim final S0–S7 field PASS, productivity improvement, time savings, compiler-grade analysis, universal Skill discovery, or v1 readiness.
 
-See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
+See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), [Current Release Status](docs/RELEASE_STATUS.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
 Static parsing and inferred architecture remain best effort rather than compiler-grade analysis. Historical co-change is correlation, not causality. CMI never treats an observed changed path as proof of complete runtime impact, never treats a recommendation as business truth, and never turns learning candidates into durable project truth automatically.
 
