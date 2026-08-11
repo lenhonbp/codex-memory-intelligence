@@ -2,7 +2,23 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest minor release. Older pre-1.0 releases may require upgrading to receive a fix.
+CMI applies security fixes to the **current supported release** unless a specific exception is documented.
+
+| Version | Security support | Recommendation |
+|---|---|---|
+| `0.11.1` | Supported | Recommended for current installations |
+| `0.11.0` and earlier | Historical / unsupported | Upgrade to the latest release |
+
+Historical releases are retained for provenance, reproducibility, and license-history purposes. Their continued availability does **not** mean they receive current security fixes or contain the latest hardening and compatibility improvements.
+
+For new installations, use the latest release:
+
+- GitHub: https://github.com/lenhonbp/codex-memory-intelligence/releases/latest
+- npm: `npm install -g codex-memory-intelligence`
+
+If a vulnerability appears to affect an older release, please reproduce it against the current supported release when practical. Reports that only affect a historical release may be resolved by requiring an upgrade rather than patching that historical line.
+
+See [Release & Version Policy](docs/RELEASE_POLICY.md) for the public version-support policy.
 
 ## Reporting a vulnerability
 

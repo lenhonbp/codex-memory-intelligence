@@ -6,9 +6,9 @@
 [![License: PolyForm Perimeter 1.0.1](https://img.shields.io/badge/License-PolyForm%20Perimeter%201.0.1-orange.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
-CMI is a **local-first project memory and evidence-driven intelligence layer for AI coding agents**. It keeps reviewed project knowledge, dependency/impact signals, change history, unresolved work, and session handoffs in a human-reviewable `.codex-memory/` directory.
+CMI is a **local-first project memory and evidence-driven intelligence layer for AI coding agents**. It helps an agent continue long-running work with durable project context while keeping observed evidence, reviewed knowledge, and advisory inference separate.
 
-There is no required cloud service, API key, database, telemetry service, remote model, or network-enrichment dependency.
+CMI stores human-reviewable project intelligence under `.codex-memory/` and does not require a cloud service, API key, database, telemetry service, remote model, or network-enrichment dependency.
 
 > Codex Memory Intelligence is an independent **source-available** project and is not affiliated with or endorsed by OpenAI.
 
@@ -23,22 +23,31 @@ There is no required cloud service, API key, database, telemetry service, remote
 - **Portable Agent Skills** — eight open-format Skill artifacts shipped under `skills/`.
 - **MCP integration** — read-only by default, with explicit opt-in for durable project writes.
 
-CMI intentionally separates **observed evidence**, **reviewed durable knowledge**, and **advisory inference**. A warning is not automatically a product blocker, and inference is not automatically promoted into project truth.
+CMI intentionally treats **evidence as evidence**: a warning is not automatically a product blocker, historical correlation is not causality, and inference is never automatically promoted into durable project truth.
 
-## Current release
+## Get CMI
 
-**`v0.11.1` / `codex-memory-intelligence@0.11.1` is the licensing-maintenance release for the source-available cutover.** It contains the same maintenance-mode product line as `v0.11.0` plus the licensing, provenance, contribution, and field-feedback changes documented below.
+**Current supported release: `v0.11.1` / `codex-memory-intelligence@0.11.1`.**
 
-Product field evidence remains bounded by the previously observed `v0.11.0` subject because `v0.11.1` does not claim a new product-behavior change:
+For new installations, use the current npm package:
 
-- **Grok F0–F7:** **PASS** on the public `v0.11.0` subject in the observed field environment.
-- **Codex final S0–S7:** **NOT EXECUTED — runtime blocked before S0** on the final pre-release field gate.
+```bash
+npm install -g codex-memory-intelligence
+cmi --version
+```
 
-The Grok result is a separate bounded field result; it does not rewrite the historical Codex result and does not imply universal agent validation.
+Or install it in one project:
 
-> **Licensing boundary:** `v0.11.0` and earlier public releases remain MIT-licensed under the terms shipped with those versions. `v0.11.1` and repository source after the 2026-08-11 licensing cutover use the **PolyForm Perimeter License 1.0.1**. See [Licensing](LICENSING.md).
+```bash
+npm install --save-dev codex-memory-intelligence
+npx cmi --version
+```
 
-See [Current Release Status](docs/RELEASE_STATUS.md), [Changelog](CHANGELOG.md), and [Grok v0.11.0 Final Field Acceptance](docs/field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
+Requires **Node.js 22 or newer**.
+
+If you prefer a GitHub source archive, use **[Download the latest release](https://github.com/lenhonbp/codex-memory-intelligence/releases/latest)**. New users should use the latest supported release rather than a historical tag.
+
+Historical releases are retained for provenance and reproducibility, but they are **not recommended for new installations and are not the currently supported security line**. They may not include later fixes, hardening, compatibility improvements, or current licensing terms. See [Release & Version Policy](docs/RELEASE_POLICY.md), [Security](SECURITY.md), and [Changelog](CHANGELOG.md).
 
 ## Try CMI and share field feedback
 
@@ -49,26 +58,6 @@ CMI is being evaluated on real repositories, not only scripted examples. If you 
 - **What is missing?** Describe what you expected CMI to preserve, detect, or explain but it did not.
 
 Use the [CMI field feedback issue template](https://github.com/lenhonbp/codex-memory-intelligence/issues/new?template=field_feedback.yml). Please remove secrets, private source code, tokens, or sensitive `.codex-memory/` content before posting.
-
-## Install
-
-Global installation:
-
-```bash
-npm install -g codex-memory-intelligence
-cmi --version
-```
-
-Project-local installation:
-
-```bash
-npm install --save-dev codex-memory-intelligence
-npx cmi --version
-```
-
-Requires **Node.js 22 or newer**.
-
-`v0.11.1` is the first release intended to ship the post-cutover **PolyForm Perimeter License 1.0.1** terms. `v0.11.0` and earlier package versions remain under the MIT license included with those exact releases.
 
 ## Quick start
 
@@ -115,16 +104,9 @@ See [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md), [Closing I
 
 ### Other coding agents
 
-CMI's core CLI, durable evidence model, and MCP interface are not tied to one model. Agent-specific instruction loading, folder trust, Skill discovery, and Skill placement remain runtime responsibilities outside CMI.
+CMI's core CLI, durable evidence model, portable Skills, and MCP interface are not tied to one model. Agent-specific instruction loading, folder trust, Skill discovery, Skill placement, and automatic selection remain runtime responsibilities outside CMI.
 
-The final Grok F0–F7 field run for `v0.11.0` used:
-
-- the managed `AGENTS.md` project-rule surface;
-- explicit Skill placement under the Grok runtime;
-- project MCP configuration pointed at the exact CMI package;
-- the runtime's observed folder-trust mechanism.
-
-That successful run does **not** establish a native Grok Skill loader, npm auto-activation, Skill installation by `cmi activate`, or a universal Grok integration path.
+Observed field validation and its limits are recorded separately from the current-product README. See [Current Release Status](docs/RELEASE_STATUS.md) and [Real-Repository Evaluation](docs/EVALUATION.md).
 
 ## How the evidence model fits together
 
@@ -264,8 +246,7 @@ CMI is deliberately conservative about what it claims:
 - an observed changed path is not proof of complete runtime impact;
 - agent clients may ignore project or MCP guidance;
 - package shipment does not prove runtime Skill discovery or automatic Skill selection;
-- Grok F0–F7 PASS does not imply universal agent compatibility;
-- final Codex S0–S7 is not recorded as PASS;
+- current field evidence does not imply universal agent compatibility;
 - no productivity-improvement, time-savings, statistical-sufficiency, causal-effectiveness, or v1-readiness claim is made from the current evidence.
 
 See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), and [Current Release Status](docs/RELEASE_STATUS.md).
@@ -288,7 +269,22 @@ Review `.codex-memory/` before publishing it.
 
 See [Security](SECURITY.md) and [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md).
 
+## Release and version policy
+
+CMI has one recommended public installation path: **the latest supported release**.
+
+- **Latest release:** [GitHub latest release](https://github.com/lenhonbp/codex-memory-intelligence/releases/latest)
+- **npm:** `npm install -g codex-memory-intelligence`
+- **Security support:** current supported release only unless explicitly documented otherwise.
+- **Historical releases:** retained for provenance/reproducibility; not recommended for new installs and not promised current security fixes.
+
+GitHub may continue to expose source archives for historical tags. Their availability does not make them the recommended or supported version.
+
+See [Release & Version Policy](docs/RELEASE_POLICY.md), [Security](SECURITY.md), and [Changelog](CHANGELOG.md).
+
 ## Documentation
+
+### Product and integration
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md)
@@ -299,16 +295,27 @@ See [Security](SECURITY.md) and [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md)
 - [MCP Integration](docs/MCP.md)
 - [Skills](docs/SKILLS.md)
 - [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md)
-- [Real-Repository Evaluation](docs/EVALUATION.md)
+- [Ignore Semantics](docs/IGNORE.md)
+
+### Release, evaluation, and project history
+
+- [Release & Version Policy](docs/RELEASE_POLICY.md)
 - [Current Release Status](docs/RELEASE_STATUS.md)
-- [Grok v0.11.0 Final Field Acceptance](docs/field-evidence/GROK_V0.11.0_ACCEPTANCE.md)
-- [Licensing](LICENSING.md)
-- [Project Identity & Brand Policy](BRAND_POLICY.md)
+- [Real-Repository Evaluation](docs/EVALUATION.md)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Releasing](docs/RELEASING.md)
 
-Community and project policy: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Licensing](LICENSING.md), [Brand Policy](BRAND_POLICY.md), and [Maintainers](MAINTAINERS.md).
+### Policy
+
+- [Licensing](LICENSING.md)
+- [Project Identity & Brand Policy](BRAND_POLICY.md)
+- [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Governance](GOVERNANCE.md)
+- [Support](SUPPORT.md)
+- [Maintainers](MAINTAINERS.md)
 
 ## Development
 
@@ -324,7 +331,7 @@ CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchma
 
 Repository source after the 2026-08-11 licensing cutover is available under the **PolyForm Perimeter License 1.0.1**. It permits use, modification, and distribution for permitted purposes, while restricting the provision of products that compete with the software as defined by the license.
 
-This means current post-cutover CMI source is **source-available, not OSI open source**.
+Current post-cutover CMI source is **source-available, not OSI open source**.
 
 `v0.11.0` and earlier public releases retain the MIT license that accompanied those versions. Separate commercial licensing may be available for uses outside the public license.
 
