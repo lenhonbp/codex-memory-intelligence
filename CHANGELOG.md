@@ -4,6 +4,24 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-08-11
+
+Maintenance patch for graph-drift signal quality discovered through repeated real-project Project 001 sessions.
+
+### Fixed
+
+- Kept stale graph evidence fail-closed for graph/impact claims while distinguishing the narrow case where every stale source node is fully explained by the just-completed session's attributed source mutations.
+- Downgraded that expected current-session source-only drift from a material Closing warning to a non-blocking refresh reminder; pre-existing, unexplained, missing-node, source-set, resolver/workspace, scan-policy, discovery, and generated-format drift remain material.
+- Added bounded stale/missing graph path evidence so session attribution can explain expected cache invalidation without declaring the graph current.
+- Updated managed activation guidance to require refresh before relying on stale graph/impact evidence while explicitly forbidding cosmetic scans merely to produce Closing `CLEAN`.
+- Added regression coverage for both uncommitted and committed-clean-worktree source changes, including the exact field pattern observed in Project 001.
+
+### Evidence limits
+
+- This patch does not make stale graph evidence healthy and does not auto-run `cmi scan`; graph/impact evidence remains blocked until generated intelligence is refreshed.
+- The Project 001 observation establishes a concrete signal-quality defect and regression scenario, not a universal productivity or agent-effectiveness claim.
+- Historical `prediction-gap` and other finding semantics are unchanged by this patch.
+
 ## [0.11.1] - 2026-08-11
 
 Maintenance release for the public licensing and project-identity cutover. No CMI product-behavior change is claimed by this release.
