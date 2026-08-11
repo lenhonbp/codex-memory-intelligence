@@ -1,0 +1,56 @@
+name: CMI field feedback
+description: Share real-repository experience, useful signals, noise, gaps, or unexpected behavior.
+title: "Field feedback: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying CMI on a real repository. Please share only information you are comfortable making public, and remove secrets, private source, tokens, or sensitive `.codex-memory/` content.
+  - type: input
+    id: cmi_version
+    attributes:
+      label: CMI version or commit
+      description: Example: v0.11.0, npm package version, or repository commit.
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Coding agent / runtime
+      description: Example: Codex, Grok, another agent, or CLI-only usage.
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: What were you trying to do?
+      description: Briefly describe the repository/workflow and task. Do not paste private source code.
+    validations:
+      required: true
+  - type: textarea
+    id: useful
+    attributes:
+      label: What was useful?
+      description: Which CMI signals, memory, change/session behavior, handoff, impact analysis, or guidance helped?
+  - type: textarea
+    id: noisy
+    attributes:
+      label: What felt noisy or misleading?
+      description: Repeated warnings, false positives, unclear severity, stale context, or anything that got in the way.
+  - type: textarea
+    id: missing
+    attributes:
+      label: What was missing or should work differently?
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reproducible evidence (optional)
+      description: Commands, sanitized output, screenshots, or steps that can be shared publicly.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-data check
+      options:
+        - label: I reviewed this report and removed secrets, private source, tokens, and sensitive project data.
+          required: true
