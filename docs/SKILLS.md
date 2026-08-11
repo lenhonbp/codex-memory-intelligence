@@ -1,10 +1,10 @@
-# Skills (repository contract PoC)
+# Skills (portable package artifacts)
 
 ## Status
 
 This repository currently has **no native Skill runtime or loader**.
 
-Mission 1 adds a **repository-level reusable Skill contract PoC** with the following open-format Skill artifacts:
+Mission 1 adds a **repository-level reusable Skill contract PoC** with the following open-format Skill artifacts. All **eight** planned Skills are implemented and packaged:
 
 - `skills/cmi-ambient-brief/SKILL.md`
 - `skills/cmi-continue/SKILL.md`
@@ -17,14 +17,26 @@ Mission 1 adds a **repository-level reusable Skill contract PoC** with the follo
 
 These Skills are structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes them automatically.
 
-The Skills remain **repository-level Skill artifacts**. CMI activation still does **not** automatically discover or apply Skills. Agent-specific discovery, install placement (for example under an agent’s own skills directory), and plugins remain **edge concerns** and are **not** implemented in this repository mission.
+### Distribution contract (Mission 1.8A)
 
-The Skills are intentionally **not** listed in `package.json` `files` and are **not** published to npm consumers in this phase. Packaging and distribution remain a later architecture decision (Mission 1.8).
+```text
+npm package ships Skill artifacts
+!=
+npm installation activates Skills
+!=
+CMI activation installs Skills
+!=
+CMI owns Skill discovery
+```
 
-Do not claim that installing `codex-memory-intelligence` from npm delivers Skills.
-Do not claim that npm installation activates Skills.
-Do not claim that this repository has proven Codex or Grok runtime Skill discovery.
-Do not claim runtime field validation for Wave 1 or Wave 2 Skills; repository contracts and static tests only.
+- The npm package **includes** the `skills/` tree in `package.json` `files` and therefore **ships** portable `skills/<name>/SKILL.md` artifacts to consumers.
+- **npm installation does not activate Skills** and does not install them into agent runtime directories.
+- CMI activation still does **not** automatically discover or apply Skills.
+- **CMI has no native Skill loader**, Skill registry, discovery engine, or Skill execution subsystem.
+- **`cmi activate` does not install Skills** into `~/.codex/skills`, `~/.grok/skills`, `~/.agents/skills`, or any other runtime Skill location.
+- Runtime installation/discovery remains **external** (**edge concerns**). Observed Skill paths in a particular Codex/Grok/other setup are **runtime/version-specific evidence**, not universal CMI guarantees. Runtime documentation remains authoritative for that surface.
+- Mission **1.8B** will perform final field acceptance. This document does **not** claim that all eight Skills have passed final field validation yet.
+- Do not claim that this repository has proven Codex or Grok runtime Skill discovery by packaging alone.
 
 ## Architectural rule
 
@@ -46,7 +58,7 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
 | **CMI core executable behavior** | Authoritative implementation in `src/**` (CLI, MCP, Ambient, session, change, closing, memory). |
 | **Skill contract** | Markdown (or similar) workflow artifact that documents triggers, inputs, exact existing invocations, read/write boundaries, and failure rules. Open-format `SKILL.md` frontmatter supports progressive discovery metadata without implying a CMI loader. |
 | **Optional future vendor adapters** | Edge-only mappings to a specific agent’s Skill discovery/install paths; must call the same CMI surfaces. Not present beyond the portable open-format contract. |
-| **Optional future distribution** | How Skills ship (npm, separate pack, etc.). Explicitly out of scope until Mission 1.8. |
+| **Package distribution** | npm ships portable `skills/` artifacts (Mission 1.8A). Runtime install/discovery remains external (Mission 1.8B field acceptance). |
 
 ## Implemented Skills
 
@@ -59,7 +71,7 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
   `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" ambient "<user request>" --json`
 - **Classification:** strictly **read-only**.
 - **Not automatic:** not wired into activation; externally supplied or selected workflow artifact for external agent tooling (CMI has no Skill loader).
-- **Not published:** `skills/` remains excluded from the package publication set.
+- **Packaged:** included under npm `files` → `skills/`; npm install does not activate.
 
 See `skills/cmi-ambient-brief/SKILL.md` for the full contract.
 
@@ -79,7 +91,7 @@ See `skills/cmi-ambient-brief/SKILL.md` for the full contract.
 - **Invariant:** session completion remains independent from Change completion; handoff `activeChanges` is historical. Use `get_change_record` for each relevant handoff Change id to establish current lifecycle. `list_change_records` is only a bounded inventory — absence from that list is not lifecycle proof.
 - **Recommendation boundary:** handoff `nextAction`/`nextActions` priorities (including P0/P1) are historical recommendation snapshots; current open findings expose severity, not recomputed P0/P1 rankings.
 - **Not automatic:** not wired into activation; externally supplied or selected workflow artifact for external agent tooling (CMI has no Skill loader).
-- **Not published:** `skills/` remains excluded from the package publication set.
+- **Packaged:** included under npm `files` → `skills/`; npm install does not activate.
 - **Not claimed:** Codex/Grok runtime discovery is not validated by this repository artifact alone.
 
 See `skills/cmi-continue/SKILL.md` for the full contract.
@@ -93,7 +105,7 @@ See `skills/cmi-continue/SKILL.md` for the full contract.
   `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" status --json`,
   optional `doctor --json`, optional `stale --json`.
 - **Classification:** strictly **read-only**. Does **not** auto-run `init`, `scan`, or `refresh-memory`. Non-zero diagnostic exit is not absence proof. Blocked ≠ empty. Recommendations may be surfaced but not executed.
-- **Not automatic / not published:** same repository-only PoC boundaries as other Skills.
+- **Not automatic / packaged:** same boundaries as other Skills — package ships the artifact; install does not activate.
 - **Field validation:** not claimed in Mission 1.6.
 
 See `skills/cmi-evidence-health/SKILL.md` for the full contract.
@@ -107,7 +119,7 @@ See `skills/cmi-evidence-health/SKILL.md` for the full contract.
   `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session closing latest --json`,
   `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session closing <session-id-or-prefix> --json`.
 - **Classification:** strictly **read-only**. Never `session close` / `finalize_work_session`. CLEAN only from authoritative Closing result for a real closed session; never fabricated from health/Git/findings alone. No alert re-ranking. Reviewed relevance ≠ proven violation.
-- **Not automatic / not published:** same repository-only PoC boundaries as other Skills.
+- **Not automatic / packaged:** same boundaries as other Skills — package ships the artifact; install does not activate.
 - **Field validation:** not claimed in Mission 1.6.
 
 See `skills/cmi-closing/SKILL.md` for the full contract.
@@ -121,7 +133,7 @@ See `skills/cmi-closing/SKILL.md` for the full contract.
   `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" stale --json`,
   optional `status --json`.
 - **Classification:** strictly **read-only**. Preserves classification fidelity. Source fingerprint refresh ≠ semantic review. Explicit mutation requests must not silently enter write mode; no `refresh-memory` / `memory-state` / `remember` under this Skill.
-- **Not automatic / not published:** same repository-only PoC boundaries as other Skills.
+- **Not automatic / packaged:** same boundaries as other Skills — package ships the artifact; install does not activate.
 - **Field validation:** not claimed in Mission 1.6.
 
 See `skills/cmi-memory-review/SKILL.md` for the full contract.
@@ -168,13 +180,13 @@ See `skills/cmi-activate/SKILL.md` for the full contract.
 
 ## Planned Skill inventory implemented
 
-All **eight** original planned Skill artifacts are now implemented as repository contracts:
+All **eight** original planned Skill artifacts are implemented and **packaged** under npm `files` → `skills/`:
 
 `cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`.
 
-They remain repository-only open-format adapters: **no** native Skill loader, **no** automatic Skill discovery, **not** shipped in npm yet, and Wave 2 Skills are **not** runtime-field-validated yet. Distribution/install placement is Mission 1.8 scope.
+They remain open-format thin adapters: **no** native Skill loader, **no** automatic Skill discovery, **no** auto-activation on npm install, and **no** Skill installation by `cmi activate`. Final runtime field acceptance is Mission **1.8B**.
 
-## Non-goals (Mission 1 / Mission 1.6 / Mission 1.7)
+## Non-goals
 
 Explicitly excluded:
 
@@ -184,13 +196,13 @@ Explicitly excluded:
 - Automatic durable-memory mutation beyond intentionally invoked write-aware Skill adapters
 - Replacing MCP or CLI
 - Changing Issue #41 field-validation behavior
-- npm distribution of the `skills/` tree in this phase (Mission 1.8)
-- New CMI commands, MCP tools, arguments, or schemas
-- Core changes to activation, session, Change, or Closing Intelligence behavior
-- Agent-specific skill install placement (`.agents/skills`, `.grok/skills`, plugins, symlinks)
-- Claiming Codex or Grok runtime discovery has been validated by repository format changes alone
-- Runtime field validation of Wave 1 or Wave 2 Skills
+- New CMI commands, MCP tools, arguments, or schemas for Skill loading
+- Core changes to activation, session, Change, or Closing Intelligence behavior to “install Skills”
+- Agent-specific skill install placement (`.agents/skills`, `.grok/skills`, plugins, symlinks) performed by CMI
+- Claiming Codex or Grok runtime discovery has been validated by packaging alone
+- Claiming all eight Skills have completed final field validation (Mission 1.8B)
 - Treating `cmi activate` as Skill installation
+- Version bump / npm publish as part of packaging alone
 
 ## Future candidates (not implemented)
 

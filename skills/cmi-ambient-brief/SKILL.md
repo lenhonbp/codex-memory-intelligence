@@ -1,6 +1,6 @@
 ---
 name: cmi-ambient-brief
-description: Provide a bounded, evidence-labeled CMI ambient task brief by invoking existing Ambient Intelligence (MCP get_ambient_task_brief or the documented project-local ambient CLI). Use when beginning substantive repository work or when the user asks for an ambient brief, task context, or what CMI knows about a request. Strictly read-only thin adapter; external tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Provide a bounded, evidence-labeled CMI ambient task brief by invoking existing Ambient Intelligence (MCP get_ambient_task_brief or the documented project-local ambient CLI). Use when beginning substantive repository work or when the user asks for an ambient brief, task context, or what CMI knows about a request. Strictly read-only thin adapter; external tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-ambient-brief
@@ -118,7 +118,7 @@ Never fabricate CLEAN, blockers, verification results, or durable memory writes 
 - Auto-start sessions, Changes, or Closing Intelligence.
 - Use bare `cmi` as the only documented fallback.
 - Prescribe registry `npx` as fallback.
-- Claim that installing the npm package delivers this Skill (repository-only PoC; the published package files list does not include the `skills/` tree).
+- Claim that npm installation activates this Skill or installs it into an agent runtime (the package may ship the artifact under `skills/`, but activation/discovery remain external).
 - Alter activation, managed `AGENTS.md`, or `.codex/config.toml` generation.
 
 ## 11. Expected result handling

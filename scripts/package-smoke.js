@@ -3,11 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error('Run this script through npm.');
-const runNpm = (args, cwd = process.cwd()) => execFileSync(process.execPath, [npmCli, ...args], { cwd, encoding: 'utf8', stdio: ['ignore','pipe','inherit'] }).trim();
+const runNpm = (args, cwd = process.cwd(), options = {}) => execFileSync(process.execPath, [npmCli, ...args], {
+  cwd,
+  encoding: 'utf8',
+  stdio: ['ignore', 'pipe', 'inherit'],
+  env: options.env ? { ...process.env, ...options.env } : process.env,
+}).trim();
 const removePath = (target) => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -27,15 +33,54 @@ const removePath = (target) => {
 const packed = JSON.parse(runNpm(['pack','--json','--ignore-scripts']));
 const archive = path.resolve(packed[0].filename);
 const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-'));
-const requiredFiles = ['package.json', 'README.md', 'LICENSE', 'SECURITY.md', 'CHANGELOG.md', 'src/cli.js', 'src/mcp.js', 'src/portable-evidence.js', 'src/provenance.js', 'schemas/config.schema.json'];
+const requiredSkillNames = [
+  'cmi-ambient-brief',
+  'cmi-continue',
+  'cmi-evidence-health',
+  'cmi-closing',
+  'cmi-memory-review',
+  'cmi-work-session',
+  'cmi-change-loop',
+  'cmi-activate',
+];
+const requiredSkillFiles = requiredSkillNames.map((name) => `skills/${name}/SKILL.md`);
+const requiredFiles = [
+  'package.json',
+  'README.md',
+  'LICENSE',
+  'SECURITY.md',
+  'CHANGELOG.md',
+  'src/cli.js',
+  'src/mcp.js',
+  'src/portable-evidence.js',
+  'src/provenance.js',
+  'schemas/config.schema.json',
+  ...requiredSkillFiles,
+];
 const forbiddenPattern = /(^|\/)(?:\.codex-memory|\.empirical-studies|\.git|node_modules)(?:\/|$)|(?:\.tgz$|(?:^|\/)\.env(?:\.|$))/i;
 const packagedFiles = new Set((packed[0].files || []).map((entry) => entry.path));
 if (path.basename(archive) !== `${packageJson.name}-${packageJson.version}.tgz`) throw new Error(`Unexpected package filename: ${path.basename(archive)}`);
+if (packageJson.version !== '0.10.0') throw new Error(`Mission 1.8A expects package version 0.10.0, got ${packageJson.version}`);
+if (!Array.isArray(packageJson.files) || !packageJson.files.includes('skills')) throw new Error('package.json files must include skills for distribution.');
 for (const file of requiredFiles) if (!packagedFiles.has(file)) throw new Error(`Packed candidate is missing required file: ${file}`);
 const forbiddenFiles = [...packagedFiles].filter((file) => path.isAbsolute(file) || file.split('/').some((part) => part === '..') || forbiddenPattern.test(file));
 if (forbiddenFiles.length) throw new Error(`Packed candidate contains forbidden files: ${forbiddenFiles.join(', ')}`);
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const skillSourceHashes = new Map();
+for (const name of requiredSkillNames) {
+  const rel = `skills/${name}/SKILL.md`;
+  const sourcePath = path.join(repositoryRoot, rel);
+  if (!fs.existsSync(sourcePath)) throw new Error(`Repository is missing Skill artifact: ${rel}`);
+  skillSourceHashes.set(rel, fs.readFileSync(sourcePath));
+}
 try {
-  runNpm(['install','--global','--prefix',prefix,archive,'--ignore-scripts']);
+  const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-home-'));
+  try {
+  // Install the packed tarball with HOME isolated so any package lifecycle that
+  // touches agent runtime Skill directories is observable and non-destructive.
+  runNpm(['install', '--global', '--prefix', prefix, archive, '--ignore-scripts'], process.cwd(), {
+    env: { HOME: isolatedHome, USERPROFILE: isolatedHome },
+  });
   const executable = process.platform === 'win32' ? path.join(prefix, 'cmi.cmd') : path.join(prefix, 'bin', 'cmi');
   const mcpExecutable = process.platform === 'win32' ? path.join(prefix, 'cmi-mcp.cmd') : path.join(prefix, 'bin', 'cmi-mcp');
   const runExecutable = (args, options = {}) => execFileSync(executable, args, { encoding: 'utf8', shell: process.platform === 'win32', ...options });
@@ -52,12 +97,31 @@ try {
   if (!provenance.observed.packageRoot || provenance.observed.sourceCheckout || provenance.observed.installKind !== 'global-package') throw new Error('Installed package provenance was not classified as an external package installation.');
   if (provenance.observed.scriptPath === path.join(process.cwd(), 'src', 'cli-entry.js')) throw new Error('Installed package provenance resolved the source checkout instead of the packed install.');
   runExecutable(['--help'], { stdio: 'ignore' });
+
+  // Skill packaging identity + no auto-install into agent runtime skill directories under isolated HOME.
+  const packageRoot = provenance.observed.packageRoot;
+  for (const [rel, sourceBytes] of skillSourceHashes) {
+    const installedSkill = path.join(packageRoot, rel);
+    if (!fs.existsSync(installedSkill)) throw new Error(`Installed package missing Skill artifact: ${rel}`);
+    assert.deepEqual(fs.readFileSync(installedSkill), sourceBytes, `Installed Skill content mismatch for ${rel}`);
+  }
+  for (const runtimeRoot of [
+    path.join(isolatedHome, '.codex', 'skills'),
+    path.join(isolatedHome, '.grok', 'skills'),
+    path.join(isolatedHome, '.agents', 'skills'),
+  ]) {
+    if (!fs.existsSync(runtimeRoot)) continue;
+    const entries = fs.readdirSync(runtimeRoot).filter((name) => name.startsWith('cmi-'));
+    if (entries.length) throw new Error(`npm package install auto-created runtime Skill paths under ${runtimeRoot}: ${entries.join(', ')}`);
+  }
+
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-project-'));
   const bundleParent = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-bundle-parent-'));
   const bundle = path.join(bundleParent, 'bundle');
   const relocated = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-relocated-'));
   const mismatch = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-mismatch-'));
   const historical = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-historical-'));
+  const activationProject = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-activate-'));
   try {
     fs.writeFileSync(path.join(project, 'package.json'), '{"name":"packed-smoke-project","private":true}\n');
     const uninitializedStatus = runExpectedFailure(['status'], project);
@@ -174,6 +238,20 @@ try {
     if (safeTools.includes('freeze_portable_evidence') || safeTools.includes('rebind_portable_evidence') || safeTools.includes('remember_project_knowledge')) throw new Error('Installed MCP safe mode exposed mutation tools.');
     const writeTools = runMcpList(true).map((tool) => tool.name);
     for (const tool of ['freeze_portable_evidence', 'rebind_portable_evidence', 'remember_project_knowledge']) if (!writeTools.includes(tool)) throw new Error(`Installed MCP write mode omitted ${tool}.`);
+
+    // Activation must not install Skills into runtime skill directories (isolated HOME).
+    fs.writeFileSync(path.join(activationProject, 'package.json'), '{"name":"packed-activation-project","private":true}\n');
+    const activationEnv = { ...process.env, HOME: isolatedHome, USERPROFILE: isolatedHome };
+    runExecutable(['activate', '--agent', 'codex', '--json'], { cwd: activationProject, env: activationEnv, stdio: 'ignore' });
+    for (const runtimeRoot of [
+      path.join(isolatedHome, '.codex', 'skills'),
+      path.join(isolatedHome, '.grok', 'skills'),
+      path.join(isolatedHome, '.agents', 'skills'),
+    ]) {
+      if (!fs.existsSync(runtimeRoot)) continue;
+      const entries = fs.readdirSync(runtimeRoot).filter((name) => name.startsWith('cmi-'));
+      if (entries.length) throw new Error(`cmi activate installed Skills under ${runtimeRoot}: ${entries.join(', ')}`);
+    }
   } finally {
     removePath(project);
     removePath(relocated);
@@ -181,8 +259,12 @@ try {
     removePath(historical);
     removePath(bundle);
     removePath(bundleParent);
+    removePath(activationProject);
   }
-  console.log(`Package smoke test passed for ${path.basename(archive)}: clean install, CLI, provenance, portable evidence, historical compatibility, future-version fail-closed, and MCP safe/write gates.`);
+  console.log(`Package smoke test passed for ${path.basename(archive)}: clean install, CLI, provenance, portable evidence, historical compatibility, future-version fail-closed, MCP safe/write gates, and Skill packaging without auto-activation.`);
+  } finally {
+    removePath(isolatedHome);
+  }
 } finally {
   removePath(prefix);
   removePath(archive);

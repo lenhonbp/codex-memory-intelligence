@@ -77,7 +77,7 @@ test('Skill SKILL.md starts with Agent Skills YAML frontmatter (name + descripti
   assert.match(description, /read-only/i);
   assert.match(description, /does not auto-apply|not auto-apply|external tooling may select/i);
   assert.match(description, /does not start sessions|does not start sessions or Changes/i);
-  assert.match(description, /npm install does not deliver|does not deliver or activate/i);
+  assert.match(description, /npm may deliver this Skill artifact|does not activate or install it into an agent runtime|npm installation does not activate/i);
   assert.doesNotMatch(description, /CMI automatically|auto-applies Skills|native Skill loader/i);
   assert.doesNotMatch(description, /write-enabled|enables durable writes|mutates memory/i);
   assert.doesNotMatch(description, /Codex runtime validated|Grok runtime validated|runtime discovery (is |has been )?validated/i);
@@ -287,15 +287,13 @@ test('Skill documents exact project-local CLI fallbacks and rejects PATH-only / 
   assert.doesNotMatch(skill, /C:\\\\/);
 });
 
-test('package.json published files list does not ship the skills tree', async () => {
-  const manifestPath = path.join(repositoryRoot, 'package.json');
-  const manifest = JSON.parse(await read(manifestPath));
+test('package.json files ships skills tree without auto-activation claims', async () => {
+  const manifest = JSON.parse(await read(path.join(repositoryRoot, 'package.json')));
   assert.ok(Array.isArray(manifest.files), 'package.json.files must remain an explicit array');
-  for (const entry of manifest.files) {
-    const normalized = String(entry).replace(/\\/g, '/').replace(/\/+$/, '');
-    assert.notEqual(normalized, 'skills');
-    assert.ok(!normalized.startsWith('skills/'), `published files must not include skills path: ${entry}`);
-  }
+  assert.ok(manifest.files.includes('skills'), 'package.json files must include skills for distribution');
+  const skill = await read(skillPath);
+  assert.match(skill, /does not activate|does not activate or install|npm installation does not activate/i);
+  assert.doesNotMatch(skill, /auto-installs Skills into agent runtime|automatically installs Skills into/i);
 });
 
 test('docs/SKILLS.md lists cmi-continue as implemented while preserving boundaries and exact CLI commands', async () => {
@@ -312,7 +310,7 @@ test('docs/SKILLS.md lists cmi-continue as implemented while preserving boundari
   assert.match(doc, /activation still does \*\*not\*\* automatically discover|does \*\*not\*\* automatically discover or apply Skills/i);
   assert.match(doc, /edge concerns/i);
   assert.match(doc, /Do not claim that this repository has proven Codex or Grok runtime/i);
-  assert.match(doc, /not published to npm|not listed in `package\.json`|Do not claim that installing/i);
+  assert.match(doc, /ships Skill artifacts|includes the `skills\/` tree|package\.json` `files`|npm installation does not activate Skills/i);
   assert.match(doc, /Future candidates \(not implemented\)/i);
   assert.doesNotMatch(doc, /Future candidates[\s\S]*`cmi-continue`/);
   assert.match(doc, /`cmi-evidence-health`/);

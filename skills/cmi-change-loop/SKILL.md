@@ -1,6 +1,6 @@
 ---
 name: cmi-change-loop
-description: Orchestrate the evidence-driven CMI Change Intelligence lifecycle (BEFORE start, DURING observe, AFTER complete/progress) for real implementation, refactor, or fix work. Use when the user asks to track a change with CMI, record changed files, finish or pause a Change with verification, or keep partial work active (including Vietnamese change-tracking requests). Write-aware thin adapter; partial keeps the Change active; does not auto-remember learning candidates. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Orchestrate the evidence-driven CMI Change Intelligence lifecycle (BEFORE start, DURING observe, AFTER complete/progress) for real implementation, refactor, or fix work. Use when the user asks to track a change with CMI, record changed files, finish or pause a Change with verification, or keep partial work active (including Vietnamese change-tracking requests). Write-aware thin adapter; partial keeps the Change active; does not auto-remember learning candidates. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-change-loop

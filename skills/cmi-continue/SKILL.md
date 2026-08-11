@@ -1,6 +1,6 @@
 ---
 name: cmi-continue
-description: Resume known unfinished project work from durable CMI session handoff evidence, current open findings, current active Changes, and a fresh repository baseline re-check. Use when the user asks to continue, resume, pick up previous work, làm tiếp, or identify what unfinished CMI-tracked work remains. Strictly read-only thin adapter; does not start sessions or Changes. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Resume known unfinished project work from durable CMI session handoff evidence, current open findings, current active Changes, and a fresh repository baseline re-check. Use when the user asks to continue, resume, pick up previous work, làm tiếp, or identify what unfinished CMI-tracked work remains. Strictly read-only thin adapter; does not start sessions or Changes. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-continue
@@ -394,7 +394,7 @@ Never fabricate CLEAN, blockers, verification results, completed Changes from li
 - Auto-start sessions, Changes, Closing Intelligence, or finding/memory mutations.
 - Use bare `cmi` as the only documented fallback.
 - Prescribe registry `npx` as fallback.
-- Claim that installing the npm package delivers this Skill (repository-only; `skills/` is not in the published package files list).
+- Claim that npm installation activates this Skill or installs it into an agent runtime (the package may ship the artifact under `skills/`, but activation/discovery remain external).
 - Claim Codex or Grok runtime discovery has been validated by this artifact alone.
 - Alter activation, managed `AGENTS.md`, or `.codex/config.toml` generation.
 

@@ -61,7 +61,7 @@ test('Skill frontmatter name and write-aware session description', async () => {
   assert.match(description, /Use when|track work|finalize/i);
   assert.match(description, /Write-aware|write-aware/i);
   assert.match(description, /does not terminalize Changes|does not terminalize/i);
-  assert.match(description, /npm install does not deliver|does not deliver or activate/i);
+  assert.match(description, /npm may deliver this Skill artifact|does not activate or install it into an agent runtime|npm installation does not activate/i);
   assert.doesNotMatch(description, /native Skill loader|auto-applies Skills/i);
 });
 
@@ -134,18 +134,18 @@ test('Skill forbids auto Change/finding/memory mutations and project commands', 
 
 test('Skill does not claim npm distribution or runtime discovery', async () => {
   const skill = await read(skillPath);
-  assert.match(skill, /npm install delivers Skills|does not deliver or activate/i);
+  assert.match(skill, /npm may deliver|does not activate|installs them into agent runtimes|npm installation activates/i);
   assert.match(skill, /runtime discovery/i);
   const doc = await read(skillsDocPath);
   assert.match(doc, /cmi-work-session/);
   assert.match(doc, /no native Skill runtime or loader/i);
 });
 
-test('package.json files does not ship skills', async () => {
+test('package.json files ships skills tree without auto-activation claims', async () => {
   const manifest = JSON.parse(await read(path.join(repositoryRoot, 'package.json')));
-  for (const entry of manifest.files) {
-    const n = String(entry).replace(/\\/g, '/').replace(/\/+$/, '');
-    assert.notEqual(n, 'skills');
-    assert.ok(!n.startsWith('skills/'));
-  }
+  assert.ok(Array.isArray(manifest.files), 'package.json.files must remain an explicit array');
+  assert.ok(manifest.files.includes('skills'), 'package.json files must include skills for distribution');
+  const skill = await read(skillPath);
+  assert.match(skill, /does not activate|does not activate or install|npm installation does not activate/i);
+  assert.doesNotMatch(skill, /auto-installs Skills into agent runtime|automatically installs Skills into/i);
 });

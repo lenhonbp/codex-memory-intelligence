@@ -1,6 +1,6 @@
 ---
 name: cmi-work-session
-description: Orchestrate the durable CMI work-session lifecycle (start, observe meaningful progress, finalize) and surface authoritative Closing Intelligence/handoff. Use when the user asks to track work as a CMI session, record blockers/decisions/progress, or finalize/close the current session (including Vietnamese session-tracking requests). Write-aware thin adapter over existing session surfaces; does not terminalize Changes or install Skills. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Orchestrate the durable CMI work-session lifecycle (start, observe meaningful progress, finalize) and surface authoritative Closing Intelligence/handoff. Use when the user asks to track work as a CMI session, record blockers/decisions/progress, or finalize/close the current session (including Vietnamese session-tracking requests). Write-aware thin adapter over existing session surfaces; does not terminalize Changes or install Skills. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-work-session

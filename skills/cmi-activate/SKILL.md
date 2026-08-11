@@ -1,6 +1,6 @@
 ---
 name: cmi-activate
-description: Explicitly invoke existing CMI activation (initialize/scan project intelligence and, for Codex, manage bounded AGENTS.md and .codex/config.toml integration). Use only when the user explicitly asks to activate CMI, set up CMI integration, or configure CMI for Codex/generic (including Vietnamese activation requests). CLI-only thin adapter; no MCP activation tool; activation is not Skill installation. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Explicitly invoke existing CMI activation (initialize/scan project intelligence and, for Codex, manage bounded AGENTS.md and .codex/config.toml integration). Use only when the user explicitly asks to activate CMI, set up CMI integration, or configure CMI for Codex/generic (including Vietnamese activation requests). CLI-only thin adapter; no MCP activation tool; activation is not Skill installation. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-activate
@@ -188,7 +188,7 @@ CMI durable-state / integration mutation for activation
 - Hand-edit managed integration files to force success
 - Use registry `npx`
 - Expand into session/Change/memory mutations beyond activation
-- Claim npm package install delivers Skills
+- Claim that npm installation activates Skills or installs them into agent runtimes
 
 ## 15. Relationship to other Skills
 
