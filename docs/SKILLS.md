@@ -11,17 +11,20 @@ Mission 1 adds a **repository-level reusable Skill contract PoC** with the follo
 - `skills/cmi-evidence-health/SKILL.md`
 - `skills/cmi-closing/SKILL.md`
 - `skills/cmi-memory-review/SKILL.md`
+- `skills/cmi-work-session/SKILL.md`
+- `skills/cmi-change-loop/SKILL.md`
+- `skills/cmi-activate/SKILL.md`
 
 These Skills are structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes them automatically.
 
 The Skills remain **repository-level Skill artifacts**. CMI activation still does **not** automatically discover or apply Skills. Agent-specific discovery, install placement (for example under an agent’s own skills directory), and plugins remain **edge concerns** and are **not** implemented in this repository mission.
 
-The Skills are intentionally **not** listed in `package.json` `files` and are **not** published to npm consumers in this phase. Packaging and distribution remain a later architecture decision.
+The Skills are intentionally **not** listed in `package.json` `files` and are **not** published to npm consumers in this phase. Packaging and distribution remain a later architecture decision (Mission 1.8).
 
 Do not claim that installing `codex-memory-intelligence` from npm delivers Skills.
 Do not claim that npm installation activates Skills.
 Do not claim that this repository has proven Codex or Grok runtime Skill discovery.
-Do not claim Mission 1.6 Wave 1 field validation for the three new Skills below; repository contracts and static tests only.
+Do not claim runtime field validation for Wave 1 or Wave 2 Skills; repository contracts and static tests only.
 
 ## Architectural rule
 
@@ -43,7 +46,7 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
 | **CMI core executable behavior** | Authoritative implementation in `src/**` (CLI, MCP, Ambient, session, change, closing, memory). |
 | **Skill contract** | Markdown (or similar) workflow artifact that documents triggers, inputs, exact existing invocations, read/write boundaries, and failure rules. Open-format `SKILL.md` frontmatter supports progressive discovery metadata without implying a CMI loader. |
 | **Optional future vendor adapters** | Edge-only mappings to a specific agent’s Skill discovery/install paths; must call the same CMI surfaces. Not present beyond the portable open-format contract. |
-| **Optional future distribution** | How Skills ship (npm, separate pack, etc.). Explicitly out of scope for Mission 1 / Mission 1.6 Wave 1. |
+| **Optional future distribution** | How Skills ship (npm, separate pack, etc.). Explicitly out of scope until Mission 1.8. |
 
 ## Implemented Skills
 
@@ -123,31 +126,74 @@ See `skills/cmi-closing/SKILL.md` for the full contract.
 
 See `skills/cmi-memory-review/SKILL.md` for the full contract.
 
-## Non-goals (Mission 1 / Mission 1.6 Wave 1)
+### `cmi-work-session` (Mission 1.7 Wave 2)
+
+- **Open format:** Agent Skills-compatible `SKILL.md` with required frontmatter `name: cmi-work-session`.
+- **Purpose:** orchestrate active durable Session lifecycle — start, observe meaningful progress, finalize — then surface authoritative Closing Intelligence/handoff.
+- **MCP (write-aware):** `start_work_session` (required `goal`), `observe_work_session`, `finalize_work_session` with existing observation/outcome fields only.
+- **MCP write boundary:** if MCP is available but write tools are absent → `CMI_WRITE_MODE_REQUIRED` (no silent CLI bypass).
+- **CLI fallbacks (MCP unavailable only):** exact project-local
+  `session start`, `session observe`, `session close`, then `session closing` for Closing presentation.
+- **Invariant:** session completion ≠ Change completion; must not call `complete_change_record` solely because a session ends.
+- **Classification:** write-aware thin adapter for CMI durable session state only — not project source edits, tests/builds/deploys, or Skill installation.
+- **Field validation:** not claimed in Mission 1.7.
+
+See `skills/cmi-work-session/SKILL.md` for the full contract.
+
+### `cmi-change-loop` (Mission 1.7 Wave 2)
+
+- **Open format:** Agent Skills-compatible `SKILL.md` with required frontmatter `name: cmi-change-loop`.
+- **Purpose:** BEFORE/DURING/AFTER Change Intelligence for real implementation/refactor/fix work (not read-only investigation alone).
+- **MCP (write-aware):** optional read `get_change_insights`; mutations `start_change_record`, `observe_change_record`, `complete_change_record` with existing schemas only.
+- **MCP write boundary:** if MCP is available but write tools are absent → `CMI_WRITE_MODE_REQUIRED` (no silent CLI bypass).
+- **CLI fallbacks (MCP unavailable only):** exact project-local `change start|observe|complete`.
+- **Invariant:** `outcome = partial` keeps the Change **active**; do not terminalize partial/paused/review work; do not auto-`remember` learning candidates.
+- **Verification provenance:** preserve `reported` vs `observed-command`; CMI does not execute verification commands.
+- **Field validation:** not claimed in Mission 1.7.
+
+See `skills/cmi-change-loop/SKILL.md` for the full contract.
+
+### `cmi-activate` (Mission 1.7 Wave 2)
+
+- **Open format:** Agent Skills-compatible `SKILL.md` with required frontmatter `name: cmi-activate`.
+- **Purpose:** explicit invocation of existing CMI activation only when the user asks to activate/set up CMI integration.
+- **Surface:** **CLI-only** (no MCP activation tool):
+  `node "./node_modules/codex-memory-intelligence/src/cli-entry.js" activate --agent codex|generic --json`
+- **Mutation disclosure:** may initialize `.codex-memory`, scan, and for Codex manage bounded blocks in `AGENTS.md` / `.codex/config.toml`. Fail closed on conflicts (`ACTIVATION_BLOCKED`).
+- **Critical:** activation is **not** Skill installation, discovery, or loading; does not write `~/.codex/skills`, `~/.grok/skills`, or `~/.agents/skills`.
+- **Limitation:** first Codex activation requires a new Codex run/session for managed instructions to take effect.
+- **Field validation:** not claimed in Mission 1.7.
+
+See `skills/cmi-activate/SKILL.md` for the full contract.
+
+## Planned Skill inventory implemented
+
+All **eight** original planned Skill artifacts are now implemented as repository contracts:
+
+`cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`.
+
+They remain repository-only open-format adapters: **no** native Skill loader, **no** automatic Skill discovery, **not** shipped in npm yet, and Wave 2 Skills are **not** runtime-field-validated yet. Distribution/install placement is Mission 1.8 scope.
+
+## Non-goals (Mission 1 / Mission 1.6 / Mission 1.7)
 
 Explicitly excluded:
 
 - New Skill runtime or loader inside CMI
 - Automatic Skill discovery or automatic execution on every task
 - Vendor-specific logic inside CMI core
-- Automatic durable-memory mutation
+- Automatic durable-memory mutation beyond intentionally invoked write-aware Skill adapters
 - Replacing MCP or CLI
 - Changing Issue #41 field-validation behavior
-- npm distribution of the `skills/` tree in this phase
+- npm distribution of the `skills/` tree in this phase (Mission 1.8)
 - New CMI commands, MCP tools, arguments, or schemas
-- Activation, managed `AGENTS.md`, or `.codex/config.toml` generation changes
-- Session, Change, or Closing Intelligence behavior changes
+- Core changes to activation, session, Change, or Closing Intelligence behavior
 - Agent-specific skill install placement (`.agents/skills`, `.grok/skills`, plugins, symlinks)
 - Claiming Codex or Grok runtime discovery has been validated by repository format changes alone
-- Mission 1.6 field validation of Wave 1 Skills
-- Wave 2 Skills (`cmi-activate`, `cmi-work-session`, `cmi-change-loop`)
+- Runtime field validation of Wave 1 or Wave 2 Skills
+- Treating `cmi activate` as Skill installation
 
 ## Future candidates (not implemented)
 
-Names only; no contracts or code in this mission:
+None remaining from the original planned Skill inventory.
 
-- `cmi-activate`
-- `cmi-work-session`
-- `cmi-change-loop`
-
-Any future Skill must remain a thin adapter over existing executable surfaces and preserve evidence boundaries (observed ≠ inference ≠ reviewed durable knowledge).
+Any **additional** future Skill beyond the original eight must remain a thin adapter over existing executable surfaces and preserve evidence boundaries (observed ≠ inference ≠ reviewed durable knowledge).
