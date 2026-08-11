@@ -26,9 +26,11 @@ Everything stays in a human-reviewable `.codex-memory/` directory. There is no c
 
 ## Current status
 
-The current public release is `v0.10.0` / `codex-memory-intelligence@0.10.0`. The repository `main` branch may contain later unreleased documentation or development work; package/tag publication remains a separately authorized release operation.
+The current **public** npm release remains `v0.10.0` until `v0.11.0` is separately published. This repository prepares **feature-complete `v0.11.0`**: activation, Ambient and Closing Intelligence, Session/Change continuation improvements, and **all eight planned Skill artifacts** shipped in the npm package under `skills/`.
 
-The next development line focuses on ambient agent integration: activate CMI once, then let users talk to supported coding agents normally while the agent retrieves CMI context and uses work intelligence without requiring CMI-specific user prompts. This remains subject to the same evidence/trust boundaries: inference is advisory and is never automatically promoted into reviewed durable project truth.
+**Skill distribution:** npm package ships Skills; npm installation does **not** activate/install them into agent runtimes; `cmi activate` does **not** install Skills; CMI has **no** native Skill loader. See [docs/SKILLS.md](docs/SKILLS.md) and [docs/RELEASE_STATUS.md](docs/RELEASE_STATUS.md).
+
+Evidence limits still apply: inference is advisory and is never automatically promoted into reviewed durable project truth. Final Codex S0–S7 acceptance on the last pre-release subject was **not** completed (external runtime capacity / unavailable API-auth fallback)—see release evidence limits in the changelog.
 
 See [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), [Real-Repository Evaluation](docs/EVALUATION.md), [Change Intelligence](docs/CHANGE_INTELLIGENCE.md), [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md), [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md), [Roadmap](ROADMAP.md), and [Changelog](CHANGELOG.md) for storage contracts, evidence limits, and release status.
 
