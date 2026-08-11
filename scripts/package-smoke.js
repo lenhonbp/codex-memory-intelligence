@@ -8,7 +8,12 @@ import { fileURLToPath } from 'node:url';
 const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error('Run this script through npm.');
-const runNpm = (args, cwd = process.cwd()) => execFileSync(process.execPath, [npmCli, ...args], { cwd, encoding: 'utf8', stdio: ['ignore','pipe','inherit'] }).trim();
+const runNpm = (args, cwd = process.cwd(), options = {}) => execFileSync(process.execPath, [npmCli, ...args], {
+  cwd,
+  encoding: 'utf8',
+  stdio: ['ignore', 'pipe', 'inherit'],
+  env: options.env ? { ...process.env, ...options.env } : process.env,
+}).trim();
 const removePath = (target) => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -71,7 +76,11 @@ for (const name of requiredSkillNames) {
 try {
   const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cmi-package-home-'));
   try {
-  runNpm(['install','--global','--prefix',prefix,archive,'--ignore-scripts']);
+  // Install the packed tarball with HOME isolated so any package lifecycle that
+  // touches agent runtime Skill directories is observable and non-destructive.
+  runNpm(['install', '--global', '--prefix', prefix, archive, '--ignore-scripts'], process.cwd(), {
+    env: { HOME: isolatedHome, USERPROFILE: isolatedHome },
+  });
   const executable = process.platform === 'win32' ? path.join(prefix, 'cmi.cmd') : path.join(prefix, 'bin', 'cmi');
   const mcpExecutable = process.platform === 'win32' ? path.join(prefix, 'cmi-mcp.cmd') : path.join(prefix, 'bin', 'cmi-mcp');
   const runExecutable = (args, options = {}) => execFileSync(executable, args, { encoding: 'utf8', shell: process.platform === 'win32', ...options });
