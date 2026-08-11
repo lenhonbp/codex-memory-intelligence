@@ -1,0 +1,135 @@
+name: One-shot CMI v0.11.2 docs sync
+
+on:
+  push:
+    branches:
+      - agent/docs-v0.11.2-release-status
+    paths:
+      - .github/workflows/cmi-docs-sync-v0112.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/docs-v0.11.2-release-status
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Synchronize current release documentation
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one target, found {count}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'README.md',
+              '**Current supported release: `v0.11.1` / `codex-memory-intelligence@0.11.1`.**',
+              '**Current supported release: `v0.11.2` / `codex-memory-intelligence@0.11.2`.**',
+          )
+
+          replace_once(
+              'docs/RELEASE_POLICY.md',
+              '- `v0.11.1`\n- npm: `codex-memory-intelligence@0.11.1`',
+              '- `v0.11.2`\n- npm: `codex-memory-intelligence@0.11.2`',
+          )
+          replace_once(
+              'docs/RELEASE_POLICY.md',
+              '`v0.11.1` and repository source after the 2026-08-11 licensing cutover use the PolyForm Perimeter License 1.0.1, subject to `LICENSE`, `LICENSING.md`, `NOTICE`, and `BRAND_POLICY.md`.',
+              '`v0.11.1` and later public releases, plus repository source after the 2026-08-11 licensing cutover, use the PolyForm Perimeter License 1.0.1, subject to `LICENSE`, `LICENSING.md`, `NOTICE`, and `BRAND_POLICY.md`.',
+          )
+
+          replace_once(
+              'SECURITY.md',
+              '| `0.11.1` | Supported | Recommended for current installations |\n| `0.11.0` and earlier | Historical / unsupported | Upgrade to the latest release |',
+              '| `0.11.2` | Supported | Recommended for current installations |\n| `0.11.1` and earlier | Historical / unsupported | Upgrade to the latest release |',
+          )
+
+          status = Path('docs/RELEASE_STATUS.md')
+          text = status.read_text()
+          anchor = '## v0.11.1 PUBLIC RELEASE\n\n'
+          if text.count(anchor) != 1:
+              raise SystemExit('docs/RELEASE_STATUS.md: v0.11.1 anchor mismatch')
+          new_section = '''## v0.11.2 PUBLIC RELEASE
+
+`v0.11.2` is the current supported public CMI release. It is a maintenance patch for graph-drift signal quality discovered through repeated real-project Project 001 sessions; the planned feature-development program remains complete and the project remains in maintenance mode.
+
+### Public release summary
+
+| Field | Value |
+|---|---|
+| Public release | `v0.11.2` |
+| npm package | `codex-memory-intelligence@0.11.2` |
+| npm dist-tag | `latest` |
+| Release commit/tag target | `cdfaae5a22d7254130958a21f7fa12dabd01436d` |
+| Publish workflow | run `#11` / Actions run `31515580657` — success |
+| Post-merge main CI | run `#802` / Actions run `31515550678` — success |
+| Post-merge CodeQL | run `#257` / Actions run `31515550657` — success |
+| Temporary `release/v0.11.2` branch | removed by successful publish workflow |
+| GitHub Release | [CMI v0.11.2](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.11.2) |
+| GitHub Release id | `368724266` |
+| Public-source license | PolyForm Perimeter License 1.0.1 |
+
+The authorized publish workflow verified release-target identity, release metadata, the repository test suite, benchmark smoke, packed installation, npm Trusted Publishing, registry visibility, GitHub Release creation, and temporary release-branch cleanup.
+
+### Maintenance fix scope
+
+- Graph evidence remains honestly stale and graph/impact claims remain blocked until `cmi scan` refreshes generated intelligence.
+- When a session starts from current graph evidence and every stale source node is fully explained by that session's attributed source mutation scope, with no structural/configuration/discovery/format drift, Session/Closing Intelligence now presents the condition as a non-blocking refresh reminder rather than a material warning.
+- Pre-existing, unexplained, missing-node, source-set, resolver/workspace, scan-policy, discovery, and generated-format drift remain material.
+- The exact Project 001 field pattern — source edit → commit → clean worktree → close session — is covered by regression tests.
+- Historical `prediction-gap` semantics are unchanged.
+
+### Evidence limits
+
+- This release proves publication and the bounded graph-drift regression fix; it does not establish a universal productivity, time-savings, or agent-effectiveness claim.
+- The Project 001 observation is real-repository field evidence for this specific signal-quality defect, not a replacement for the historical Grok F0–F7 protocol.
+- Stale graph evidence is not relabeled healthy, and CMI still does not auto-run `cmi scan` merely to produce Closing `CLEAN`.
+
+## v0.11.1 HISTORICAL RELEASE
+
+'''
+          text = text.replace(anchor, new_section, 1)
+          text = text.replace(
+              '`v0.11.1` is the current supported public CMI release. The planned feature-development program is complete and the project is in maintenance mode.',
+              '`v0.11.1` was the first public release after the licensing/provenance cutover. It is retained as historical release evidence; `v0.11.2` is the current supported release.',
+              1,
+          )
+          text = text.replace(
+              'The most recent product-behavior field evidence remains the bounded `v0.11.0` field subject because `v0.11.1` does not claim a product-behavior change.',
+              'The latest maintenance behavior evidence is the bounded Project 001 graph-drift field regression shipped in `v0.11.2`. The formal agent-neutral Grok F0–F7 acceptance protocol remains the historical `v0.11.0` subject and is preserved separately rather than being rewritten by this maintenance fix.',
+              1,
+          )
+          text = text.replace('| Current supported public release | **v0.11.1** |', '| Current supported public release | **v0.11.2** |', 1)
+          text = text.replace('CMI_PUBLIC_RELEASE = v0.11.1', 'CMI_PUBLIC_RELEASE = v0.11.2', 1)
+          text = text.replace('CMI_SUPPORTED_RELEASE = v0.11.1', 'CMI_SUPPORTED_RELEASE = v0.11.2', 1)
+          status.write_text(text)
+          PY
+      - name: Verify repository
+        run: npm run verify
+      - name: Verify packed installation
+        run: npm run package:smoke
+      - name: Commit docs sync
+        shell: bash
+        run: |
+          git config user.name "CMI docs sync bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add README.md SECURITY.md docs/RELEASE_POLICY.md docs/RELEASE_STATUS.md
+          git diff --cached --check
+          git commit -m "docs: mark v0.11.2 as current supported release"
+          git push origin HEAD:agent/docs-v0.11.2-release-status
