@@ -50,7 +50,7 @@ test('Skill frontmatter name and explicit activation description', async () => {
   assert.match(description, /Use only when|explicitly asks/i);
   assert.match(description, /CLI-only|no MCP activation/i);
   assert.match(description, /activation is not Skill installation|not Skill installation/i);
-  assert.match(description, /npm install does not deliver|does not deliver or activate/i);
+  assert.match(description, /npm may deliver this Skill artifact|does not activate or install it into an agent runtime|npm installation does not activate/i);
 });
 
 test('Skill is CLI-only activate with codex|generic agents', async () => {
@@ -113,7 +113,7 @@ test('Skill permission boundary excludes Skill install and unrelated mutations',
 
 test('Skill does not claim npm/runtime auto-discovery via activation', async () => {
   const skill = await read(skillPath);
-  assert.match(skill, /does not deliver or activate|Claim npm package install delivers/i);
+  assert.match(skill, /npm may deliver|does not activate|installs them into agent runtimes|npm installation activates/i);
   assert.doesNotMatch(skill, /activation enables Skill auto-discovery automatically by default/i);
   const doc = await read(skillsDocPath);
   assert.match(doc, /cmi-activate/);
@@ -121,13 +121,13 @@ test('Skill does not claim npm/runtime auto-discovery via activation', async () 
   assert.match(doc, /Planned Skill inventory implemented|all eight planned/i);
 });
 
-test('package.json files does not ship skills', async () => {
+test('package.json files ships skills tree without auto-activation claims', async () => {
   const manifest = JSON.parse(await read(path.join(repositoryRoot, 'package.json')));
-  for (const entry of manifest.files) {
-    const n = String(entry).replace(/\\/g, '/').replace(/\/+$/, '');
-    assert.notEqual(n, 'skills');
-    assert.ok(!n.startsWith('skills/'));
-  }
+  assert.ok(Array.isArray(manifest.files), 'package.json.files must remain an explicit array');
+  assert.ok(manifest.files.includes('skills'), 'package.json files must include skills for distribution');
+  const skill = await read(skillPath);
+  assert.match(skill, /does not activate|does not activate or install|npm installation does not activate/i);
+  assert.doesNotMatch(skill, /auto-installs Skills into agent runtime|automatically installs Skills into/i);
 });
 
 test('Skill is explicit-trigger only and thin adapter', async () => {

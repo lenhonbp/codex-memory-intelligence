@@ -73,7 +73,7 @@ test('Skill SKILL.md starts with Agent Skills YAML frontmatter (name + descripti
   assert.match(description, /read-only/i);
   assert.match(description, /does not auto-apply|not auto-apply|external tooling may select/i);
   assert.match(description, /does not scan|does not scan, init, or refresh|does not.*refresh/i);
-  assert.match(description, /npm install does not deliver|does not deliver or activate/i);
+  assert.match(description, /npm may deliver this Skill artifact|does not activate or install it into an agent runtime|npm installation does not activate/i);
   assert.doesNotMatch(description, /CMI automatically|auto-applies Skills|native Skill loader/i);
   assert.doesNotMatch(description, /write-enabled|enables durable writes|mutates memory/i);
   assert.doesNotMatch(description, /Codex runtime validated|Grok runtime validated|runtime discovery (is |has been )?validated/i);
@@ -160,24 +160,23 @@ test('Skill surfaces recommendations without auto-execution', async () => {
 
 test('Skill does not claim npm distribution or runtime auto-discovery', async () => {
   const skill = await read(skillPath);
-  assert.match(skill, /npm install does not deliver|does not deliver or activate/i);
+  assert.match(skill, /npm may deliver this Skill artifact|does not activate or install it into an agent runtime|npm installation does not activate/i);
   assert.match(skill, /not in the published package files list|repository-only/i);
   assert.match(skill, /runtime discovery has been validated|not.*runtime discovery|Claim Codex or Grok runtime discovery/i);
   assert.doesNotMatch(skill, /automatically discovered by Codex|automatically discovered by Grok|native Skill loader activates/i);
   const doc = await read(skillsDocPath);
   assert.match(doc, /cmi-evidence-health/);
   assert.match(doc, /no native Skill runtime or loader/i);
-  assert.match(doc, /\*\*not\*\* published to npm|npm distribution of the `skills\/` tree|Do not claim that installing/i);
+  assert.match(doc, /ships Skill artifacts|npm package ships Skill artifacts|includes the `skills\/` tree|npm installation does not activate Skills/i);
 });
 
-test('package.json published files list does not ship the skills tree', async () => {
+test('package.json files ships skills tree without auto-activation claims', async () => {
   const manifest = JSON.parse(await read(path.join(repositoryRoot, 'package.json')));
-  assert.ok(Array.isArray(manifest.files));
-  for (const entry of manifest.files) {
-    const normalized = String(entry).replace(/\\/g, '/').replace(/\/+$/, '');
-    assert.notEqual(normalized, 'skills');
-    assert.ok(!normalized.startsWith('skills/'), `published files must not include skills path: ${entry}`);
-  }
+  assert.ok(Array.isArray(manifest.files), 'package.json.files must remain an explicit array');
+  assert.ok(manifest.files.includes('skills'), 'package.json files must include skills for distribution');
+  const skill = await read(skillPath);
+  assert.match(skill, /does not activate|does not activate or install|npm installation does not activate/i);
+  assert.doesNotMatch(skill, /auto-installs Skills into agent runtime|automatically installs Skills into/i);
 });
 
 test('Skill states purpose, triggers, non-triggers, and thin-adapter boundary', async () => {

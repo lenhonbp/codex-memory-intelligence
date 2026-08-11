@@ -52,6 +52,16 @@ npx cmi --version
 
 Requires Node.js 22 or newer.
 
+### Skill artifacts (package content)
+
+The npm package includes portable Agent Skills open-format contracts under:
+
+```text
+skills/<skill-name>/SKILL.md
+```
+
+All eight planned Skills ship as package files. **npm installation does not activate them**, does not install them into agent runtime skill directories, and CMI has **no native Skill loader**. `cmi activate` configures project integration only and does **not** install Skills. Runtime placement/discovery remains external to CMI. See [docs/SKILLS.md](docs/SKILLS.md).
+
 ## Quick start
 
 For supported Codex project integration, activate once:
@@ -60,8 +70,7 @@ For supported Codex project integration, activate once:
 npx cmi activate
 ```
 
-Then start a new Codex run/session and use normal prompts, including short requests. CMI manages a bounded `AGENTS.md` block and project-scoped Codex MCP configuration without overwriting unrelated user content. See [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md).
-
+Then start a new Codex run/session and use normal prompts, including short requests. CMI manages a bounded `AGENTS.md` block and project-scoped Codex MCP configuration without overwriting unrelated user content. Activation does not install Skills into agent runtime directories. See [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md) and [Skills](docs/SKILLS.md).
 The lower-level CLI remains available for explicit workflows:
 
 ```bash

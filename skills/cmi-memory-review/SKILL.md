@@ -1,6 +1,6 @@
 ---
 name: cmi-memory-review
-description: Read-only review preparation for durable CMI memory—surface stale, review-required, untracked, inactive, or blocked entries so a human can decide next steps. Use when the user asks which memory needs review, what knowledge is stale, to audit project memory, or to inspect inactive/blocked memory (including Vietnamese memory-review questions). Strictly read-only thin adapter; does not refresh, remember, or change memory lifecycle. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Read-only review preparation for durable CMI memory—surface stale, review-required, untracked, inactive, or blocked entries so a human can decide next steps. Use when the user asks which memory needs review, what knowledge is stale, to audit project memory, or to inspect inactive/blocked memory (including Vietnamese memory-review questions). Strictly read-only thin adapter; does not refresh, remember, or change memory lifecycle. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-memory-review
@@ -245,7 +245,7 @@ Never fabricate classifications, CLEAN, or durable memory writes from a failed o
 - Treat source refresh as semantic approval.
 - Use bare `cmi` as the only documented fallback.
 - Prescribe registry `npx` as fallback.
-- Claim npm package install delivers this Skill.
+- Claim that npm installation activates this Skill or installs it into an agent runtime.
 - Claim Codex/Grok runtime discovery is validated by this artifact alone.
 - Alter activation or managed config generation.
 

@@ -1,6 +1,6 @@
 ---
 name: cmi-closing
-description: Read and surface existing Closing Intelligence for an already-closed CMI work session (alerts, CLEAN only when authoritative). Use when the user asks what CMI flagged when work ended, blockers/reminders from a closed session, or to show Closing Intelligence / final CMI alerts (including Vietnamese closed-session questions). Strictly read-only thin adapter; does not close or finalize sessions. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Read and surface existing Closing Intelligence for an already-closed CMI work session (alerts, CLEAN only when authoritative). Use when the user asks what CMI flagged when work ended, blockers/reminders from a closed session, or to show Closing Intelligence / final CMI alerts (including Vietnamese closed-session questions). Strictly read-only thin adapter; does not close or finalize sessions. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-closing
@@ -228,7 +228,7 @@ Never fabricate CLEAN, blockers, verification results, or durable writes from a 
 - Close/finalize sessions under this Skill.
 - Use bare `cmi` as the only documented fallback.
 - Prescribe registry `npx` as fallback.
-- Claim npm package install delivers this Skill.
+- Claim that npm installation activates this Skill or installs it into an agent runtime.
 - Claim Codex/Grok runtime discovery is validated by this artifact alone.
 - Alter activation or managed config generation.
 

@@ -1,6 +1,6 @@
 ---
 name: cmi-evidence-health
-description: Provide a concise read-only assessment of whether CMI project evidence is currently usable, stale, missing, degraded, or blocked before relying on it. Use when the user asks if CMI is healthy, whether intelligence/evidence is current, why CMI is blocked, if the graph/index is stale, or to check evidence health before starting (including Vietnamese readiness questions). Strictly read-only thin adapter; does not scan, init, or refresh. External tooling may select it. CMI activation does not auto-apply Skills, and npm install does not deliver or activate them.
+description: Provide a concise read-only assessment of whether CMI project evidence is currently usable, stale, missing, degraded, or blocked before relying on it. Use when the user asks if CMI is healthy, whether intelligence/evidence is current, why CMI is blocked, if the graph/index is stale, or to check evidence health before starting (including Vietnamese readiness questions). Strictly read-only thin adapter; does not scan, init, or refresh. External tooling may select it. CMI activation does not auto-apply Skills. npm may deliver this Skill artifact as package content, but npm installation does not activate or install it into an agent runtime.
 ---
 
 # Skill: cmi-evidence-health
@@ -210,7 +210,7 @@ Never fabricate healthy state, CLEAN, blockers, verification results, or durable
 - Auto-run `init`, `scan`, or `refresh-memory`.
 - Use bare `cmi` as the only documented fallback.
 - Prescribe registry `npx` as fallback.
-- Claim that installing the npm package delivers this Skill (repository-only; `skills/` is not in the published package files list).
+- Claim that npm installation activates this Skill or installs it into an agent runtime (the package may ship the artifact under `skills/`, but activation/discovery remain external).
 - Claim Codex or Grok runtime discovery has been validated by this artifact alone.
 - Alter activation, managed `AGENTS.md`, or `.codex/config.toml` generation.
 
