@@ -3,14 +3,14 @@
 [![CI](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/codeql.yml/badge.svg)](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/codeql.yml)
 [![npm version](https://img.shields.io/npm/v/codex-memory-intelligence.svg)](https://www.npmjs.com/package/codex-memory-intelligence)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: PolyForm Perimeter 1.0.1](https://img.shields.io/badge/License-PolyForm%20Perimeter%201.0.1-orange.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
 CMI is a **local-first project memory and evidence-driven intelligence layer for AI coding agents**. It keeps reviewed project knowledge, dependency/impact signals, change history, unresolved work, and session handoffs in a human-reviewable `.codex-memory/` directory.
 
 There is no required cloud service, API key, database, telemetry service, remote model, or network-enrichment dependency.
 
-> Codex Memory Intelligence is an independent open-source project and is not affiliated with or endorsed by OpenAI.
+> Codex Memory Intelligence is an independent **source-available** project and is not affiliated with or endorsed by OpenAI.
 
 ## What CMI provides
 
@@ -23,9 +23,11 @@ There is no required cloud service, API key, database, telemetry service, remote
 - **Portable Agent Skills** — eight open-format Skill artifacts shipped under `skills/`.
 - **MCP integration** — read-only by default, with explicit opt-in for durable project writes.
 
+CMI intentionally separates **observed evidence**, **reviewed durable knowledge**, and **advisory inference**. A warning is not automatically a product blocker, and inference is not automatically promoted into project truth.
+
 ## Current release
 
-**`v0.11.0` / `codex-memory-intelligence@0.11.0` is the current public release and npm `latest`.** The planned feature-development program is complete and CMI is in **maintenance mode**.
+**`v0.11.0` / `codex-memory-intelligence@0.11.0` is the current public npm release and npm `latest`.** The planned feature-development program is complete and CMI is in **maintenance mode**.
 
 Field evidence for the public release:
 
@@ -34,7 +36,19 @@ Field evidence for the public release:
 
 The Grok result is a separate bounded field result; it does not rewrite the historical Codex result and does not imply universal agent validation.
 
+> **Licensing boundary:** `v0.11.0` and earlier public releases remain MIT-licensed under the terms shipped with those versions. Repository source after the 2026-08-11 licensing cutover uses the **PolyForm Perimeter License 1.0.1**. See [Licensing](LICENSING.md).
+
 See [Current Release Status](docs/RELEASE_STATUS.md) and [Grok v0.11.0 Final Field Acceptance](docs/field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
+
+## Try CMI and share field feedback
+
+CMI is being evaluated on real repositories, not only scripted examples. If you try it, the most useful feedback is concrete and evidence-based:
+
+- **What was useful?** Which memory, impact, change/session, handoff, or closing signals helped?
+- **What felt noisy or misleading?** Repeated warnings, false positives, stale context, or unclear severity are especially useful to report.
+- **What is missing?** Describe what you expected CMI to preserve, detect, or explain but it did not.
+
+Use the [CMI field feedback issue template](https://github.com/lenhonbp/codex-memory-intelligence/issues/new?template=field_feedback.yml). Please remove secrets, private source code, tokens, or sensitive `.codex-memory/` content before posting.
 
 ## Install
 
@@ -53,6 +67,8 @@ npx cmi --version
 ```
 
 Requires **Node.js 22 or newer**.
+
+The current npm `latest` is the legacy MIT-licensed `v0.11.0` release. The license for any future release is determined by the `LICENSE` file and release metadata shipped with that exact version.
 
 ## Quick start
 
@@ -111,8 +127,6 @@ The final Grok F0–F7 field run for `v0.11.0` used:
 That successful run does **not** establish a native Grok Skill loader, npm auto-activation, Skill installation by `cmi activate`, or a universal Grok integration path.
 
 ## How the evidence model fits together
-
-CMI intentionally separates observed evidence, reviewed durable knowledge, and advisory inference.
 
 ### Durable memory
 
@@ -288,11 +302,13 @@ See [Security](SECURITY.md) and [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md)
 - [Real-Repository Evaluation](docs/EVALUATION.md)
 - [Current Release Status](docs/RELEASE_STATUS.md)
 - [Grok v0.11.0 Final Field Acceptance](docs/field-evidence/GROK_V0.11.0_ACCEPTANCE.md)
+- [Licensing](LICENSING.md)
+- [Project Identity & Brand Policy](BRAND_POLICY.md)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Releasing](docs/RELEASING.md)
 
-Community and project policy: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), and [Maintainers](MAINTAINERS.md).
+Community and project policy: [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Governance](GOVERNANCE.md), [Support](SUPPORT.md), [Security](SECURITY.md), [Licensing](LICENSING.md), [Brand Policy](BRAND_POLICY.md), and [Maintainers](MAINTAINERS.md).
 
 ## Development
 
@@ -306,4 +322,10 @@ CI runs on Ubuntu, macOS, and Windows with Node.js 22 and 24. A separate benchma
 
 ## License
 
-MIT
+Repository source after the 2026-08-11 licensing cutover is available under the **PolyForm Perimeter License 1.0.1**. It permits use, modification, and distribution for permitted purposes, while restricting the provision of products that compete with the software as defined by the license.
+
+This means current post-cutover CMI source is **source-available, not OSI open source**.
+
+`v0.11.0` and earlier public releases retain the MIT license that accompanied those versions. Separate commercial licensing may be available for uses outside the public license.
+
+See [LICENSE](LICENSE), [LICENSING.md](LICENSING.md), [NOTICE](NOTICE), and [BRAND_POLICY.md](BRAND_POLICY.md).
