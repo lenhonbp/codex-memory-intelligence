@@ -140,4 +140,4 @@ No additional feature Mission should be invented unless a genuine release, secur
 
 Historical tags and releases are retained for provenance, reproducibility, and exact license history. They are not recommended for new installations and are not represented as containing all current fixes or security hardening.
 
-Use [Release & Version Policy](RELEASE_POLICY.md), [Security](../SECURITY.md), and `CHANGELOG.md` for current support and version-history guidance.
+Use [Release & Version Policy](RELEASE_POLICY.md), [Security](../SECURITY.md), and [Changelog](../CHANGELOG.md) for current support and version-history guidance.
