@@ -4,27 +4,56 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-11
+
+Feature-complete planned Skill inventory and post-`v0.10.0` agent-integration work. Publication remains separately authorized after this release-preparation commit.
+
 ### Added
 
-- Added one-time `cmi activate` integration for Codex plus a bounded generic mode so supported agents can use CMI automatically after project activation instead of requiring CMI-specific user prompts.
-- Added read-only ambient task routing through `cmi ambient` and MCP `get_ambient_task_brief`, with conservative short-prompt intent classification and evidence-linked context/workflow guidance.
-- Added CMI Closing Intelligence: a bounded end-of-work read model and branded `CMI Intelligence` footer that surfaces up to three evidence-based cross-session, verification, finding, and reviewed-consistency alerts plus a clean fallback.
+- Added one-time `cmi activate` integration for Codex plus a bounded generic mode so supported agents can use CMI after project activation without requiring CMI-specific user prompts.
+- Added Ambient Agent Intelligence: read-only ambient task routing through `cmi ambient` and MCP `get_ambient_task_brief`, with conservative short-prompt intent classification and evidence-linked context/workflow guidance.
+- Added CMI Closing Intelligence: a bounded end-of-work read model and branded `### CMI Intelligence` footer that surfaces up to three evidence-based cross-session, verification, finding, and reviewed-consistency alerts plus a clean fallback.
+- Added eight Agent Skills open-format adapters as portable repository/package artifacts:
+
+  - `cmi-ambient-brief`
+  - `cmi-continue`
+  - `cmi-evidence-health`
+  - `cmi-closing`
+  - `cmi-memory-review`
+  - `cmi-work-session`
+  - `cmi-change-loop`
+  - `cmi-activate`
+- Added npm distribution of the eight Skill artifacts under package `files` → `skills/` with package-smoke coverage for packed identity and no auto-activation on install.
+- Added Skill contract tests for all eight adapters plus distribution invariants.
+
+### Fixed
+
+- Preserved intentionally unfinished / partial / paused / review-pending Change Intelligence records as **active** when a work session ends (`session completion != Change completion`). Partial progress remains visible under active Changes and Closing Intelligence surfaces it as a non-blocking reminder; explicit abandonment remains terminal.
+- Required durable closed-session evidence for Closing Intelligence rather than synthesizing Closing from health-only state.
+- Distinguished missing graph evidence from graph drift and kept read-only session scope separate from mutation evidence.
+- Resolved project-local CMI CLI fallback resolution for packaged/local entrypoint usage.
 
 ### Changed
 
-- Unchanged scans now keep tracked `architecture.md` byte-stable by excluding volatile scan timestamps/parser reuse/duration metrics from the human-reviewable architecture summary.
+- Managed activation instructions now require supported agents to retrieve Closing Intelligence before ending substantial work and append a concise user-visible CMI footer when authoritative Closing exists.
+- Session continuation/handoff remains historical evidence that must be re-checked against current baseline, per-ID Change lifecycle, and open findings.
+- Skill distribution contract: the npm package ships Skill artifacts; npm installation does not activate or install them into agent runtimes; `cmi activate` does not install Skills; CMI has no native Skill loader.
+- Unchanged scans keep tracked `architecture.md` byte-stable by excluding volatile scan timestamps/parser reuse/duration metrics from the human-reviewable architecture summary.
 - Active work-session state is stored under ignored transient CMI storage and materializes into durable reviewable `sessions/` evidence only when finalized.
-- Repository baselines now preserve product-scope compatibility while separately reporting raw Git cleanliness and the count of omitted untracked CMI-internal paths.
+- Repository baselines preserve product-scope compatibility while separately reporting raw Git cleanliness and omitted untracked CMI-internal paths.
 - Existing relative CSS/static imports are classified as non-code local dependencies instead of unresolved source imports.
 - Generic memory-gap and regression-test suggestions are suppressed when no task-specific files, boundaries, or topic evidence support them.
-- Codex activation now requires supported agents to retrieve Closing Intelligence before ending substantial work and append a concise user-visible CMI footer; unfinished active changes remain visible across later sessions without blocking a user priority change by default.
 
 ### Evidence limits
 
+- Final Codex S0–S7 field acceptance on subject `c05098fa82ddf85a4443e3769801baf78e12c200` was **not** completed. Mission 1.8B was blocked before S0 because the available ChatGPT-auth Codex runtime reported model capacity exhaustion, and an API-key-auth fallback was not available in the operator environment. This is recorded as a **runtime limitation**, not evidence that CMI passed or failed those final scenarios.
+- Package shipment of Skills does not prove runtime Skill discovery or automatic selection by any agent.
+- No universal Codex/Grok Skill installation path is claimed; observed paths remain runtime/version-specific evidence.
 - Ambient intent routing is deterministic advisory classification, not autonomous authorization or proof of user intent.
 - Agent activation cannot force clients that ignore repository instructions or MCP to follow CMI.
-- Reviewed design/architecture/policy relevance in Closing Intelligence is a consistency-check cue, not proof that the implementation violates the reviewed rule. Closing Intelligence introduces no separate durable notification store.
-- This development work does not establish productivity improvement, time savings, or general product value.
+- Reviewed design/architecture/policy relevance in Closing Intelligence is a consistency-check cue, not proof of a violation.
+- Static parsing and impact/boundary output remain heuristic/advisory rather than compiler-grade.
+- This release does not establish productivity improvement, time savings, general product value, or v1 readiness.
 
 ## [0.10.0] - 2026-08-09
 

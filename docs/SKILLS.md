@@ -17,7 +17,7 @@ Mission 1 adds a **repository-level reusable Skill contract PoC** with the follo
 
 These Skills are structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes them automatically.
 
-### Distribution contract (Mission 1.8A)
+### Distribution contract
 
 ```text
 npm package ships Skill artifacts
@@ -29,13 +29,13 @@ CMI activation installs Skills
 CMI owns Skill discovery
 ```
 
-- The npm package **includes** the `skills/` tree in `package.json` `files` and therefore **ships** portable `skills/<name>/SKILL.md` artifacts to consumers.
+- All **eight** planned Skill artifacts are **implemented** and **npm-distributed** under `package.json` `files` → `skills/`.
 - **npm installation does not activate Skills** and does not install them into agent runtime directories.
 - CMI activation still does **not** automatically discover or apply Skills.
 - **CMI has no native Skill loader**, Skill registry, discovery engine, or Skill execution subsystem.
 - **`cmi activate` does not install Skills** into `~/.codex/skills`, `~/.grok/skills`, `~/.agents/skills`, or any other runtime Skill location.
 - Runtime installation/discovery remains **external** (**edge concerns**). Observed Skill paths in a particular Codex/Grok/other setup are **runtime/version-specific evidence**, not universal CMI guarantees. Runtime documentation remains authoritative for that surface.
-- Mission **1.8B** will perform final field acceptance. This document does **not** claim that all eight Skills have passed final field validation yet.
+- Final Codex S0–S7 field acceptance on subject `c05098fa82ddf85a4443e3769801baf78e12c200` was **runtime-blocked** (ChatGPT-auth model capacity; API-key fallback unavailable) and is **not** accepted as PASS. Packaging identity and earlier bounded field evidence remain separate from that unfinished final matrix.
 - Do not claim that this repository has proven Codex or Grok runtime Skill discovery by packaging alone.
 
 ## Architectural rule
@@ -58,7 +58,7 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
 | **CMI core executable behavior** | Authoritative implementation in `src/**` (CLI, MCP, Ambient, session, change, closing, memory). |
 | **Skill contract** | Markdown (or similar) workflow artifact that documents triggers, inputs, exact existing invocations, read/write boundaries, and failure rules. Open-format `SKILL.md` frontmatter supports progressive discovery metadata without implying a CMI loader. |
 | **Optional future vendor adapters** | Edge-only mappings to a specific agent’s Skill discovery/install paths; must call the same CMI surfaces. Not present beyond the portable open-format contract. |
-| **Package distribution** | npm ships portable `skills/` artifacts (Mission 1.8A). Runtime install/discovery remains external (Mission 1.8B field acceptance). |
+| **Package distribution** | npm ships portable `skills/` artifacts. Runtime install/discovery remains external; final Codex S0–S7 matrix was runtime-blocked and not accepted as PASS. |
 
 ## Implemented Skills
 
@@ -184,7 +184,7 @@ All **eight** original planned Skill artifacts are implemented and **packaged** 
 
 `cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`.
 
-They remain open-format thin adapters: **no** native Skill loader, **no** automatic Skill discovery, **no** auto-activation on npm install, and **no** Skill installation by `cmi activate`. Final runtime field acceptance is Mission **1.8B**.
+They remain open-format thin adapters: **no** native Skill loader, **no** automatic Skill discovery, **no** auto-activation on npm install, and **no** Skill installation by `cmi activate`.
 
 ## Non-goals
 
@@ -195,14 +195,12 @@ Explicitly excluded:
 - Vendor-specific logic inside CMI core
 - Automatic durable-memory mutation beyond intentionally invoked write-aware Skill adapters
 - Replacing MCP or CLI
-- Changing Issue #41 field-validation behavior
 - New CMI commands, MCP tools, arguments, or schemas for Skill loading
 - Core changes to activation, session, Change, or Closing Intelligence behavior to “install Skills”
 - Agent-specific skill install placement (`.agents/skills`, `.grok/skills`, plugins, symlinks) performed by CMI
-- Claiming Codex or Grok runtime discovery has been validated by packaging alone
-- Claiming all eight Skills have completed final field validation (Mission 1.8B)
+- Claiming universal Codex or Grok runtime discovery from packaging alone
+- Claiming final-subject Codex S0–S7 field acceptance passed (it was runtime-blocked / not executed; Issue #41 closed not-planned, not PASS)
 - Treating `cmi activate` as Skill installation
-- Version bump / npm publish as part of packaging alone
 
 ## Future candidates (not implemented)
 

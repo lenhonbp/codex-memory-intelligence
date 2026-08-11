@@ -60,7 +60,7 @@ const requiredFiles = [
 const forbiddenPattern = /(^|\/)(?:\.codex-memory|\.empirical-studies|\.git|node_modules)(?:\/|$)|(?:\.tgz$|(?:^|\/)\.env(?:\.|$))/i;
 const packagedFiles = new Set((packed[0].files || []).map((entry) => entry.path));
 if (path.basename(archive) !== `${packageJson.name}-${packageJson.version}.tgz`) throw new Error(`Unexpected package filename: ${path.basename(archive)}`);
-if (packageJson.version !== '0.10.0') throw new Error(`Mission 1.8A expects package version 0.10.0, got ${packageJson.version}`);
+if (!/^\d+\.\d+\.\d+$/.test(packageJson.version)) throw new Error(`Unexpected package version format: ${packageJson.version}`);
 if (!Array.isArray(packageJson.files) || !packageJson.files.includes('skills')) throw new Error('package.json files must include skills for distribution.');
 for (const file of requiredFiles) if (!packagedFiles.has(file)) throw new Error(`Packed candidate is missing required file: ${file}`);
 const forbiddenFiles = [...packagedFiles].filter((file) => path.isAbsolute(file) || file.split('/').some((part) => part === '..') || forbiddenPattern.test(file));
