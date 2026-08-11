@@ -24,6 +24,14 @@ Session completion != Change completion. Closing a session with a partial, pause
 
 CMI does not block a user from changing priorities. Carryover work is a reminder unless stronger evidence makes it directly relevant or blocking.
 
+## Graph freshness at close
+
+Repository source edits normally invalidate generated graph fingerprints. CMI keeps the graph itself honestly stale until `cmi scan` rebuilds generated intelligence; Closing Intelligence does not mark stale graph evidence current or auto-scan merely to produce a clean footer.
+
+When a session started from a current graph and every stale graph node is explained by that session's attributed source mutation scope, with no missing nodes, source-set drift, resolver/workspace drift, scan-policy drift, unreadable discovery input, or generated-format problem, Closing Intelligence treats the condition as a non-blocking refresh reminder rather than a material graph-drift warning. The reminder still means graph/impact evidence must be refreshed before the next task relies on it.
+
+Drift that predates the session, changes graph structure/configuration, contains missing nodes, or cannot be explained by the current session remains a material warning and keeps the existing `cmi scan` recovery action.
+
 ## Consistency and reviewed rules
 
 CMI may surface reviewed-current facts, decisions, or lessons that are relevant to the just-closed session. Relevance is only a cue to verify compliance.

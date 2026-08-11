@@ -382,6 +382,28 @@ export function classifySessionGraphEvidence(project = {}) {
   if (graph.current !== true) return 'drifted';
   return 'current';
 }
+function graphStructuralDriftSignals(graph = {}) {
+  return [
+    graph.sourceSetChanged ? 'source-set drift' : null,
+    graph.resolverInputsChanged ? 'resolver-config drift' : null,
+    graph.workspaceInputsChanged ? 'workspace-manifest drift' : null,
+    graph.scanConfigChanged ? 'scan/ignore-config drift' : null,
+    graph.freshnessUnknown ? 'unverified discovery state' : null,
+    (graph.discoveryUnreadable || 0) > 0 ? 'unreadable discovery inputs' : null,
+    graph.rebuildRequired ? 'generated-format rebuild required' : null,
+    graph.formatStatus && graph.formatStatus !== 'current' ? `graph format ${graph.formatStatus}` : null,
+  ].filter(Boolean);
+}
+function isExpectedSessionSourceGraphDrift(record, graph, mutationPaths) {
+  if (classifySessionGraphEvidence(record.start?.project) !== 'current') return false;
+  if (!graph || graph.current === true || graph.available === false) return false;
+  if ((graph.staleNodes || 0) <= 0 || (graph.missingNodes || 0) > 0) return false;
+  if (graphStructuralDriftSignals(graph).length) return false;
+  const stalePaths = (graph.stalePaths || []).map(slash);
+  if (!stalePaths.length || stalePaths.length !== graph.staleNodes) return false;
+  const mutationSet = new Set((mutationPaths || []).map(slash));
+  return stalePaths.every((item) => mutationSet.has(item));
+}
 
 function detectFindings({ record, current, relatedActive, concurrentActive, completedDetails, scopePaths, mutationPaths, staleReport, gitContinuity }) {
   const findings = [];
@@ -390,7 +412,23 @@ function detectFindings({ record, current, relatedActive, concurrentActive, comp
   if (graphEvidence === 'uninitialized') {
     findings.push(makeFinding('project-intelligence-missing', 'high', 'Project intelligence is incomplete', 'CMI does not have a current project graph/index, so context and impact guidance are incomplete.', { target: 'graph-index', evidence: ['project-status'] }));
   } else if (graphEvidence === 'drifted') {
-    findings.push(makeFinding('graph-drift', graph.missingNodes > 0 ? 'high' : 'medium', 'Project graph has drifted from source', `Stored graph evidence no longer matches current source (${graph.staleNodes || 0} stale, ${graph.missingNodes || 0} missing node(s)).`, { target: 'graph', evidence: ['source-fingerprint-mismatch'] }));
+    const expectedSessionDrift = isExpectedSessionSourceGraphDrift(record, graph, mutationPaths);
+    const structuralSignals = graphStructuralDriftSignals(graph);
+    const relatedGraphPaths = bounded(unique([...(graph.stalePaths || []), ...(graph.missingPaths || [])]), 30);
+    findings.push(makeFinding(
+      'graph-drift',
+      expectedSessionDrift ? 'low' : graph.missingNodes > 0 ? 'high' : 'medium',
+      expectedSessionDrift ? 'Project graph needs refresh after current-session source changes' : 'Project graph has drifted from source',
+      expectedSessionDrift
+        ? `Stored graph evidence is stale because ${graph.staleNodes || 0} source node(s) changed within this session's attributed mutation scope. Refresh before future graph/impact use; this does not by itself indicate a product problem.`
+        : `Stored graph evidence no longer matches current source (${graph.staleNodes || 0} stale, ${graph.missingNodes || 0} missing node(s)${structuralSignals.length ? `; ${structuralSignals.join(', ')}` : ''}).`,
+      {
+        target: 'graph',
+        evidence: expectedSessionDrift ? ['source-fingerprint-mismatch', 'session-source-mutation'] : ['source-fingerprint-mismatch'],
+        relatedFiles: relatedGraphPaths,
+        sessionRelevance: expectedSessionDrift ? 'related' : null,
+      },
+    ));
   }
   if ((staleReport.counts?.stale || 0) > 0) findings.push(makeFinding('stale-memory', 'medium', 'Reviewed project memory is stale', `${staleReport.counts.stale} tracked memory entr${staleReport.counts.stale === 1 ? 'y is' : 'ies are'} stale against current source evidence.`, { target: 'memory', evidence: ['source-linked-memory'] }));
   const reviewCount = (staleReport.counts?.review || 0) + (staleReport.counts?.untracked || 0);
@@ -437,6 +475,7 @@ function detectFindings({ record, current, relatedActive, concurrentActive, comp
 }
 function priorityFor(finding) {
   if (finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed') return 'P3';
+  if (finding.category === 'graph-drift' && finding.severity === 'low' && (finding.evidence || []).includes('session-source-mutation')) return 'P3';
   if (finding.category === 'verification-failed' || finding.category === 'session-blocker') return 'P0';
   if (['verification-missing', 'active-change', 'project-intelligence-missing', 'graph-drift', 'uncaptured-session-change', 'invalid-change-records'].includes(finding.category)) return 'P1';
   if (['verification-incomplete', 'prediction-gap', 'unexpected-impact', 'stale-memory', 'preexisting-worktree', 'git-history-rewrite'].includes(finding.category)) return 'P2';
@@ -444,6 +483,7 @@ function priorityFor(finding) {
 }
 function actionFor(finding) {
   if (finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed') return 'Coordinate the concurrent active change only if it becomes relevant to this session; do not block current work on it by default.';
+  if (finding.category === 'graph-drift' && finding.severity === 'low' && (finding.evidence || []).includes('session-source-mutation')) return 'Refresh project intelligence with `cmi scan` before the next graph/impact-dependent task; do not scan merely to make Closing Intelligence CLEAN.';
   const actions = {
     'verification-failed': `Fix the failing verification "${finding.title.replace(/^Verification failed:\s*/, '')}" and rerun it before expanding scope.`,
     'session-blocker': `Resolve or explicitly defer the blocker: ${finding.detail}`,

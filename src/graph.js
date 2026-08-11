@@ -571,11 +571,13 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
   let freshNodes = 0;
   let staleNodes = 0;
   let missingNodes = 0;
+  const stalePaths = [];
+  const missingPaths = [];
   for (const node of graph.nodes || []) {
     let stat = null;
     try { stat = await fs.lstat(path.join(root, node.path)); } catch {}
-    if (!stat?.isFile() || stat.isSymbolicLink()) { missingNodes += 1; continue; }
-    if (!graphFingerprintMatches(stat, node.fingerprint)) { staleNodes += 1; continue; }
+    if (!stat?.isFile() || stat.isSymbolicLink()) { missingNodes += 1; missingPaths.push(node.path); continue; }
+    if (!graphFingerprintMatches(stat, node.fingerprint)) { staleNodes += 1; stalePaths.push(node.path); continue; }
     freshNodes += 1;
   }
 
@@ -609,6 +611,8 @@ export async function inspectProjectGraphHealth(root, suppliedGraph = null) {
     freshNodes,
     staleNodes,
     missingNodes,
+    stalePaths: stalePaths.slice(0, 200),
+    missingPaths: missingPaths.slice(0, 200),
     truncated,
     current,
     complete,

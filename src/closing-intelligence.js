@@ -18,6 +18,7 @@ function compactText(value, limit = 280) {
 }
 function levelForFinding(finding) {
   if (finding.state === 'accepted') return 'info';
+  if (finding.category === 'graph-drift' && finding.severity === 'low' && (finding.evidence || []).includes('session-source-mutation')) return 'reminder';
   if (finding.category === 'verification-failed' || finding.category === 'session-blocker') return 'blocker';
   if (finding.category === 'active-change' && finding.sessionRelevance === 'concurrent-unattributed') return 'reminder';
   if (['verification-missing', 'verification-incomplete', 'project-intelligence-missing', 'graph-drift', 'invalid-change-records', 'prediction-gap', 'unexpected-impact', 'uncaptured-session-change'].includes(finding.category)) return 'warning';
