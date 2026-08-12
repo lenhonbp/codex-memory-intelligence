@@ -18,10 +18,10 @@ The repository README and security policy should point new users to the latest s
 
 ## Current supported line
 
-As of 2026-08-11, the supported public release is:
+As of 2026-08-12, the supported public release is:
 
-- `v0.11.2`
-- npm: `codex-memory-intelligence@0.11.2`
+- `v0.12.0`
+- npm: `codex-memory-intelligence@0.12.0`
 
 Security fixes and compatibility guidance target the current supported release unless a specific exception is documented.
 
