@@ -31,7 +31,7 @@ jobs:
       - run: npm run package:smoke
 
   coverage:
-    name: Coverage baseline
+    name: Coverage gate · 94% lines / 75% branches
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
