@@ -1,103 +1,84 @@
 # Current Release Status
 
-Updated: 2026-08-11
+Updated: 2026-08-12
 
-## v0.11.2 PUBLIC RELEASE
+## v0.12.0 PUBLIC RELEASE
 
-`v0.11.2` is the current supported public CMI release. It is a maintenance patch for graph-drift signal quality discovered through repeated real-project Project 001 sessions; the planned feature-development program remains complete and the project remains in maintenance mode.
+`v0.12.0` is the current supported public CMI release. It adds Evidence-Anchored Rule Intelligence while preserving CMI's evidence-vs-inference trust boundary.
 
 ### Public release summary
 
 | Field | Value |
 |---|---|
-| Public release | `v0.11.2` |
-| npm package | `codex-memory-intelligence@0.11.2` |
+| Public release | `v0.12.0` |
+| npm package | `codex-memory-intelligence@0.12.0` |
 | npm dist-tag | `latest` |
-| Release commit/tag target | `cdfaae5a22d7254130958a21f7fa12dabd01436d` |
-| Publish workflow | run `#11` / Actions run `31515580657` — success |
-| Post-merge main CI | run `#802` / Actions run `31515550678` — success |
-| Post-merge CodeQL | run `#257` / Actions run `31515550657` — success |
-| Temporary `release/v0.11.2` branch | removed by successful publish workflow |
-| GitHub Release | [CMI v0.11.2](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.11.2) |
-| GitHub Release id | `368724266` |
+| Release commit/tag target | `623d6599aa4d175c4b054b6216c18bf3adc5a3aa` |
+| Publish workflow | run `#12` / Actions run `31557297420` — success |
+| Post-merge main CI | run `#827` / Actions run `31557178081` — success |
+| Post-merge CodeQL | run `#263` / Actions run `31557178087` — success |
+| Temporary `release/v0.12.0` branch | removed by successful publish workflow |
+| GitHub Release | [CMI v0.12.0](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.12.0) |
+| GitHub Release id | `368961661` |
 | Public-source license | PolyForm Perimeter License 1.0.1 |
 
-The authorized publish workflow verified release-target identity, release metadata, the repository test suite, benchmark smoke, packed installation, npm Trusted Publishing, registry visibility, GitHub Release creation, and temporary release-branch cleanup.
+The authorized publish workflow verified exact release-target identity, package/source/changelog metadata, the repository verification suite, benchmark smoke, packed installation, npm Trusted Publishing, registry visibility, GitHub Release creation, and temporary release-branch cleanup.
 
-### Maintenance fix scope
+### v0.12.0 capability scope
 
-- Graph evidence remains honestly stale and graph/impact claims remain blocked until `cmi scan` refreshes generated intelligence.
-- When a session starts from current graph evidence and every stale source node is fully explained by that session's attributed source mutation scope, with no structural/configuration/discovery/format drift, Session/Closing Intelligence now presents the condition as a non-blocking refresh reminder rather than a material warning.
-- Pre-existing, unexplained, missing-node, source-set, resolver/workspace, scan-policy, discovery, and generated-format drift remain material.
-- The exact Project 001 field pattern — source edit → commit → clean worktree → close session — is covered by regression tests.
-- Historical `prediction-gap` semantics are unchanged.
+- Findings and reviewed-rule checks can carry bounded evidence anchors with project-relative file paths and line ranges plus symbol, feature, and commit context when available.
+- Portable evidence supports `source:`, `symbol:`, `feature:`, and `commit:` references.
+- Finding verification semantics distinguish `suspected`, `observed`, and `established`; durable `resolved` remains a separate finding lifecycle state.
+- Ambient Intelligence tells agents to inspect affected source and capture evidence anchors when reviewed rules are relevant.
+- Closing Intelligence can render evidence anchors and verification state.
+- `violationEstablished` is tied to established verification rather than reviewed-rule relevance or a source match alone.
+- Findings schema support is additive/backward-compatible through optional `verificationState` and `evidenceAnchors` fields under the existing schema version.
 
 ### Evidence limits
 
-- This release proves publication and the bounded graph-drift regression fix; it does not establish a universal productivity, time-savings, or agent-effectiveness claim.
-- The Project 001 observation is real-repository field evidence for this specific signal-quality defect, not a replacement for the historical Grok F0–F7 protocol.
-- Stale graph evidence is not relabeled healthy, and CMI still does not auto-run `cmi scan` merely to produce Closing `CLEAN`.
+- A source citation establishes where observed code/evidence exists; it does not by itself prove a runtime-visible, user-visible, architecture, design, or policy violation.
+- `established` requires verification appropriate to the rule, such as tests, runtime/browser observation, or explicit human review.
+- Line numbers can drift; symbol/feature/commit context reduces ambiguity but is not compiler-grade symbol identity.
+- v0.12.0 does not include an autonomous universal rule scanner and does not hard-code Project 001-specific rules or detectors.
+- Publication and test evidence do not establish productivity improvement, time savings, universal-agent effectiveness, or v1 readiness.
 
-## v0.11.1 HISTORICAL RELEASE
-`v0.11.1` was the first public release after the licensing/provenance cutover. It is retained as historical release evidence; `v0.11.2` is the current supported release.
+Canonical release detail: [CMI v0.12.0 Public Release](V0_12_RELEASE.md).
+
+## v0.11.2 HISTORICAL RELEASE
+
+`v0.11.2` is retained as the historical graph-drift signal-quality maintenance release. It remains available for provenance and reproducibility but is no longer the supported security line.
+
+That release kept stale graph evidence fail-closed for graph/impact claims while distinguishing expected current-session source-only drift from unexplained or structural drift. It did not relabel stale graph evidence healthy and did not auto-run `cmi scan` merely to produce Closing `CLEAN`.
 
 For installation and source downloads, new users should use the latest supported release:
 
 https://github.com/lenhonbp/codex-memory-intelligence/releases/latest
 
-Historical releases remain available for provenance and reproducibility but are not the currently supported security line. See [Release & Version Policy](RELEASE_POLICY.md) and [Security](../SECURITY.md).
-
-### Public release summary
-
-| Field | Value |
-|---|---|
-| Public release | `v0.11.1` |
-| npm package | `codex-memory-intelligence@0.11.1` |
-| npm dist-tag | `latest` |
-| Release commit/tag target | `a2902d3af0bdc8ddc49e66fd7c6607737421dcc7` |
-| Publish workflow | run `#10` / Actions run `31498781325` — success |
-| Post-merge main CI | run `#769` / Actions run `31498515892` — success |
-| Post-merge CodeQL | run `#244` / Actions run `31498515880` — success |
-| Temporary `release/v0.11.1` branch | removed by successful publish workflow |
-| GitHub Release | [CMI v0.11.1](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.11.1) |
-| Public-source license | PolyForm Perimeter License 1.0.1 |
-
-The authorized publish workflow verified release metadata, the repository test suite, benchmark smoke, packed installation, npm publication, registry visibility, GitHub Release creation, and temporary release-branch cleanup.
-
-### Release scope
-
-`v0.11.1` is a licensing/provenance maintenance release over the feature-complete `v0.11.0` product line. It carries the current public-source licensing and project-identity package:
-
-- PolyForm Perimeter License 1.0.1 for post-cutover source;
-- `LICENSING.md` documenting the current source-available/commercial-license model;
-- `NOTICE` and `BRAND_POLICY.md` for official-project provenance and identity boundaries;
-- contribution guidance for material code contributions;
-- a structured real-repository field-feedback entry point;
-- no new product-behavior capability claim beyond the previously published product line.
-
-`v0.11.0` and earlier public releases remain under the MIT terms shipped with those exact versions. This release does not retroactively revoke previously granted rights.
+See [Release & Version Policy](RELEASE_POLICY.md), [Security](../SECURITY.md), and [Changelog](../CHANGELOG.md) for current support and version history.
 
 ## Product capability status
 
 The current CMI product line includes:
 
-- Codex/generic CMI activation integration;
+- local-first project memory and generated project intelligence;
+- dependency/impact/boundary advisory intelligence;
+- Change Intelligence BEFORE → DURING → AFTER records;
+- Session Continuation Intelligence and persistent findings;
+- preservation of intentionally incomplete active Changes across session closure;
+- Codex/generic activation integration;
 - Ambient Agent Intelligence;
 - Closing Intelligence;
-- Session/Change continuation improvements, including preservation of intentionally incomplete active Changes;
-- the lifecycle rule that session completion does not imply Change completion;
+- Evidence-Anchored Rule Intelligence;
 - all eight planned Agent Skill open-format adapters;
-- npm shipment of those eight Skill artifacts under `skills/`;
+- npm shipment of those Skill artifacts under `skills/`;
 - MCP integration with durable project writes disabled by default;
-- no npm auto-activation or automatic runtime Skill installation;
-- `cmi activate` does not install Skills;
-- no CMI-native Skill loader.
+- no npm auto-activation, automatic runtime Skill installation, or CMI-native Skill loader.
 
 ## Field evidence boundary
 
-The latest maintenance behavior evidence is the bounded Project 001 graph-drift field regression shipped in `v0.11.2`. The formal agent-neutral Grok F0–F7 acceptance protocol remains the historical `v0.11.0` subject and is preserved separately rather than being rewritten by this maintenance fix.
+v0.12.0 adds bounded source-provenance and verification-state behavior with repository tests, hosted CI/CodeQL, package smoke, benchmark smoke, and release-pipeline evidence. It does **not** replace historical agent field protocols or convert them into broader claims.
 
-A final agent-neutral F0–F7 field protocol was run against the public `codex-memory-intelligence@0.11.0` subject using Grok runtime surfaces available in the observed environment.
+The final agent-neutral Grok F0–F7 field protocol remains the historical `v0.11.0` subject:
 
 | Scenario | Result | Summary |
 |---|---|---|
@@ -110,55 +91,37 @@ A final agent-neutral F0–F7 field protocol was run against the public `codex-m
 | F6 | **PASS** | More than three eligible signals were bounded to three alerts without burying material P0/P1 evidence. |
 | F7 | **PASS** | Fresh run with only `Làm tiếp` used durable handoff/current evidence and did not promote unreviewed inference. |
 
-Canonical result:
+Canonical historical field result:
 
 ```text
 FINAL_GROK_FIELD_ACCEPTANCE = PASS
 CMI_GROK_FIELD_VALIDATED = YES
 CMI_PRODUCT_DEFECTS_FROM_GROK_ACCEPTANCE = 0
-PATCH_RELEASE_REQUIRED = NO
 ```
 
-Repository evidence summary: [Grok v0.11.0 Final Field Acceptance](field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
+Repository evidence: [Grok v0.11.0 Final Field Acceptance](field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
 
-The run used `cmi activate` for managed `AGENTS.md`, explicit Skill placement under the Grok runtime, and project MCP configuration. This does not establish npm auto-activation, Skill installation by `cmi activate`, a native Grok Skill loader, or a universal Grok integration path.
+The final Codex S0–S7 matrix on the historical pre-release subject was not executed because the available runtime was capacity-blocked before S0. That remains an external runtime limitation, not a CMI PASS or FAIL.
 
-No CMI product defect was established by that bounded field run.
-
-## Governance / field evidence
+## Governance / current state
 
 | Item | State |
 |---|---|
-| Current supported public release | **v0.11.2** |
-| Final Grok F0–F7 on public `v0.11.0` product subject | **PASS** |
+| Current supported public release | **v0.12.0** |
+| Evidence-Anchored Rule Intelligence | **PUBLIC** |
+| v0.12.0 publish pipeline | **PASS** |
+| Final Grok F0–F7 on public `v0.11.0` subject | **PASS** |
 | CMI Grok field validated | **YES** |
-| Mission 1.8B final Codex S0–S7 on final pre-release subject | **NOT EXECUTED — runtime blocked before S0** |
-| CMI field blockers from final Grok acceptance | `0` |
-| CMI field majors from final Grok acceptance | `0` |
-| CMI field minors from final Grok acceptance | `0` |
-
-The final Codex S0–S7 matrix was **not executed** on `c05098fa82ddf85a4443e3769801baf78e12c200`. The available ChatGPT-auth Codex runtime was capacity-blocked and the operator environment had no API key for fallback. This remains an external runtime limitation; it is not recorded as a CMI field PASS or FAIL for those final scenarios.
-
-The successful Grok F0–F7 run is a separate bounded field result. It must not be used to rewrite the historical Codex result.
-
-## Evidence limits
-
-- Grok F0–F7 PASS does not imply universal agent validation.
-- No claim that final Codex S0–S7 field acceptance passed.
-- No productivity-improvement or time-savings claim.
-- Static parsing, impact, and boundary inference remain heuristic/advisory rather than compiler-grade.
-- Agent clients may ignore project instructions or MCP guidance.
-- Package shipment does not prove runtime Skill discovery or automatic Skill selection.
-- No universal Codex/Grok Skill installation path is claimed.
-- This release is not a v1-readiness claim.
-- Unreviewed inference is not automatically promoted into durable project truth.
+| Historical final Codex S0–S7 | **NOT EXECUTED — runtime blocked before S0** |
 
 ## Maintenance mode
 
+The v0.12.0 feature was a separately authorized evidence-quality improvement after the earlier planned feature program had completed. With publication complete, CMI returns to maintenance mode unless another genuine release, security, compatibility, field-defect, or separately authorized product need is established.
+
 ```text
 CMI_FEATURE_DEVELOPMENT = COMPLETE
-CMI_PUBLIC_RELEASE = v0.11.2
-CMI_SUPPORTED_RELEASE = v0.11.2
+CMI_PUBLIC_RELEASE = v0.12.0
+CMI_SUPPORTED_RELEASE = v0.12.0
 CMI_MODE = MAINTENANCE
 PLANNED_SKILLS = 8/8
 OPEN_PLANNED_PRODUCT_FEATURES = 0
@@ -169,10 +132,6 @@ CODEX_S0_S7 = NOT_EXECUTED_RUNTIME_BLOCKED
 NEXT_CMI_MISSION = NONE
 ```
 
-No additional feature Mission should be invented unless a genuine release, security, compatibility, or maintenance need is separately established. Future work is maintenance, security, bug remediation, or separately authorized research.
-
 ## Historical release policy
 
-Historical tags and releases are retained for provenance, reproducibility, and exact license history. They are not recommended for new installations and are not represented as containing all current fixes or security hardening.
-
-Use [Release & Version Policy](RELEASE_POLICY.md), [Security](../SECURITY.md), and [Changelog](../CHANGELOG.md) for current support and version-history guidance.
+Historical tags and releases are retained for provenance, reproducibility, exact licensing history, and regression evidence. They are not recommended for new installations and are not represented as containing all current fixes or security hardening.
