@@ -146,7 +146,7 @@ test('v1 human evidence-address labels remain stable and absent evidence is not 
   assert.doesNotMatch(minimalRendered, /\bchange [0-9a-f-]{8,}\b/i);
 });
 
-test('v1 validators tolerate additive fields but reject destructive changes to required durable identity', () => {
+test('v1 public shape is stricter than generic durable recommendation validation while permitting additive fields', () => {
   const finding = exampleFinding();
   assert.equal(validateFindingContract(finding).valid, true);
   assert.equal(validateFindingContract({ ...finding, additiveFutureField: { safe: true } }).valid, true);
@@ -159,11 +159,19 @@ test('v1 validators tolerate additive fields but reject destructive changes to r
   const recommendation = exampleRecommendation(finding.id);
   assert.equal(validateRecommendationContract(recommendation).valid, true);
   assert.equal(validateRecommendationContract({ ...recommendation, additiveFutureField: true }).valid, true);
-  for (const field of contract.recommendation.requiredFields) {
+  for (const field of contract.recommendation.requiredFields.filter((item) => item !== 'relatedFindingIds')) {
     const altered = structuredClone(recommendation);
     delete altered[field];
     assert.equal(validateRecommendationContract(altered).valid, false, `Removing recommendation.${field} must be rejected`);
   }
+
+  const unlinked = structuredClone(recommendation);
+  delete unlinked.relatedFindingIds;
+  assert.equal(validateRecommendationContract(unlinked).valid, true);
+  assert.throws(
+    () => assertFields(unlinked, contract.recommendation.requiredFields, 'Versioned public Recommendation'),
+    /relatedFindingIds/,
+  );
 });
 
 test('released pre-v1 durable handoff remains readable without rewrite while unsupported durable schema still fails closed', async () => {
