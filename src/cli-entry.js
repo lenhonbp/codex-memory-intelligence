@@ -40,16 +40,21 @@ const NUMERIC_FLAG_MINIMUMS = new Map([
   ['--stress-passed', 0],
   ['--stress-failed', 0],
 ]);
+function failNumericPreflight(message) {
+  if (args.includes('--json')) console.error(JSON.stringify({ ok: false, error: { code: 'CMI_CLI_ERROR', message } }));
+  else console.error(`CMI error: ${message}`);
+  process.exit(1);
+}
 function validateNumericFlags(values) {
   for (let index = 0; index < values.length; index += 1) {
     const flag = values[index];
     if (!NUMERIC_FLAG_MINIMUMS.has(flag)) continue;
     const next = values[index + 1];
-    if (!next || next.startsWith('--')) throw new Error(`${flag} requires a value.`);
+    if (!next || next.startsWith('--')) failNumericPreflight(`${flag} requires a value.`);
     const parsed = Number(next);
-    if (!Number.isInteger(parsed) || !Number.isFinite(parsed)) throw new Error(`${flag} requires an integer value.`);
+    if (!Number.isInteger(parsed) || !Number.isFinite(parsed)) failNumericPreflight(`${flag} requires an integer value.`);
     const minimum = NUMERIC_FLAG_MINIMUMS.get(flag);
-    if (parsed < minimum) throw new Error(`${flag} must be at least ${minimum}.`);
+    if (parsed < minimum) failNumericPreflight(`${flag} must be at least ${minimum}.`);
   }
 }
 validateNumericFlags(args);
