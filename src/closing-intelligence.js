@@ -49,7 +49,21 @@ function recommendedActionForFinding(finding, relatedChangeIds) {
   if (finding.category === 'unexpected-impact') return `Review the unexpected impact${changeText}${files.length ? ` around: ${fileText}` : ''} and persist a durable lesson only when the evidence is verified.`;
   return null;
 }
-function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds, currentFindingIds) {
+function linkedSessionActions(session) {
+  const actions = [
+    ...(session.close?.handoff?.nextActions || []),
+    ...(session.close?.recommendations || []),
+  ];
+  const byFinding = new Map();
+  for (const action of actions) {
+    if (!action?.action) continue;
+    for (const findingId of action.relatedFindingIds || []) {
+      if (!byFinding.has(findingId)) byFinding.set(findingId, action.action);
+    }
+  }
+  return byFinding;
+}
+function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds, currentFindingIds, sessionActionsByFinding) {
   const relatedChangeIds = changeIdsFromFinding(finding);
   const active = relatedChangeIds.map((id) => activeById.get(id)).find(Boolean);
   const activeChangeId = relatedChangeIds.find((id) => activeById.has(id)) || null;
@@ -81,7 +95,7 @@ function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds
     occurrences: finding.occurrences || 1,
     findingState: finding.state,
     scopeRelation,
-    recommendedAction: recommendedActionForFinding(finding, relatedChangeIds),
+    recommendedAction: sessionActionsByFinding.get(finding.id) || recommendedActionForFinding(finding, relatedChangeIds),
     violationEstablished: verificationState === 'established',
   };
 }
@@ -240,8 +254,9 @@ export async function buildClosingIntelligence(root, selector = 'latest') {
   const relatedActiveIds = new Set((session.close?.handoff?.activeChanges || []).filter((item) => item.relation !== 'sole-active-continuation').map((item) => item.id));
   const concurrentActiveIds = new Set((session.close?.handoff?.concurrentChanges?.active || []).map((item) => item.id));
   const currentFindingIds = new Set((session.close?.findings || []).map((item) => item.id).filter(Boolean));
+  const sessionActionsByFinding = linkedSessionActions(session);
   const projectFindings = allFindings.findings.filter((item) => ['open', 'accepted'].includes(item.state));
-  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById, relatedActiveIds, concurrentActiveIds, currentFindingIds));
+  const findingAlerts = projectFindings.map((item) => findingAlert(item, activeById, relatedActiveIds, concurrentActiveIds, currentFindingIds, sessionActionsByFinding));
   const representedChanges = new Set(findingAlerts.flatMap((item) => item.relatedChangeIds || []));
   const carryover = activeChanges.records.filter((item) => !representedChanges.has(item.id)).map(activeChangeAlert);
   const candidates = sortAlerts(dedupeAlerts([...findingAlerts, ...carryover, ...consistency]));
