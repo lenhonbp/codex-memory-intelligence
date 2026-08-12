@@ -80,20 +80,10 @@ async function initialize(server) {
   return response;
 }
 
-async function stopMcp(server) {
+function stopMcp(server) {
   if (server.child.exitCode !== null || server.child.signalCode !== null) return;
-  await new Promise((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(() => { server.child.kill(); finish(); }, 1500);
-    server.child.once('close', finish);
-    server.child.stdin.end();
-  });
+  server.child.stdin.end();
+  server.child.kill();
 }
 
 async function exists(target) {
@@ -127,24 +117,26 @@ test('MCP session adapter fails closed before initialization and on hidden read-
   await scanProject(root);
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const server = startMcp(root);
-  t.after(() => stopMcp(server));
+  try {
+    server.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_work_session_report', arguments: {} } });
+    const beforeInit = await server.waitFor((message) => message.id === 2);
+    assert.equal(beforeInit.result.isError, true);
+    assert.match(beforeInit.result.content[0].text, /not initialized/i);
 
-  server.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_work_session_report', arguments: {} } });
-  const beforeInit = await server.waitFor((message) => message.id === 2);
-  assert.equal(beforeInit.result.isError, true);
-  assert.match(beforeInit.result.content[0].text, /not initialized/i);
+    const init = await initialize(server);
+    assert.ok(init.result.protocolVersion);
 
-  const init = await initialize(server);
-  assert.ok(init.result.protocolVersion);
+    server.send({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} });
+    const tools = (await server.waitFor((message) => message.id === 3)).result.tools;
+    assert.ok(!tools.some((tool) => tool.name === 'start_work_session'));
 
-  server.send({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} });
-  const tools = (await server.waitFor((message) => message.id === 3)).result.tools;
-  assert.ok(!tools.some((tool) => tool.name === 'start_work_session'));
-
-  server.send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'start_work_session', arguments: { goal: 'must stay read only' } } });
-  const hiddenWrite = await server.waitFor((message) => message.id === 4);
-  assert.equal(hiddenWrite.result.isError, true);
-  assert.match(hiddenWrite.result.content[0].text, /writes are disabled/i);
+    server.send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'start_work_session', arguments: { goal: 'must stay read only' } } });
+    const hiddenWrite = await server.waitFor((message) => message.id === 4);
+    assert.equal(hiddenWrite.result.isError, true);
+    assert.match(hiddenWrite.result.content[0].text, /writes are disabled/i);
+  } finally {
+    stopMcp(server);
+  }
 });
 
 test('portable manifest identity corruption is rejected before artifact trust is claimed', async (t) => {
