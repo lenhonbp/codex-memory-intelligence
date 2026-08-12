@@ -137,7 +137,7 @@ This release candidate contains the reviewed Phase 1–3 work after `v0.9.2`. It
 ### Changed
 
 - Repository-baseline summaries now omit only untracked local `.codex-memory/` state; tracked, staged, renamed, and ordinary project changes remain visible.
-- Portable evidence now binds the bounded scan, ignore, resolver, workspace, and scan inputs needed to reproduce source boundaries after relocation.
+- Portable evidence now binds the bounded scan, ignore, resolver, and workspace inputs needed to reproduce source boundaries after relocation.
 - Durable compatibility is read-only/no-rewrite for the audited historical floor; generated state may be rebuilt only when its format is obsolete and supported, while unsupported state remains blocked.
 - The release candidate keeps MCP mutation tools hidden or rejected by default; explicit write mode is required for portable-evidence and durable mutations.
 
