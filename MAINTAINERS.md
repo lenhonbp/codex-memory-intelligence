@@ -1,5 +1,5 @@
 # Maintainers
 
-- **Nhơn Lê** — project owner and lead maintainer — [@lenhonbp](https://github.com/lenhonbp)
+- **Nhơn Lê** — project owner, primary maintainer, and lead maintainer — [@lenhonbp](https://github.com/lenhonbp)
 
-Maintainers are responsible for release approval, security coordination, compatibility decisions, and community moderation.
+The primary maintainer is responsible for release approval, security coordination, compatibility decisions, and community moderation.
