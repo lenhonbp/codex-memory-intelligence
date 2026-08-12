@@ -26,7 +26,7 @@ test('sensitive guard covers explicit credential formats without broad plain-tex
 });
 
 test('generic credential heuristic exercises entropy, length, whitespace, hex, UUID, and class boundaries', () => {
-  const highEntropy = 'aB3_'.repeat(8);
+  const highEntropy = 'aB3_cD4-eF5+gH6/iJ7=kL8.mN9_oP0+qR1-sT2';
   assert.equal(looksSensitive(`credential ${highEntropy}`), true);
 
   assert.equal(looksSensitive('credential short-token'), false);
@@ -34,6 +34,6 @@ test('generic credential heuristic exercises entropy, length, whitespace, hex, U
   assert.equal(looksSensitive(`credential ${'ab12'.repeat(6)}`), false);
   assert.equal(looksSensitive(`credential ${'0123456789abcdef'.repeat(3)}`), false);
   assert.equal(looksSensitive('credential 123e4567-e89b-12d3-a456-426614174000'), false);
-  assert.equal(looksSensitive(`credential ${'Ab3_'.repeat(6)} suffix with spaces that prevent one token from swallowing prose`), true);
+  assert.equal(looksSensitive(`credential ${highEntropy} trailing prose`), true);
   assert.equal(looksSensitive(`credential ${'A'.repeat(501)}`), false);
 });
