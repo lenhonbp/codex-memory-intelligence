@@ -44,7 +44,8 @@ Prefer MCP when available.
 
 1. Call `get_closing_intelligence` for latest closed session, or with an explicit session id/prefix when the user supplies one.
 2. Present alerts and next-action fields **exactly as returned** (severity/order preserved).
-3. Show `CLEAN` **only** when the authoritative Closing Intelligence result for a real closed session indicates no material alerts per CMI’s own result.
+3. Preserve actionability fields when present: runtime version, `findingId`, `relatedChangeIds`, `relatedFiles`, `scopeRelation`, evidence anchors, and per-alert recommended action. Do not replace concrete paths with only a count such as “2 paths” or “10 files”.
+4. Show `CLEAN` **only** when the authoritative Closing Intelligence result for a real closed session indicates no material alerts per CMI’s own result.
 
 If no closed session exists or Closing Intelligence is unavailable, report clearly (for example `CLOSING_INTELLIGENCE_NOT_AVAILABLE`). Do **not** synthesize CLEAN.
 
@@ -208,6 +209,20 @@ Preserve:
 
 Do not promote proposals into durable truth. Closing Intelligence is a read model and never creates durable truth by itself.
 
+### 11.1 Field actionability fidelity
+
+When the returned Closing result includes concrete diagnostic context, preserve it instead of summarizing it away:
+
+- surface the returned CMI runtime version so field reports can identify which release produced the behavior;
+- list returned `relatedFiles` paths (respecting CMI's own bounded output) rather than saying only “N paths escaped scope”;
+- preserve Finding and Change identifiers so a historical alert can be traced back to its durable record;
+- preserve `scopeRelation` such as `current-session` versus `historical-project`;
+- preserve evidence anchors and per-alert recommended actions when returned;
+- never rewrite a historical-project alert as if it were newly produced by the session being reviewed;
+- never upgrade a P3 historical follow-up back into a P1 current blocker in prose.
+
+If the CMI result itself lacks a concrete path or record reference, state that limitation; do not invent a location.
+
 ## 12. Failure behavior
 
 | Condition | Required behavior |
@@ -239,6 +254,7 @@ Never fabricate CLEAN, blockers, verification results, or durable writes from a 
 - Keep user intent in control for prioritization.
 - Do **not** treat this Skill’s output as a newly closed session.
 - Do **not** append a fabricated `### CMI Intelligence` / CLEAN section without a real Closing result that supports it.
+- Do **not** collapse concrete file paths, record IDs, runtime version, or current/historical scope into vague prose when those fields are returned.
 
 ## 15. Relationship to other Skills
 

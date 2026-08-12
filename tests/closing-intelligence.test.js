@@ -120,14 +120,14 @@ test('reviewed UI rule is surfaced as applicability evidence without inventing a
   assert.match(rule.detail, /has not established a violation/i);
 });
 
-test('clean closing emits a single branded CLEAN line', async () => {
+test('clean closing exposes runtime version and branded CLEAN state', async () => {
   const root = await fixture();
   const session = await startSession(root, 'read current feature names');
   await closeSession(root, session.id, { outcome: 'investigated', notes: ['Read-only inspection completed.'] });
   const closing = await buildClosingIntelligence(root, session.id);
   assert.equal(closing.state, 'clean');
   assert.deepEqual(closing.alerts, []);
-  assert.match(formatClosingIntelligence(closing), /^### CMI Intelligence\n✓ CLEAN/m);
+  assert.match(formatClosingIntelligence(closing), /^### CMI Intelligence\nRuntime: codex-memory-intelligence v\d+\.\d+\.\d+\n✓ CLEAN/m);
 });
 
 test('closing intelligence shows at most three highest-priority alerts', async () => {
