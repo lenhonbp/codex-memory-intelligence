@@ -188,6 +188,18 @@ Do not invent other outcomes. If outcome is omitted, allow core to derive a cons
 
 `finalize_work_session` returns the closed session plus authoritative `closingIntelligence` when available. Surface Closing Intelligence faithfully; preserve alert order/severity; do not recompute.
 
+When `closingIntelligence` returns field-actionability context, preserve it in the final report instead of compressing it away:
+
+- runtime name/version;
+- concrete `relatedFiles` paths;
+- `findingId` and `relatedChangeIds`;
+- `scopeRelation` (`current-session` versus `historical-project`);
+- evidence anchors;
+- per-alert `recommendedAction`;
+- the returned Closing `nextAction` priority without upgrading a P3 historical follow-up into a P1 blocker in prose.
+
+If CMI returns a bounded list of concrete paths, do not summarize it only as “N paths escaped scope”. Show the returned paths and preserve any `+N more` indication produced by CMI.
+
 **CLI** (MCP unavailable only):
 
 ```bash
@@ -237,8 +249,11 @@ Preserve:
 - inference ≠ reviewed durable knowledge
 - reported verification ≠ independently executed verification
 - historical handoff ≠ automatic current truth for Changes
+- historical-project alert ≠ newly produced current-session alert
 
-Do not fabricate accomplishments, blockers, CLEAN, or Closing alerts.
+Do not fabricate accomplishments, blockers, CLEAN, Closing alerts, file locations, or record identifiers.
+
+When CMI supplies concrete evidence addresses, keep them visible. The user should be able to answer “where is the issue, which durable record produced it, and what should I inspect next?” from the surfaced Closing result without guessing.
 
 ## 11. Failure behavior
 
@@ -259,6 +274,7 @@ Do not fabricate accomplishments, blockers, CLEAN, or Closing alerts.
 - Use registry `npx` fallback
 - Claim npm install delivers Skills or validates runtime discovery
 - Implement a Skill loader or alter activation managed files
+- Collapse returned runtime/file/record/scope evidence into vague counts when concrete values are available
 
 ## 13. Relationship to other Skills
 
