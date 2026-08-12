@@ -30,6 +30,18 @@ jobs:
       - run: npm run verify
       - run: npm run package:smoke
 
+  coverage:
+    name: Coverage baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm run test:coverage
+
   intelligence-smoke:
     name: Incremental intelligence and release metadata
     runs-on: ubuntu-latest
