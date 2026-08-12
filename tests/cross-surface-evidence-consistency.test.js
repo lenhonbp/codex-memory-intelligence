@@ -152,7 +152,8 @@ test('one prediction-gap finding preserves identity, evidence address, provenanc
     assert.ok(text.includes(`finding ${finding.id}`), text);
     assert.ok(text.includes(`change ${change.id}`), text);
     assert.ok(text.includes('src/cache/profile.js'), text);
-    assert.ok(text.includes(`Source: ${formattedAnchor}`), text);
+    const sourceLine = text.split(/\r?\n/).find((line) => line.trimStart().startsWith('Source:') && line.includes(formattedAnchor));
+    assert.ok(sourceLine, text);
     assert.ok(text.includes(`Evidence: ${finding.evidenceType} · confidence ${finding.confidence} · ${verificationState}`), text);
     assert.ok(text.includes(`Action: ${action.action}`), text);
   };
