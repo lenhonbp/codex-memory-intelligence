@@ -1,13 +1,27 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { slash } from './paths.js';
+import { resolveProjectFile, slash } from './paths.js';
+
+function safeRelative(value) {
+  const raw = slash(String(value ?? '')).trim().replace(/^\.\//, '').replace(/\/+$/, '');
+  if (!raw || raw.startsWith('/') || /^[A-Za-z]:\//.test(raw)) return null;
+  const parts = raw.split('/').filter(Boolean);
+  if (!parts.length || parts.some((part) => part === '..')) return null;
+  return parts.join('/');
+}
 
 async function readText(root, relative) {
-  try { return await fs.readFile(path.join(root, relative), 'utf8'); } catch { return null; }
+  const safe = safeRelative(relative);
+  if (!safe) return null;
+  const resolved = await resolveProjectFile(root, safe);
+  if (!resolved.ok) return null;
+  try { return await fs.readFile(resolved.absolute, 'utf8'); } catch { return null; }
 }
 
 async function readJson(root, relative) {
-  try { return JSON.parse(await fs.readFile(path.join(root, relative), 'utf8')); } catch { return null; }
+  const text = await readText(root, relative);
+  if (text === null) return null;
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 function normalize(value) {
@@ -36,6 +50,7 @@ function expandPatterns(patterns, candidateDirectories) {
     if (!text) continue;
     const negated = text.startsWith('!');
     const pattern = negated ? text.slice(1) : text;
+    if (!safeRelative(pattern)) continue;
     const regex = patternRegex(pattern);
     for (const candidate of candidateDirectories) {
       if (!regex.test(candidate)) continue;
@@ -86,7 +101,7 @@ function uniqueWorkspaces(items) {
 }
 
 export async function detectWorkspaces(root, fileRecords = []) {
-  const filePaths = new Set(fileRecords.map((file) => file.path));
+  const filePaths = new Set(fileRecords.map((file) => safeRelative(file.path)).filter(Boolean));
   const packageManifests = [...filePaths].filter((value) => value === 'package.json' || value.endsWith('/package.json'));
   const packageDirectories = packageManifests.filter((value) => value !== 'package.json').map((value) => path.posix.dirname(value));
   const items = [];
@@ -94,13 +109,14 @@ export async function detectWorkspaces(root, fileRecords = []) {
   const rootPackage = filePaths.has('package.json') ? await readJson(root, 'package.json') : null;
   if (rootPackage) items.push({ name: rootPackage.name || path.basename(root), path: '.', ecosystem: 'node', manifest: 'package.json', private: Boolean(rootPackage.private), root: true });
   let npmPatterns = [];
-  if (Array.isArray(rootPackage?.workspaces)) npmPatterns = rootPackage.workspaces;
-  else if (Array.isArray(rootPackage?.workspaces?.packages)) npmPatterns = rootPackage.workspaces.packages;
+  if (Array.isArray(rootPackage?.workspaces)) npmPatterns = [...rootPackage.workspaces];
+  else if (Array.isArray(rootPackage?.workspaces?.packages)) npmPatterns = [...rootPackage.workspaces.packages];
   if (filePaths.has('pnpm-workspace.yaml')) npmPatterns.push(...yamlWorkspacePatterns(await readText(root, 'pnpm-workspace.yaml')));
   for (const directory of expandPatterns(npmPatterns, packageDirectories)) {
     const manifest = `${directory}/package.json`;
     const data = await readJson(root, manifest);
-    items.push({ name: data?.name || path.posix.basename(directory), path: directory, ecosystem: 'node', manifest, private: Boolean(data?.private) });
+    if (!data) continue;
+    items.push({ name: data.name || path.posix.basename(directory), path: directory, ecosystem: 'node', manifest, private: Boolean(data.private) });
   }
 
   if (filePaths.has('Cargo.toml')) {
@@ -113,7 +129,9 @@ export async function detectWorkspaces(root, fileRecords = []) {
 
   if (filePaths.has('go.work')) {
     for (const member of goWorkMembers(await readText(root, 'go.work'))) {
-      const directory = normalize(member);
+      const safeMember = safeRelative(member);
+      if (!safeMember) continue;
+      const directory = normalize(safeMember);
       if (filePaths.has(`${directory}/go.mod`)) items.push({ name: path.posix.basename(directory), path: directory, ecosystem: 'go', manifest: `${directory}/go.mod` });
     }
   } else if (filePaths.has('go.mod')) items.push({ name: path.basename(root), path: '.', ecosystem: 'go', manifest: 'go.mod', root: true });
