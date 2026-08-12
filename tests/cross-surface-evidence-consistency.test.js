@@ -103,9 +103,14 @@ async function initializeMcp(server) {
   server.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
 }
 
-function stopMcp(server) {
+async function stopMcp(server) {
+  if (server.child.exitCode !== null) return;
+  const exited = new Promise((resolve, reject) => {
+    server.child.once('exit', resolve);
+    server.child.once('error', reject);
+  });
   server.child.stdin.end();
-  server.child.kill();
+  await exited;
 }
 
 function assertFindingIdentity(actual, expected) {
@@ -210,6 +215,6 @@ test('one prediction-gap finding preserves identity, evidence address, provenanc
     const resourceAction = resourceHandoff.nextActions.find((item) => (item.relatedFindingIds || []).includes(finding.id));
     assert.equal(resourceAction.action, action.action);
   } finally {
-    stopMcp(server);
+    await stopMcp(server);
   }
 });
