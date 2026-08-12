@@ -10,13 +10,14 @@ import {
   listFindings,
   getFinding,
   setFindingState,
-  formatSessionReport,
-  formatSessionAssessment,
-  formatHandoff,
   formatFindingList,
 } from './session-intelligence.js';
 import { buildClosingIntelligence, formatClosingIntelligence } from './closing-intelligence.js';
-import { extractEvidenceAnchors, formatEvidenceAnchor, verificationStateForFinding } from './evidence-anchors.js';
+import {
+  formatSessionRecordWithEvidence,
+  formatSessionAssessmentWithEvidence,
+  formatSessionHandoffWithEvidence,
+} from './session-evidence-view.js';
 import {
   captureEvaluation,
   getEvaluation,
@@ -191,56 +192,6 @@ function emitError(error) {
   if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error?.message || String(error), ...(error?.details === undefined ? {} : { details: error.details }) } }));
   else console.error(`CMI error: ${error?.message || String(error)}`);
 }
-function relatedChangeIds(finding) {
-  const ids = [];
-  for (const evidence of finding?.evidence || []) {
-    const match = String(evidence).match(/^change:([0-9a-f-]+)$/i);
-    if (match) ids.push(match[1]);
-  }
-  if (finding?.category === 'active-change') {
-    const target = String(finding.key || '').replace(/^active-change:/, '');
-    if (/^[0-9a-f-]{8,}$/i.test(target)) ids.push(target);
-  }
-  return [...new Set(ids)];
-}
-function evidenceAction(finding, actions) {
-  return (actions || []).find((item) => (item.relatedFindingIds || []).includes(finding.id))?.action || null;
-}
-function formatEvidenceAddresses(findings, actions = []) {
-  const all = (findings || []).filter(Boolean);
-  if (!all.length) return '';
-  const shown = all.slice(0, 12);
-  const rows = shown.map((finding) => {
-    const records = [finding.id ? `finding ${finding.id}` : null, ...relatedChangeIds(finding).map((id) => `change ${id}`)].filter(Boolean);
-    const files = (finding.relatedFiles || []).slice(0, 8);
-    const anchors = extractEvidenceAnchors(finding).slice(0, 4).map(formatEvidenceAnchor).filter(Boolean);
-    const action = evidenceAction(finding, actions);
-    const lines = [`- [${finding.severity || 'info'}] ${finding.title || finding.category || 'Finding'}`];
-    if (records.length) lines.push(`  Record: ${records.join(' · ')}`);
-    if (files.length) lines.push(`  Files: ${files.join(', ')}${(finding.relatedFiles || []).length > files.length ? ` (+${finding.relatedFiles.length - files.length} more)` : ''}`);
-    if (anchors.length) lines.push(`  Source: ${anchors.join('; ')}`);
-    lines.push(`  Evidence: ${finding.evidenceType || 'inferred'} · confidence ${finding.confidence || 'low'} · ${verificationStateForFinding(finding)}`);
-    if (action) lines.push(`  Action: ${action}`);
-    return lines.join('\n');
-  });
-  if (all.length > shown.length) rows.push(`- ${all.length - shown.length} more finding(s) omitted from the bounded human view; use --json for the full evidence inventory.`);
-  return rows.join('\n');
-}
-function withEvidenceAddresses(text, findings, actions = []) {
-  const addresses = formatEvidenceAddresses(findings, actions);
-  return addresses ? `${text}\n\n## Evidence addresses\n${addresses}` : text;
-}
-function formatRecordWithEvidence(record) {
-  if (record.status !== 'closed') return formatSessionReport(record);
-  const findings = record.close?.openFindings || record.close?.findings || [];
-  return withEvidenceAddresses(formatSessionReport(record), findings, record.close?.recommendations || []);
-}
-function formatAssessmentWithEvidence(result) {
-  return withEvidenceAddresses(formatSessionAssessment(result), result.findings || [], result.recommendations || []);
-}
-function formatHandoffWithEvidence(handoff) {
-  return withEvidenceAddresses(formatHandoff(handoff), handoff.openFindings || [], handoff.nextActions || []);
-}
 
 try {
   validateFlags();
@@ -260,27 +211,27 @@ try {
       print(record, `Observed session ${record.id.slice(0, 8)} · ${record.observations.length} observation(s) recorded.`);
     } else if (action === 'status') {
       const result = await assessSession(process.cwd(), values[0] || 'latest');
-      print(result, formatAssessmentWithEvidence(result));
+      print(result, formatSessionAssessmentWithEvidence(result));
     } else if (action === 'close') {
       const record = await closeSession(process.cwd(), values[0] || 'latest', sessionOptions());
-      if (json) print(record, formatRecordWithEvidence(record));
+      if (json) print(record, formatSessionRecordWithEvidence(record));
       else {
         const closing = await buildClosingIntelligence(process.cwd(), record.id);
-        console.log(`${formatRecordWithEvidence(record)}\n\n${formatClosingIntelligence(closing)}`);
+        console.log(`${formatSessionRecordWithEvidence(record)}\n\n${formatClosingIntelligence(closing)}`);
       }
     } else if (action === 'closing') {
       const closing = await buildClosingIntelligence(process.cwd(), values[0] || 'latest');
       print(closing, formatClosingIntelligence(closing));
     } else if (action === 'show') {
       const record = await getSession(process.cwd(), values[0] || 'latest');
-      print(record, formatRecordWithEvidence(record));
+      print(record, formatSessionRecordWithEvidence(record));
     } else if (action === 'list') {
       const result = await listSessions(process.cwd(), { status: optionValues('--status')[0], limit: optionNumber('--limit', 20) });
       const text = result.records.length ? result.records.map((item) => `- ${item.id.slice(0, 8)} [${item.status}${item.outcome ? `/${item.outcome}` : ''}] ${item.goal}${item.nextAction ? `\n  Next: ${item.nextAction.priority} ${item.nextAction.action}` : ''}`).join('\n') : 'No CMI sessions found.';
       print(result, text);
     } else if (action === 'handoff') {
       const handoff = await getSessionHandoff(process.cwd(), values[0] || 'latest');
-      print(handoff, formatHandoffWithEvidence(handoff));
+      print(handoff, formatSessionHandoffWithEvidence(handoff));
     } else {
       throw new Error('Usage: cmi session <start|observe|status|close|closing|show|list|handoff> ...');
     }

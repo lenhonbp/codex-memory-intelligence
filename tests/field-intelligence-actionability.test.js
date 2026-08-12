@@ -46,7 +46,11 @@ test('Closing Intelligence exposes runtime version and actionable graph-drift lo
   await fs.writeFile(path.join(root, 'src', 'service.js'), 'export function service() { return false; }\n');
   await git(root, ['add', 'src/service.js']);
   await git(root, ['commit', '-m', 'Update service']);
-  await closeSession(root, session.id, { outcome: 'succeeded', files: ['src/service.js'] });
+  const closed = await closeSession(root, session.id, { outcome: 'succeeded', files: ['src/service.js'] });
+  const driftFinding = closed.close.handoff.openFindings.find((item) => item.category === 'graph-drift');
+  assert.ok(driftFinding);
+  const linkedAction = closed.close.handoff.nextActions.find((item) => (item.relatedFindingIds || []).includes(driftFinding.id));
+  assert.ok(linkedAction);
 
   const closing = await buildClosingIntelligence(root, session.id);
   assert.equal(closing.runtime.name, 'codex-memory-intelligence');
@@ -57,8 +61,8 @@ test('Closing Intelligence exposes runtime version and actionable graph-drift lo
   assert.equal(drift.scopeRelation, 'current-session');
   assert.deepEqual(drift.relatedFiles, ['src/service.js']);
   assert.ok(drift.evidenceAnchors.some((anchor) => anchor.path === 'src/service.js'));
+  assert.equal(drift.recommendedAction, linkedAction.action);
   assert.match(drift.recommendedAction, /cmi scan/i);
-  assert.match(drift.recommendedAction, /src\/service\.js/);
 
   const formatted = formatClosingIntelligence(closing);
   assert.match(formatted, new RegExp(`Runtime: codex-memory-intelligence v${VERSION.replaceAll('.', '\\.')}`));
@@ -82,10 +86,14 @@ test('prediction-gap Closing alert exposes the missed path and related Change re
     files: ['src/api/checkout.js', 'src/cache/profile.js'],
     verifications: [{ name: 'focused regression', status: 'passed' }],
   });
-  await closeSession(root, session.id, {
+  const closed = await closeSession(root, session.id, {
     outcome: 'succeeded',
     files: ['src/api/checkout.js', 'src/cache/profile.js'],
   });
+  const gapFinding = closed.close.handoff.openFindings.find((item) => item.category === 'prediction-gap' && item.evidence.includes(`change:${change.id}`));
+  assert.ok(gapFinding);
+  const linkedAction = closed.close.handoff.nextActions.find((item) => (item.relatedFindingIds || []).includes(gapFinding.id));
+  assert.ok(linkedAction);
 
   const closing = await buildClosingIntelligence(root, session.id);
   const gap = closing.alerts.find((item) => item.kind === 'prediction-gap');
@@ -93,6 +101,7 @@ test('prediction-gap Closing alert exposes the missed path and related Change re
   assert.equal(gap.scopeRelation, 'current-session');
   assert.ok(gap.relatedFiles.includes('src/cache/profile.js'));
   assert.ok(gap.relatedChangeIds.includes(change.id));
+  assert.equal(gap.recommendedAction, linkedAction.action);
   assert.match(gap.recommendedAction, /src\/cache\/profile\.js/);
 
   const formatted = formatClosingIntelligence(closing);
