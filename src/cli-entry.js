@@ -30,6 +30,29 @@ import {
 } from './evaluation.js';
 
 const [command, ...args] = process.argv.slice(2);
+const NUMERIC_FLAG_MINIMUMS = new Map([
+  ['--limit', 1],
+  ['--depth', 1],
+  ['--since-days', 1],
+  ['--false-positive-findings', 0],
+  ['--missed-findings', 0],
+  ['--stress-expected', 1],
+  ['--stress-passed', 0],
+  ['--stress-failed', 0],
+]);
+function validateNumericFlags(values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const flag = values[index];
+    if (!NUMERIC_FLAG_MINIMUMS.has(flag)) continue;
+    const next = values[index + 1];
+    if (!next || next.startsWith('--')) throw new Error(`${flag} requires a value.`);
+    const parsed = Number(next);
+    if (!Number.isInteger(parsed) || !Number.isFinite(parsed)) throw new Error(`${flag} requires an integer value.`);
+    const minimum = NUMERIC_FLAG_MINIMUMS.get(flag);
+    if (parsed < minimum) throw new Error(`${flag} must be at least ${minimum}.`);
+  }
+}
+validateNumericFlags(args);
 if (!['session', 'finding', 'evaluate'].includes(command)) {
   await import('./cli.js');
   process.exit();
@@ -149,8 +172,8 @@ function groupHelp(name) {
   return 'Usage: cmi evaluate <capture|review|list|show|report> ...\n       cmi evaluate <export|import> ...\n\nSource kinds: external-real | self-host | synthetic.\nCollect anonymized field evidence, explicit longitudinal human/agent judgments, and portable local bundles without mixing provenance classes.';
 }
 function emitError(error) {
-  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message } }));
-  else console.error(`CMI error: ${error.message}`);
+  if (json) console.error(JSON.stringify({ ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error?.message || String(error), ...(error?.details === undefined ? {} : { details: error.details }) } }));
+  else console.error(`CMI error: ${error?.message || String(error)}`);
 }
 
 try {
