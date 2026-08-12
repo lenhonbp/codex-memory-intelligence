@@ -36,6 +36,26 @@ The `suspected → observed → established` verification distinction remains pa
 
 Recommendations remain advisory. Contract compatibility must never be used as a reason to auto-execute project commands or auto-promote a candidate into durable truth.
 
+## Golden exchange corpus
+
+`tests/fixtures/evidence-contract/golden-exchange-v1.json` is the v1 consumer compatibility fixture. It is intentionally narrower than a full Session snapshot: the corpus records the protected exchange that a real consumer receives from CLI human output, MCP tool text/structured content, and the MCP Handoff resource.
+
+The producer scenario is deterministic, but Session/Change/Finding identities are generated at runtime. The golden gate may replace only those generated IDs with named tokens and normalize CRLF to LF. It must not normalize away evidence provenance, confidence, verification state, scope relation, file addresses, action text, or `violationEstablished`.
+
+Timestamps, temporary fixture paths, and other non-contract runtime metadata are excluded from the golden projection instead of being rewritten into fake stable values. This keeps the fixture strict about evidence semantics without making unrelated runtime metadata part of Evidence Contract v1.
+
+The first golden scenario is `prediction-gap`. It is replayed through:
+
+- CLI `session handoff`
+- CLI `session show`
+- CLI `session closing`
+- MCP `get_session_handoff`
+- MCP `get_work_session_report`
+- MCP `get_closing_intelligence`
+- MCP resource `cmi://project/session-handoff/latest`
+
+A consumer-visible change that cannot replay the existing v1 golden exchange is a compatibility change. If the change is intentionally breaking, introduce a new evidence-contract/corpus version and retain the v1 fixture and replay coverage for existing consumers.
+
 ## Regression gate
 
 `tests/evidence-contract-versioning.test.js` validates the versioned v1 contract and legacy compatibility rules. `tests/cross-surface-evidence-consistency.test.js` supplies the six-archetype cross-surface corpus:
@@ -46,5 +66,7 @@ Recommendations remain advisory. Contract compatibility must never be used as a 
 - `uncaptured-session-change`
 - `active-change`
 - `session-blocker`
+
+`tests/golden-exchange-corpus.test.js` adds real-consumer replay against the checked-in v1 golden exchange fixture. The test obtains its read data from the public CLI/MCP/resource surfaces, projects only fields protected by `v1.json`, and compares them against the consumer-owned golden artifact.
 
 Together, these tests are the compatibility gate. A future runtime change that silently removes or changes protected evidence semantics should fail CI before release.
