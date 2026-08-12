@@ -1,10 +1,26 @@
-# CMI v0.12.0 Release Candidate
+# CMI v0.12.0 Public Release
 
-Status: release candidate prepared 2026-08-12. Publication is separately gated by the repository's reviewed release workflow.
+Status: **PUBLIC** — published 2026-08-12.
+
+Release target: `623d6599aa4d175c4b054b6216c18bf3adc5a3aa`
+
+GitHub Release: `v0.12.0`
+
+npm: `codex-memory-intelligence@0.12.0`
+
+Publish workflow: run `#12` / Actions run `31557297420` — success.
+
+Post-merge main CI: run `#827` / Actions run `31557178081` — success.
+
+Post-merge main CodeQL: run `#263` / Actions run `31557178087` — success.
+
+GitHub Release id: `368961661`.
+
+The temporary `release/v0.12.0` branch was removed automatically by the successful publish workflow.
 
 ## Purpose
 
-v0.12.0 packages the first Evidence-Anchored Rule Intelligence capability introduced on `main` by PR #68.
+v0.12.0 packages the first Evidence-Anchored Rule Intelligence capability introduced by PR #68.
 
 CMI can now attach actionable source provenance to findings and reviewed-rule checks using project-relative file/line ranges plus symbol, feature, and commit context where available. Closing Intelligence can expose those anchors together with an explicit verification state.
 
@@ -36,6 +52,19 @@ This release does not add a universal autonomous rule scanner. It does not hard-
 
 No productivity, time-savings, universal-agent, or v1-readiness claim is made by this release.
 
-## Release gate
+## Publication evidence
 
-Before publication, the exact release-prep commit must pass the repository's hosted CI/CodeQL and release validation. Publication must then use the guarded `release/v0.12.0` workflow path so tag creation, npm Trusted Publishing, registry verification, GitHub Release creation, and temporary release-branch cleanup remain automated and auditable.
+The guarded release workflow successfully:
+
+1. verified the release branch pointed exactly at current `main`;
+2. verified package/source/changelog version identity;
+3. ran repository verification;
+4. ran benchmark smoke;
+5. tested the packed installation;
+6. created tag `v0.12.0` at the exact release target;
+7. published `codex-memory-intelligence@0.12.0` through npm Trusted Publishing;
+8. verified npm registry visibility;
+9. created the GitHub Release;
+10. removed the temporary release branch.
+
+Publication evidence proves the release pipeline completed for this exact subject. It does not expand the product/effectiveness claims beyond the bounded evidence documented above.
