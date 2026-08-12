@@ -130,6 +130,17 @@ async function existingTargetStat(target, relative) {
   }
 }
 
+async function writeAndCloseOrCleanup(handle, target, content, encoding) {
+  try {
+    await handle.writeFile(content, encoding);
+    await handle.close();
+  } catch (error) {
+    await handle.close().catch(() => {});
+    await fs.rm(target, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 export async function safeWriteMemoryFile(root, relative, content, options = {}) {
   const target = await resolveSafeFile(root, relative, { createParent: true });
   const existingStat = await existingTargetStat(target, relative);
@@ -137,14 +148,12 @@ export async function safeWriteMemoryFile(root, relative, content, options = {})
   if (options.ifMissing && exists) return false;
   if (options.ifMissing) {
     const handle = await openNoFollow(target, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL, 0o600);
-    try { await handle.writeFile(content, options.encoding || 'utf8'); }
-    finally { await handle.close(); }
+    await writeAndCloseOrCleanup(handle, target, content, options.encoding || 'utf8');
     return true;
   }
   const temporary = `${target}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
   const tempHandle = await fs.open(temporary, 'wx', 0o600);
-  try { await tempHandle.writeFile(content, options.encoding || 'utf8'); }
-  finally { await tempHandle.close(); }
+  await writeAndCloseOrCleanup(tempHandle, temporary, content, options.encoding || 'utf8');
   try {
     await fs.rename(temporary, target);
   } catch (error) {
