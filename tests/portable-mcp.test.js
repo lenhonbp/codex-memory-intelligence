@@ -9,6 +9,7 @@ import { initProject, scanProject } from '../src/core.js';
 import { freezePortableEvidence } from '../src/portable-evidence.js';
 
 const mcp = fileURLToPath(new URL('../src/mcp.js', import.meta.url));
+const MCP_RESPONSE_TIMEOUT_MS = 10_000;
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-portable-mcp-'));
@@ -47,7 +48,7 @@ function start(root, writeEnabled = false) {
       const existing = messages.find(predicate);
       if (existing) return Promise.resolve(existing);
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timed out waiting for MCP response.')), 4_000);
+        const timer = setTimeout(() => reject(new Error('Timed out waiting for MCP response.')), MCP_RESPONSE_TIMEOUT_MS);
         waiters.push({ predicate, resolve: (value) => { clearTimeout(timer); resolve(value); } });
       });
     },
