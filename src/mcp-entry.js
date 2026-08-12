@@ -15,11 +15,14 @@ import {
   getFinding,
   setFindingState,
   formatSessionReport,
-  formatSessionAssessment,
-  formatHandoff,
   formatFindingList,
 } from './session-intelligence.js';
 import { buildClosingIntelligence, formatClosingIntelligence } from './closing-intelligence.js';
+import {
+  formatSessionRecordWithEvidence,
+  formatSessionAssessmentWithEvidence,
+  formatSessionHandoffWithEvidence,
+} from './session-evidence-view.js';
 import { buildAmbientTaskBrief, formatAmbientTaskBrief } from './ambient-intelligence.js';
 import {
   captureEvaluation,
@@ -147,11 +150,11 @@ async function callSessionTool(name, args = {}) {
   }
   if (name === 'get_work_session_status') {
     const result = await assessSession(root, args.id || 'latest');
-    return textResult(formatSessionAssessment(result), result);
+    return textResult(formatSessionAssessmentWithEvidence(result), result);
   }
   if (name === 'get_work_session_report') {
     const result = await getSession(root, args.id || 'latest');
-    return textResult(formatSessionReport(result), result);
+    return textResult(formatSessionRecordWithEvidence(result), result);
   }
   if (name === 'list_work_sessions') {
     const result = await listSessions(root, { status: args.status, limit: args.limit || 20 });
@@ -159,7 +162,7 @@ async function callSessionTool(name, args = {}) {
   }
   if (name === 'get_session_handoff') {
     const result = await getSessionHandoff(root, args.id || 'latest');
-    return textResult(formatHandoff(result), result);
+    return textResult(formatSessionHandoffWithEvidence(result), result);
   }
   if (name === 'list_project_findings') {
     const result = await listFindings(root, { state: args.state, limit: args.limit || 50 });
@@ -183,7 +186,7 @@ async function callSessionTool(name, args = {}) {
     writable();
     const result = await closeSession(root, args.id || 'latest', args);
     const closingIntelligence = await buildClosingIntelligence(root, result.id);
-    return textResult(`${formatSessionReport(result)}\n\n${formatClosingIntelligence(closingIntelligence)}`, { ...result, closingIntelligence });
+    return textResult(`${formatSessionRecordWithEvidence(result)}\n\n${formatClosingIntelligence(closingIntelligence)}`, { ...result, closingIntelligence });
   }
   if (name === 'set_project_finding_state') {
     writable();
