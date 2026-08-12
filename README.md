@@ -3,6 +3,7 @@
 [![CI](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/codeql.yml/badge.svg)](https://github.com/lenhonbp/codex-memory-intelligence/actions/workflows/codeql.yml)
 [![npm version](https://img.shields.io/npm/v/codex-memory-intelligence.svg)](https://www.npmjs.com/package/codex-memory-intelligence)
+[![npm downloads](https://img.shields.io/npm/dm/codex-memory-intelligence.svg)](https://www.npmjs.com/package/codex-memory-intelligence)
 [![License: PolyForm Perimeter 1.0.1](https://img.shields.io/badge/License-PolyForm%20Perimeter%201.0.1-orange.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
@@ -27,7 +28,7 @@ CMI intentionally treats **evidence as evidence**: a warning is not automaticall
 
 ## Get CMI
 
-**Current supported release: `v0.11.2` / `codex-memory-intelligence@0.11.2`.**
+**Current supported release: `v0.12.0` / `codex-memory-intelligence@0.12.0`.**
 
 For new installations, use the current npm package:
 
@@ -58,6 +59,12 @@ CMI is being evaluated on real repositories, not only scripted examples. If you 
 - **What is missing?** Describe what you expected CMI to preserve, detect, or explain but it did not.
 
 Use the [CMI field feedback issue template](https://github.com/lenhonbp/codex-memory-intelligence/issues/new?template=field_feedback.yml). Please remove secrets, private source code, tokens, or sensitive `.codex-memory/` content before posting.
+
+## Maintenance and governance
+
+CMI is actively maintained by **Nhơn Lê ([@lenhonbp](https://github.com/lenhonbp))**, the project owner and primary maintainer. Release approval, security coordination, compatibility decisions, and community moderation are documented in [Maintainers](MAINTAINERS.md) and [Governance](GOVERNANCE.md).
+
+Public maintenance evidence is kept reviewable through [Current Release Status](docs/RELEASE_STATUS.md), [Security](SECURITY.md), [Changelog](CHANGELOG.md), and GitHub pull requests/releases. Adoption signals should be interpreted from live public sources such as GitHub and npm rather than frozen claims in this README.
 
 ## Quick start
 
