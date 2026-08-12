@@ -67,9 +67,24 @@ async function initialize(server) {
   return initialized;
 }
 
-async function stop(server) {
-  server.child.stdin.end();
-  server.child.kill();
+function stop(server) {
+  return new Promise((resolve) => {
+    const child = server.child;
+    if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish();
+    }, 2000);
+    child.once('close', finish);
+    child.stdin.end();
+  });
 }
 
 test('MCP fails closed for parse errors, invalid requests, lifecycle misuse, and unknown methods', async (t) => {
