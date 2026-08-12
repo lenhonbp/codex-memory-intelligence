@@ -8,6 +8,7 @@ import { VERSION } from './version.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_PACKAGE_BYTES = 2 * 1024 * 1024;
+const PACKAGE_NAME = 'codex-memory-intelligence';
 
 function sha256(value) {
   return `sha256:${crypto.createHash('sha256').update(String(value)).digest('hex')}`;
@@ -178,7 +179,7 @@ async function localPackageCandidates(projectRoot) {
   const seen = new Set();
   let current = path.resolve(projectRoot || process.cwd());
   while (true) {
-    const packageFile = path.join(current, 'node_modules', 'codex-memory-intelligence', 'package.json');
+    const packageFile = path.join(current, 'node_modules', PACKAGE_NAME, 'package.json');
     const packageInfo = await readPackage(packageFile);
     if (packageInfo && !seen.has(packageInfo.packageRoot)) {
       seen.add(packageInfo.packageRoot);
@@ -259,6 +260,12 @@ export async function collectExecutableProvenance(options = {}) {
   if (packageRoots.length > 1) diagnostics.push(`Multiple CMI package roots are observable (${packageRoots.length} candidates).`);
   if (actual.packageRoot && candidates.some((item) => item.source === 'project-local-candidate' && item.packageRoot !== actual.packageRoot)) {
     diagnostics.push('A project-local CMI candidate differs from the package used by this invocation.');
+  }
+  if (candidates.some((item) => item.source === 'PATH' && item.executablePath !== actual.scriptPath && !item.packageRoot)) {
+    diagnostics.push('A PATH executable named cmi differs from this invocation and has no package provenance.');
+  }
+  if (candidates.some((item) => item.source === 'PATH' && item.executablePath !== actual.scriptPath && item.packageName && item.packageName !== PACKAGE_NAME)) {
+    diagnostics.push('A PATH executable named cmi differs from this invocation and is associated with another package.');
   }
   const limitations = [...new Set([...repository.limitations, ...diagnostics])];
   return {
