@@ -10,10 +10,16 @@ export function isPathInside(root, candidate) {
   return Boolean(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
+function isExplicitAbsolute(value) {
+  return path.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value) || /^\/\//.test(value);
+}
+
 export async function resolveProjectFile(root, source) {
   const rootAbsolute = path.resolve(root);
   const raw = String(source ?? '').trim();
   if (!raw) return { ok: false, code: 'empty', reason: 'Source path is empty.' };
+  if (raw.includes('\0')) return { ok: false, code: 'invalid', reason: 'Source path contains an invalid null byte.' };
+  if (isExplicitAbsolute(raw)) return { ok: false, code: 'absolute', reason: `Source path must be project-relative: ${source}` };
 
   const candidate = path.resolve(rootAbsolute, raw);
   if (!isPathInside(rootAbsolute, candidate)) {
