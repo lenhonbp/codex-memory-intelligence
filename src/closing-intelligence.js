@@ -1,6 +1,7 @@
 import { listChangeRecords } from './change-intelligence.js';
 import { getSession, listSessions, listFindings } from './session-intelligence.js';
 import { searchMemory, tokenize } from './search.js';
+import { extractEvidenceAnchors, formatEvidenceAnchor, verificationStateForFinding } from './evidence-anchors.js';
 
 const MAX_ALERTS = 3;
 const LEVEL_ORDER = { blocker: 5, warning: 4, reminder: 3, info: 2, clean: 1 };
@@ -47,6 +48,8 @@ function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds
   const title = active
     ? `${carryover ? 'Unfinished previous work' : 'Active work remains unfinished'}: ${active.goal}`
     : finding.title;
+  const verificationState = verificationStateForFinding(finding);
+  const evidenceAnchors = extractEvidenceAnchors(finding);
   return {
     id: `finding:${finding.id}`,
     kind: finding.category === 'active-change' ? 'unfinished-work' : finding.category,
@@ -57,12 +60,14 @@ function findingAlert(finding, activeById, relatedActiveIds, concurrentActiveIds
     confidence: finding.confidence || 'low',
     evidenceType: finding.evidenceType || 'inferred',
     evidence: bounded(finding.evidence || [], 12),
+    evidenceAnchors,
+    verificationState,
     relatedFindingIds: [finding.id],
     relatedChangeIds,
     relatedFiles: bounded(finding.relatedFiles || [], 12),
     occurrences: finding.occurrences || 1,
     findingState: finding.state,
-    violationEstablished: ['verification-failed', 'session-blocker'].includes(finding.category),
+    violationEstablished: verificationState === 'established',
   };
 }
 function activeChangeAlert(change) {
@@ -76,6 +81,8 @@ function activeChangeAlert(change) {
     confidence: 'high',
     evidenceType: 'observed',
     evidence: [`change:${change.id}`, 'change-status:active'],
+    evidenceAnchors: [],
+    verificationState: 'observed',
     relatedFindingIds: [],
     relatedChangeIds: [change.id],
     relatedFiles: [],
@@ -108,23 +115,29 @@ async function reviewedConsistencyAlerts(root, session) {
     .filter((item) => item.metadata?.semanticReviewCurrent === true && (item.metadata?.knowledgeState || 'active') === 'active')
     .filter((item) => reviewedRuleRelevant(item, queryTokens, scope))
     .slice(0, 4)
-    .map((item) => ({
-      id: `reviewed-rule:${item.metadata.id || `${item.source}:${item.title}`}`,
-      kind: 'consistency-rule',
-      severity: 'reminder',
-      title: `Reviewed project rule applies: ${compactText(item.title, 120)}`,
-      subject: item.title,
-      detail: `Reviewed project knowledge is relevant to this session: ${compactText(item.text, 260)} CMI has not established a violation; verify the implementation against this reviewed rule before claiming consistency.`,
-      confidence: 'high',
-      evidenceType: 'reviewed',
-      evidence: unique([item.metadata?.id ? `memory:${item.metadata.id}` : null, ...(item.metadata?.sources || []).map((source) => `source:${source}`)]),
-      relatedFindingIds: [],
-      relatedChangeIds: [],
-      relatedFiles: bounded((item.metadata?.sources || []).filter((source) => sourceOverlapsScope(source, scope)), 12),
-      occurrences: 1,
-      findingState: null,
-      violationEstablished: false,
-    }));
+    .map((item) => {
+      const relatedFiles = bounded((item.metadata?.sources || []).filter((source) => sourceOverlapsScope(source, scope)), 12);
+      const evidence = unique([item.metadata?.id ? `memory:${item.metadata.id}` : null, ...(item.metadata?.sources || []).map((source) => `source:${source}`), `feature:${compactText(item.title, 120)}`]);
+      return {
+        id: `reviewed-rule:${item.metadata.id || `${item.source}:${item.title}`}`,
+        kind: 'consistency-rule',
+        severity: 'reminder',
+        title: `Reviewed project rule applies: ${compactText(item.title, 120)}`,
+        subject: item.title,
+        detail: `Reviewed project knowledge is relevant to this session: ${compactText(item.text, 260)} CMI has not established a violation; inspect the affected source and verify the implementation against this reviewed rule before claiming consistency.`,
+        confidence: 'high',
+        evidenceType: 'reviewed',
+        evidence,
+        evidenceAnchors: extractEvidenceAnchors({ evidence, relatedFiles }),
+        verificationState: 'suspected',
+        relatedFindingIds: [],
+        relatedChangeIds: [],
+        relatedFiles,
+        occurrences: 1,
+        findingState: null,
+        violationEstablished: false,
+      };
+    });
 }
 async function resolveClosedSession(root, selector) {
   if (!selector || selector === 'latest') {
@@ -215,7 +228,7 @@ export async function buildClosingIntelligence(root, selector = 'latest') {
     alerts,
     counts,
     nextAction,
-    policy: 'Closing Intelligence is a bounded read model over current CMI finding/change/reviewed-memory evidence plus the closed-session snapshot. Historical session next actions are suppressed when their finding lifecycle is no longer current. It shows at most three alerts, does not create durable truth, and does not treat reviewed-rule relevance or heuristic consistency as proof of a violation.',
+    policy: 'Closing Intelligence is a bounded read model over current CMI finding/change/reviewed-memory evidence plus the closed-session snapshot. Evidence anchors explain where a signal came from but do not upgrade relevance or static source matches into established violations. Historical session next actions are suppressed when their finding lifecycle is no longer current. It shows at most three alerts and does not create durable truth.',
   };
 }
 
@@ -224,8 +237,11 @@ export function formatClosingIntelligence(result) {
   const icon = { blocker: '🔴', warning: '🟠', reminder: '🟡', info: '🔵' };
   const rows = result.alerts.map((alert) => {
     const occurrence = alert.occurrences > 1 ? ` · seen ${alert.occurrences} times` : '';
-    return `${icon[alert.severity] || '🔵'} **${alert.severity.toUpperCase()} · ${alert.title}**\n${alert.detail}\nEvidence: ${alert.evidenceType} · confidence ${alert.confidence}${occurrence}`;
+    const anchors = bounded(alert.evidenceAnchors || [], 3).map(formatEvidenceAnchor).filter(Boolean);
+    const citations = anchors.length ? `\nSource: ${anchors.join('; ')}` : '';
+    const verification = alert.verificationState ? ` · ${alert.verificationState}` : '';
+    return `${icon[alert.severity] || '🔵'} **${alert.severity.toUpperCase()} · ${alert.title}**\n${alert.detail}\nEvidence: ${alert.evidenceType} · confidence ${alert.confidence}${verification}${occurrence}${citations}`;
   });
   const next = result.nextAction ? `\n→ **Next:** ${result.nextAction.priority} ${result.nextAction.action}` : '';
-  return `### CMI Intelligence\n${rows.join('\n\n')}${next}\n\n_CMI reports evidence and reviewed constraints; relevance alone is not proof of a design, architecture, or policy violation._`;
+  return `### CMI Intelligence\n${rows.join('\n\n')}${next}\n\n_CMI reports evidence and reviewed constraints; source relevance or a static match alone is not proof of a design, architecture, or policy violation._`;
 }
