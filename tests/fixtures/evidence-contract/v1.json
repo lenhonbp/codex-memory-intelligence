@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 1,
+  "name": "cmi-evidence-surface",
+  "introducedRuntimeVersion": "0.12.0",
+  "scope": "Public evidence-bearing read models and human evidence-address rendering shared by Session, Handoff, Closing Intelligence, CLI, MCP structured content, and MCP resources.",
+  "compatibilityPolicy": {
+    "withinVersion": "additive-only",
+    "breakingChanges": "Removing or renaming a required field, changing its type or evidence meaning, weakening provenance, or changing the stable human evidence labels requires a new contract version and retained regression coverage for the prior contract.",
+    "runtimeVersionIndependence": "The evidence contract version is independent from the CMI package/runtime version. A runtime release does not imply a contract-version bump.",
+    "legacy": "Historical durable records that predate this contract fixture remain governed by their explicit compatibility exceptions and must not be rewritten merely to add contract metadata."
+  },
+  "finding": {
+    "requiredFields": [
+      "id",
+      "key",
+      "state",
+      "category",
+      "severity",
+      "title",
+      "detail",
+      "confidence",
+      "evidenceType",
+      "evidence",
+      "relatedFiles",
+      "sessionRelevance"
+    ],
+    "semanticInvariants": [
+      "Finding ID is the durable identity and must remain the same across surfaces.",
+      "Evidence type and confidence must not be silently upgraded by formatting or transport.",
+      "Related files are evidence addresses, not proof of a violation.",
+      "Absent change/file/source evidence must remain absent rather than being synthesized."
+    ]
+  },
+  "recommendation": {
+    "requiredFields": [
+      "id",
+      "priority",
+      "action",
+      "reason",
+      "evidenceType",
+      "evidence",
+      "confidence",
+      "relatedFindingIds"
+    ],
+    "semanticInvariants": [
+      "Recommendations remain advisory.",
+      "A recommendation linked to a Finding must retain that Finding ID.",
+      "Evidence provenance and confidence must survive transport unchanged."
+    ]
+  },
+  "closingAlert": {
+    "requiredFields": [
+      "findingId",
+      "kind",
+      "severity",
+      "title",
+      "detail",
+      "confidence",
+      "evidenceType",
+      "evidence",
+      "evidenceAnchors",
+      "verificationState",
+      "relatedFindingIds",
+      "relatedChangeIds",
+      "relatedFiles",
+      "occurrences",
+      "findingState",
+      "scopeRelation",
+      "recommendedAction",
+      "violationEstablished"
+    ],
+    "semanticInvariants": [
+      "verificationState preserves suspected, observed, and established distinctions.",
+      "violationEstablished is true only when the verification semantics establish the violation.",
+      "Evidence anchors explain location/provenance and never promote relevance into truth.",
+      "Historical-project and current-session scope relations remain distinguishable."
+    ]
+  },
+  "humanEvidenceAddress": {
+    "stableLabels": ["Record:", "Files:", "Source:", "Evidence:", "Action:"],
+    "policy": "Labels are part of the v1 human compatibility surface when the corresponding evidence exists. Optional address lines must not be invented when the underlying evidence is absent."
+  },
+  "coveredFindingArchetypes": [
+    "prediction-gap",
+    "verification-failed",
+    "graph-drift",
+    "uncaptured-session-change",
+    "active-change",
+    "session-blocker"
+  ]
+}
