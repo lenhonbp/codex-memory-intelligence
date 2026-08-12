@@ -33,10 +33,20 @@ async function optionalHandoff(root) {
 
 function workflowFor(intent, context) {
   if (intent === 'continue') return ['Read the latest CMI handoff when available and re-check current repository evidence.', 'Continue the recorded objective only when it still matches the user request.', 'Address relevant P0/P1 evidence before unrelated work unless the user changes priority.'];
-  if (intent === 'mutate') return ['Start a CMI work session and Change Intelligence record before editing when durable writes are enabled.', 'Use task context and impact evidence before changing shared files or symbols.', 'After editing, run real project verification and observe actual changed paths. Complete the Change only when the requested work is finished; for intentional partial/paused/review-pending work, keep it active and finalize only the session.'];
-  if (intent === 'review') return ['Use CMI context, current Git state, decisions, and lessons as review evidence.', 'Do not create a change record unless edits actually begin.', 'Use a work session when the review is substantial or leaves durable findings.'];
-  if (intent === 'investigate') return ['Use CMI context and relevant history before broad exploration.', 'Use a work session for substantial investigation; do not create a change record unless edits begin.', 'Preserve unresolved blockers/questions for continuation instead of promoting hypotheses into durable truth.'];
+  if (intent === 'mutate') return ['Start a CMI work session and Change Intelligence record before editing when durable writes are enabled.', 'Use task context and impact evidence before changing shared files or symbols.', 'When a reviewed project rule appears relevant, inspect the affected source before closing and record evidence anchors as project-relative file:line-range plus symbol/feature/commit when known. A source match is only suspected/observed evidence; do not call it an established violation without verification.', 'After editing, run real project verification and observe actual changed paths. Complete the Change only when the requested work is finished; for intentional partial/paused/review-pending work, keep it active and finalize only the session.'];
+  if (intent === 'review') return ['Use CMI context, current Git state, decisions, and lessons as review evidence.', 'For a possible rule violation, cite the smallest useful project-relative file:line-range and include symbol/feature/commit context when available. Distinguish suspected, source-observed, and established states; relevance alone is not proof.', 'Do not create a change record unless edits actually begin.', 'Use a work session when the review is substantial or leaves durable findings.'];
+  if (intent === 'investigate') return ['Use CMI context and relevant history before broad exploration.', 'Anchor material observations to project-relative file:line-range and symbol/feature/commit context when available so later warnings can explain why they exist.', 'Use a work session for substantial investigation; do not create a change record unless edits begin.', 'Preserve unresolved blockers/questions for continuation instead of promoting hypotheses into durable truth.'];
   return context?.recommendedFiles?.length ? ["Use the retrieved evidence to understand the request, but keep the user's intent in control.", 'Do not infer permission to edit or broaden scope solely from CMI advice.'] : ['CMI has insufficient evidence to prescribe a specialized workflow. Follow the user request conservatively and establish project evidence as needed.'];
+}
+
+function evidenceAnchorPolicy(intent) {
+  if (!['mutate', 'review', 'investigate'].includes(intent)) return null;
+  return {
+    states: ['suspected', 'observed', 'established', 'resolved'],
+    preferredAnchor: 'commit + project-relative file:line-range + symbol + feature',
+    portableEvidenceSyntax: ['source:path/to/file.ts:10-24', 'symbol:ComponentOrFunction', 'feature:feature-name', 'commit:<git-sha>'],
+    establishmentRule: 'Static/source evidence can justify suspected or observed status. Established violations require direct verification evidence appropriate to the rule, such as a failing test, runtime/browser observation, or explicit human review.',
+  };
 }
 
 export async function buildAmbientTaskBrief(root, request) {
@@ -60,11 +70,13 @@ export async function buildAmbientTaskBrief(root, request) {
     preparation,
     handoff,
     workflow: workflowFor(classification.intent, context),
-    policy: 'Intent classification and workflow hints are deterministic advisory routing. They do not authorize edits, execute project commands, or turn inferred/candidate knowledge into durable truth.',
+    evidenceAnchoring: evidenceAnchorPolicy(classification.intent),
+    policy: 'Intent classification and workflow hints are deterministic advisory routing. Evidence anchors improve provenance but do not authorize edits or upgrade suspected/source-observed evidence into an established violation. Durable truth remains review- and evidence-controlled.',
   };
 }
 
 export function formatAmbientTaskBrief(result) {
   const files = result.context?.recommendedFiles?.slice(0, 8) || [];
-  return `# CMI ambient task brief\n\nRequest: ${result.request}\nIntent: ${result.classification.intent} · confidence ${result.classification.confidence}\nProject evidence: ${result.project.evidenceHealth?.state || 'unknown'}\nGit product worktree: ${result.repository.available ? (result.repository.clean ? 'clean' : 'dirty') : 'unavailable'}${result.repository.available && result.repository.rawClean === false && result.repository.clean ? ' · raw Git includes CMI-internal state' : ''}\n\n## Relevant files\n${files.length ? files.map((file) => `- ${file}`).join('\n') : '- No task-relevant files retrieved'}\n\n## Workflow\n${result.workflow.map((item) => `- ${item}`).join('\n')}\n\n${result.policy}`;
+  const anchors = result.evidenceAnchoring ? `\n\n## Evidence anchoring\n- Preferred: ${result.evidenceAnchoring.preferredAnchor}\n- Lifecycle: ${result.evidenceAnchoring.states.join(' → ')}\n- Establishment: ${result.evidenceAnchoring.establishmentRule}` : '';
+  return `# CMI ambient task brief\n\nRequest: ${result.request}\nIntent: ${result.classification.intent} · confidence ${result.classification.confidence}\nProject evidence: ${result.project.evidenceHealth?.state || 'unknown'}\nGit product worktree: ${result.repository.available ? (result.repository.clean ? 'clean' : 'dirty') : 'unavailable'}${result.repository.available && result.repository.rawClean === false && result.repository.clean ? ' · raw Git includes CMI-internal state' : ''}\n\n## Relevant files\n${files.length ? files.map((file) => `- ${file}`).join('\n') : '- No task-relevant files retrieved'}\n\n## Workflow\n${result.workflow.map((item) => `- ${item}`).join('\n')}${anchors}\n\n${result.policy}`;
 }

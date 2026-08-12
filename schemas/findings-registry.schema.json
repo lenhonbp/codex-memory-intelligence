@@ -94,6 +94,13 @@
               "inferred"
             ]
           },
+          "verificationState": {
+            "enum": [
+              "suspected",
+              "observed",
+              "established"
+            ]
+          },
           "evidence": {
             "type": "array",
             "items": {
@@ -101,6 +108,22 @@
               "maxLength": 500
             },
             "maxItems": 50
+          },
+          "evidenceAnchors": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": ["string", "null"], "maxLength": 500 },
+                "startLine": { "type": ["integer", "null"], "minimum": 1 },
+                "endLine": { "type": ["integer", "null"], "minimum": 1 },
+                "symbol": { "type": ["string", "null"], "maxLength": 200 },
+                "feature": { "type": ["string", "null"], "maxLength": 200 },
+                "commit": { "type": ["string", "null"], "maxLength": 100 }
+              },
+              "additionalProperties": false
+            }
           },
           "relatedFiles": {
             "type": "array",
