@@ -80,10 +80,28 @@ async function initialize(server) {
   return response;
 }
 
-function stopMcp(server) {
-  if (server.child.exitCode !== null || server.child.signalCode !== null) return;
-  server.child.stdin.end();
-  server.child.kill();
+async function stopMcp(server) {
+  const child = server.child;
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener('close', onClose);
+      child.removeListener('error', onError);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onClose = () => finish();
+    const onError = (error) => finish(error);
+    const timer = setTimeout(() => finish(new Error('Timed out waiting for MCP child process to close.')), 5000);
+    child.once('close', onClose);
+    child.once('error', onError);
+    child.stdin.end();
+    child.kill();
+  });
 }
 
 async function exists(target) {
@@ -135,7 +153,7 @@ test('MCP session adapter fails closed before initialization and on hidden read-
     assert.equal(hiddenWrite.result.isError, true);
     assert.match(hiddenWrite.result.content[0].text, /writes are disabled/i);
   } finally {
-    stopMcp(server);
+    await stopMcp(server);
   }
 });
 
