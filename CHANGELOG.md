@@ -4,6 +4,28 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-12
+
+Feature release adding Evidence-Anchored Rule Intelligence so CMI can connect reviewed rules and findings to concrete source locations without promoting source matches into product truth.
+
+### Added
+
+- Added structured evidence anchors that can carry project-relative file paths, line ranges, symbols, features, and commit references.
+- Added portable evidence syntax for `source:`, `symbol:`, `feature:`, and `commit:` references, plus bounded extraction from existing finding evidence and related files.
+- Added explicit finding verification semantics: `suspected` → `observed` → `established`, while durable `resolved` remains the lifecycle resolution state.
+- Ambient Intelligence now tells agents to inspect affected source and capture line/symbol/feature/commit evidence when reviewed project rules are relevant to a task.
+- Closing Intelligence now carries and renders evidence anchors and verification state, and `violationEstablished` is tied to established verification rather than reviewed-rule relevance alone.
+- Extended the findings registry schema additively with optional `verificationState` and `evidenceAnchors` fields while retaining schema version 1 compatibility.
+- Added focused evidence-anchor tests and `docs/EVIDENCE_ANCHORED_RULE_INTELLIGENCE.md` covering the trust boundary and intended lifecycle.
+
+### Evidence limits
+
+- Source or static evidence can establish that code exists at a cited location; it does not by itself prove a runtime-visible, user-visible, design, architecture, or policy violation.
+- `established` requires verification appropriate to the rule, such as a test, runtime/browser observation, or explicit human review; reviewed-rule relevance remains advisory until then.
+- Line ranges can drift as source changes, so CMI pairs them with symbol/feature/commit context where available; this is not compiler-grade symbol tracking.
+- This release does not add an autonomous generic rule scanner and does not hard-code any Project 001-specific rule or detector.
+- No productivity, time-savings, universal-agent, or v1-readiness claim is established by this release.
+
 ## [0.11.2] - 2026-08-11
 
 Maintenance patch for graph-drift signal quality discovered through repeated real-project Project 001 sessions.
@@ -115,7 +137,7 @@ This release candidate contains the reviewed Phase 1–3 work after `v0.9.2`. It
 ### Changed
 
 - Repository-baseline summaries now omit only untracked local `.codex-memory/` state; tracked, staged, renamed, and ordinary project changes remain visible.
-- Portable evidence now binds the bounded scan, ignore, resolver, and workspace inputs needed to reproduce source boundaries after relocation.
+- Portable evidence now binds the bounded scan, ignore, resolver, workspace, and scan inputs needed to reproduce source boundaries after relocation.
 - Durable compatibility is read-only/no-rewrite for the audited historical floor; generated state may be rebuilt only when its format is obsolete and supported, while unsupported state remains blocked.
 - The release candidate keeps MCP mutation tools hidden or rejected by default; explicit write mode is required for portable-evidence and durable mutations.
 
