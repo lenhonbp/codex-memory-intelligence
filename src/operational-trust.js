@@ -61,10 +61,14 @@ async function trackedMemoryFiles(root) {
   return { available: true, tracked, reason: null };
 }
 
+function sameFileIdentity(pathStat, handleStat) {
+  return pathStat.isFile()
+    && !pathStat.isSymbolicLink()
+    && pathStat.dev === handleStat.dev
+    && pathStat.ino === handleStat.ino;
+}
+
 async function readStableText(target, maxBytes) {
-  const before = await fs.lstat(target);
-  if (before.isSymbolicLink() || !before.isFile()) throw new Error('unsafe-entry');
-  if (before.size > maxBytes) throw new Error('oversized');
   const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
   let handle;
   let usedNoFollow = Boolean(noFollow);
@@ -74,17 +78,28 @@ async function readStableText(target, maxBytes) {
     usedNoFollow = false;
     handle = await fs.open(target, fsConstants.O_RDONLY);
   }
+
   try {
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.size > maxBytes || opened.dev !== before.dev || opened.ino !== before.ino) throw new Error('read-race');
+    if (!opened.isFile()) throw new Error('unsafe-entry');
+    if (opened.size > maxBytes) throw new Error('oversized');
+
     if (!usedNoFollow) {
       const current = await fs.lstat(target);
-      if (current.isSymbolicLink() || !current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) throw new Error('read-race');
+      if (!sameFileIdentity(current, opened)) throw new Error('read-race');
     }
+
     const bytes = await handle.readFile();
     if (bytes.byteLength > maxBytes) throw new Error('oversized');
+
     const after = await handle.stat();
     if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) throw new Error('read-race');
+
+    if (!usedNoFollow) {
+      const currentAfter = await fs.lstat(target);
+      if (!sameFileIdentity(currentAfter, after)) throw new Error('read-race');
+    }
+
     const text = bytes.toString('utf8');
     if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error('non-text');
     return { text, bytes: bytes.byteLength };
