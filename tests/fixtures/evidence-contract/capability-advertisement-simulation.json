@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "simulationOnly": true,
+  "runtimeCapabilityAdvertisementImplemented": false,
+  "runtimeNegotiationImplemented": false,
+  "name": "cmi-evidence-contract-capability-advertisement-simulation",
+  "sourceNegotiationFixture": "negotiation-simulation.json",
+  "advertisement": {
+    "currentContractVersion": 1,
+    "supportedContractVersions": [1],
+    "selectionPolicy": "exact-match-only",
+    "contractArtifacts": {
+      "1": {
+        "contractFixture": "v1.json",
+        "goldenFixture": "golden-exchange-v1.json"
+      }
+    }
+  },
+  "visibility": {
+    "includeKnownUnsupportedSimulations": false,
+    "includeRuntimeUnsupportedContracts": false
+  },
+  "consistencyPolicy": {
+    "sourceOfTruth": "negotiation-simulation.json",
+    "currentVersionMustMatch": true,
+    "supportedVersionSetMustMatch": true,
+    "artifactMappingMustMatch": true,
+    "refusalSupportedVersionsMustMatch": true,
+    "staleMetadata": "fail-closed"
+  },
+  "staleMetadataRefusal": {
+    "code": "CMI_EVIDENCE_CONTRACT_CAPABILITY_STALE",
+    "message": "Evidence Contract capability advertisement does not match the negotiation authority."
+  }
+}
