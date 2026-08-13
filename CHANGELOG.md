@@ -4,6 +4,39 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-13
+
+Maintenance hardening release for CLI/MCP request boundaries and Portable Evidence trust integrity after `v0.12.0`.
+
+### Fixed
+
+- Hardened top-level CLI parsing so unknown short options, duplicate single-value flags, and extra positional arguments on fixed-arity commands fail closed instead of being absorbed or ignored.
+- Added dependency-free runtime validation for the JSON-Schema subset advertised by CMI MCP tools, including required fields, enums, numeric bounds, nested conditions, strict object boundaries, and `additionalProperties: false`; malformed known-tool calls now fail with JSON-RPC `-32602` before business logic or durable writes.
+- Hardened Portable Evidence restore/rebind artifact addressing against cross-platform case/NFC aliases, Windows reserved names and unsafe path segments, and case-insensitive `portable-provenance.json` collisions.
+- Revalidated complete generated rebind provenance before reuse and re-ran project compatibility immediately before staged restore commit so source/repository/policy TOCTOU changes fail with `CMI_PORTABLE_READ_RACE` and do not install partial `.codex-memory` state.
+- Moved new Portable Evidence writers to manifest schema v3 and added a separate `integrity.digest` (`manifest-provenance-v1`) that binds manifest provenance metadata which was outside the released v2 core `identity.digest`.
+- Prevented unbound v2 `project.location` metadata from promoting restore compatibility to `exact`; v3 origin location may contribute to `exact` only because it is integrity-bound.
+- Preserved released v2 read/restore behavior and the bounded relocated-v2 rebind-provenance compatibility path without allowing old unbound-origin `exact` provenance to regain trust.
+
+### Added
+
+- Added negative Evidence Contract compatibility mutation tests that reject protected consumer-semantic breaks at exact evidence addresses while retaining additive-field compatibility.
+- Added simulation-only dual-version upgrade, unsupported-version refusal, capability-discovery, and discovery-to-negotiation TOCTOU gates for a possible future Evidence Contract evolution.
+- Added an explicit `PRODUCTION_CONTRACT_SURFACE_NO_GO` gate: runtime Evidence Contract discovery/negotiation remains absent while only v1 is runtime-supported and no named production consumer requires negotiation.
+- Added regression coverage for the new CLI/MCP malformed-request boundaries, cross-platform Portable Evidence restore/rebind hardening, and Portable Evidence v3 manifest-provenance integrity.
+
+### Compatibility
+
+- Evidence Contract v2 remains simulation-only and is not advertised as runtime support; no production discovery endpoint, negotiation parameter, handshake token, CLI flag, MCP method, or automatic downgrade/upgrade behavior is added by this release.
+- Portable Evidence schema v2 remains inspectable/restorable under its released core identity algorithm. New writers emit schema v3 with separate manifest-provenance integrity coverage.
+- The deterministic core `identity.digest` is not silently redefined for released v2 bundles; v3 adds integrity coverage rather than reinterpreting old v2 digests.
+
+### Evidence limits
+
+- Portable Evidence digests provide integrity checking, not authentication, signatures, source authorship proof, or backup authenticity; `authenticated` remains false.
+- The Evidence Contract versioning/discovery/handshake work in this release is executable simulation, not a production interoperability claim.
+- This release does not establish productivity improvement, time savings, universal-agent effectiveness, or v1 readiness.
+
 ## [0.12.0] - 2026-08-12
 
 Feature release adding Evidence-Anchored Rule Intelligence so CMI can connect reviewed rules and findings to concrete source locations without promoting source matches into product truth.
