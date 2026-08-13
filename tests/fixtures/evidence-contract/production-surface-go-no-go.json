@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "decisionType": "production-contract-surface-go-no-go",
+  "baselineCommit": "406d9edbaed8b7a08f5a7fb96cc4488ad1882087",
+  "verdict": "PRODUCTION_CONTRACT_SURFACE_NO_GO",
+  "decisionScope": "Evidence Contract capability discovery, version negotiation, handshake binding, and consumer replay surfaces",
+  "currentState": {
+    "runtimeSupportedContractVersions": [1],
+    "namedProductionConsumersRequiringNegotiation": [],
+    "productionCapabilityAdvertisementImplemented": false,
+    "productionNegotiationImplemented": false,
+    "productionHandshakeImplemented": false,
+    "simulationSpecificationAvailable": true
+  },
+  "repositoryEvidence": [
+    {
+      "path": "package.json",
+      "kind": "public-entrypoint-inventory",
+      "observation": "The package exposes cmi and cmi-mcp executables; there is no separate contract discovery or negotiation executable."
+    },
+    {
+      "path": "src/cli-entry.js",
+      "kind": "cli-surface-inventory",
+      "observation": "The current CLI adapter exposes session, finding, and evaluation workflows without an Evidence Contract version selection or discovery option."
+    },
+    {
+      "path": "src/mcp-entry.js",
+      "kind": "mcp-surface-inventory",
+      "observation": "The current MCP tool inventory exposes project/session/evaluation intelligence and no Evidence Contract discovery or negotiation method."
+    },
+    {
+      "path": "README.md",
+      "kind": "documented-public-surface",
+      "observation": "The documented integration surface is CLI, MCP, durable evidence, and Skills; no production Evidence Contract negotiation workflow is documented."
+    },
+    {
+      "path": "tests/fixtures/evidence-contract/negotiation-simulation.json",
+      "kind": "simulation-boundary",
+      "observation": "Negotiation remains explicitly simulation-only and runtimeNegotiationImplemented is false."
+    },
+    {
+      "path": "tests/fixtures/evidence-contract/capability-advertisement-simulation.json",
+      "kind": "simulation-boundary",
+      "observation": "Capability advertisement remains explicitly simulation-only and runtime capability advertisement is false."
+    },
+    {
+      "path": "tests/fixtures/evidence-contract/handshake-toctou-simulation.json",
+      "kind": "simulation-boundary",
+      "observation": "Handshake/TOCTOU binding remains a test-harness specification rather than a production API."
+    }
+  ],
+  "externalObservation": {
+    "kind": "maintainer-recon",
+    "githubIssueSearch": "Evidence Contract negotiation discovery",
+    "matchingIssuesAtDecisionTime": 0,
+    "note": "This observation supports the decision but is not treated as a durable runtime invariant; future demand must trigger re-evaluation."
+  },
+  "goCriteria": {
+    "requiresNamedProductionConsumer": true,
+    "requiresOperationalInteropNeed": true,
+    "requiresMinimalReadOnlySurfaceDesign": true,
+    "requiresRetainedV1Compatibility": true,
+    "requiresFailClosedUnsupportedVersionHandling": true,
+    "requiresNoSilentDowngrade": true
+  },
+  "reEvaluationTriggers": [
+    "A named production consumer requests or requires Evidence Contract version discovery or exact negotiation.",
+    "CMI supports a second Evidence Contract version in production.",
+    "A real interoperability failure is observed that a fixed-v1 consumer cannot resolve safely.",
+    "An external integration needs to distinguish supported Evidence Contract versions before consuming evidence."
+  ],
+  "noGoRequirements": {
+    "doNotAddProductionNegotiationSurface": true,
+    "doNotAdvertiseV2SimulationAsRuntimeSupport": true,
+    "retainSimulationAndGoldenRegressionCorpus": true,
+    "retainEvidenceContractV1Compatibility": true,
+    "reEvaluateOnTriggerEvidence": true
+  }
+}
