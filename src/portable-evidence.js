@@ -563,7 +563,15 @@ function validateExistingRebindProvenance(value, manifest, comparison) {
   const validRequestedAt = typeof requestedAt === 'string' && Number.isFinite(Date.parse(requestedAt)) && new Date(requestedAt).toISOString() === requestedAt;
   const expected = validRequestedAt ? buildProvenanceValue(manifest, comparison, 'rebind') : null;
   if (expected) expected.requested.requestedAt = requestedAt;
-  if (!expected || canonical(value) !== canonical(expected)) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Existing portable provenance is missing, conflicting, or unverifiable; no evidence was overwritten.');
+  const exactMatch = Boolean(expected && canonical(value) === canonical(expected));
+  let releasedV2Match = false;
+  if (expected && manifest.schemaVersion === 2) {
+    const releasedV2 = structuredClone(expected);
+    delete releasedV2.verification.samePathObserved;
+    delete releasedV2.verification.originBinding;
+    releasedV2Match = canonical(value) === canonical(releasedV2);
+  }
+  if (!exactMatch && !releasedV2Match) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Existing portable provenance is missing, conflicting, or unverifiable; no evidence was overwritten.');
   return value;
 }
 
