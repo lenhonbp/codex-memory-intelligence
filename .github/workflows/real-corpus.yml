@@ -65,6 +65,46 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - name: Probe first self-host context stdout shape
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          checkout="$RUNNER_TEMP/self-host-first-context"
+          git init --quiet "$checkout"
+          git -C "$checkout" remote add origin https://github.com/lenhonbp/codex-memory-intelligence.git
+          git -C "$checkout" fetch --quiet origin refs/heads/main
+          git -C "$checkout" checkout --quiet --detach b19054f329c81e1e1aefcfe08e0236922cab4acf
+          node "$GITHUB_WORKSPACE/src/cli-entry.js" init "$checkout" >/dev/null
+          node "$GITHUB_WORKSPACE/src/cli-entry.js" scan "$checkout" --full --json >/dev/null
+          node "$GITHUB_WORKSPACE/src/cli-entry.js" scan "$checkout" --json >/dev/null
+          node "$GITHUB_WORKSPACE/src/cli-entry.js" doctor "$checkout" --json >/dev/null
+          stdout="$RUNNER_TEMP/first-self-host-context.stdout"
+          stderr="$RUNNER_TEMP/first-self-host-context.stderr"
+          set +e
+          (cd "$checkout" && node "$GITHUB_WORKSPACE/src/cli-entry.js" context 'portable evidence provenance handoff' --json > "$stdout" 2> "$stderr")
+          status=$?
+          set -e
+          CONTEXT_STATUS="$status" CONTEXT_STDOUT="$stdout" CONTEXT_STDERR="$stderr" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const stdout = fs.readFileSync(process.env.CONTEXT_STDOUT, 'utf8');
+          const stderr = fs.readFileSync(process.env.CONTEXT_STDERR, 'utf8');
+          const trimmed = stdout.trim();
+          let parseOk = false;
+          try { JSON.parse(trimmed); parseOk = true; } catch {}
+          console.log(JSON.stringify({
+            contextExitStatus: Number(process.env.CONTEXT_STATUS),
+            stdoutBytes: Buffer.byteLength(stdout),
+            stdoutLines: stdout ? stdout.split(/\r?\n/).length : 0,
+            stdoutFirstCodePoint: trimmed ? trimmed.codePointAt(0) : null,
+            stdoutLastCodePoint: trimmed ? trimmed.codePointAt(trimmed.length - 1) : null,
+            stdoutStartsJsonContainer: trimmed.startsWith('{') || trimmed.startsWith('['),
+            stdoutEndsJsonContainer: trimmed.endsWith('}') || trimmed.endsWith(']'),
+            stdoutJsonParseOk: parseOk,
+            stderrBytes: Buffer.byteLength(stderr),
+            stderrLines: stderr ? stderr.split(/\r?\n/).length : 0,
+          }, null, 2));
+          NODE
       - name: Run engineering validation on exact Git SHAs
         id: corpus
         continue-on-error: true
@@ -92,15 +132,13 @@ jobs:
           const trimmed = stdout.trim();
           let parseOk = false;
           try { JSON.parse(trimmed); parseOk = true; } catch {}
-          const first = trimmed ? trimmed.codePointAt(0) : null;
-          const last = trimmed ? trimmed.codePointAt(trimmed.length - 1) : null;
           console.log(JSON.stringify({
             contextExitStatus: Number(process.env.CONTEXT_STATUS),
             stdoutBytes: Buffer.byteLength(stdout),
             stdoutLines: stdout ? stdout.split(/\r?\n/).length : 0,
             stdoutTrimmedBytes: Buffer.byteLength(trimmed),
-            stdoutFirstCodePoint: first,
-            stdoutLastCodePoint: last,
+            stdoutFirstCodePoint: trimmed ? trimmed.codePointAt(0) : null,
+            stdoutLastCodePoint: trimmed ? trimmed.codePointAt(trimmed.length - 1) : null,
             stdoutStartsJsonContainer: trimmed.startsWith('{') || trimmed.startsWith('['),
             stdoutEndsJsonContainer: trimmed.endsWith('}') || trimmed.endsWith(']'),
             stdoutJsonParseOk: parseOk,
