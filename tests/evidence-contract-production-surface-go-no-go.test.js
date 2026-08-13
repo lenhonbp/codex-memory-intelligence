@@ -24,6 +24,7 @@ const handshake = readJson(path.join(fixtureDir, 'handshake-toctou-simulation.js
 const packageJson = JSON.parse(readRepo('package.json'));
 const cliEntry = readRepo('src/cli-entry.js');
 const mcpEntry = readRepo('src/mcp-entry.js');
+const trustEntry = readRepo('src/trust-entry.js');
 const readme = readRepo('README.md');
 
 test('production contract surface decision is evidence-bound and currently NO-GO', () => {
@@ -57,14 +58,19 @@ test('NO-GO agrees with the retained simulation authority instead of treating v2
   assert.equal(handshake.runtimeNegotiationImplemented, false);
 });
 
-test('current public package, CLI, and MCP inventory has no production contract negotiation surface', () => {
-  assert.deepEqual(packageJson.bin, {
-    cmi: 'src/cli-entry.js',
-    'cmi-mcp': 'src/mcp-entry.js',
-  });
+test('current public package, CLI, MCP, and trust inventory has no production contract negotiation surface', () => {
+  assert.equal(packageJson.bin.cmi, 'src/cli-entry.js');
+  assert.equal(packageJson.bin['cmi-mcp'], 'src/mcp-entry.js');
+  assert.equal(packageJson.bin['cmi-trust'], 'src/trust-entry.js');
+  assert.deepEqual(Object.keys(packageJson.bin).sort(), ['cmi', 'cmi-mcp', 'cmi-trust']);
 
-  for (const token of ['--evidence-contract-version', '--contract-version', 'contract discover', 'contract negotiate']) {
-    assert.equal(cliEntry.includes(token), false, `unexpected CLI production contract surface token: ${token}`);
+  for (const [surface, source] of [
+    ['CLI', cliEntry],
+    ['trust CLI', trustEntry],
+  ]) {
+    for (const token of ['--evidence-contract-version', '--contract-version', 'contract discover', 'contract negotiate']) {
+      assert.equal(source.includes(token), false, `unexpected ${surface} production contract surface token: ${token}`);
+    }
   }
 
   for (const token of [
@@ -128,19 +134,14 @@ test('NO-GO preserves the specification corpus and requires re-evaluation when r
   assert.equal(decision.noGoRequirements.doNotAdvertiseV2SimulationAsRuntimeSupport, true);
   assert.equal(decision.noGoRequirements.retainSimulationAndGoldenRegressionCorpus, true);
   assert.equal(decision.noGoRequirements.retainEvidenceContractV1Compatibility, true);
-  assert.equal(decision.noGoRequirements.reEvaluateOnTriggerEvidence, true);
-
-  assert.equal(decision.reEvaluationTriggers.length, 4);
-  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('named production consumer')));
-  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('second Evidence Contract version')));
-  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('interoperability failure')));
-  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('external integration')));
+  assert.equal(decision.revisitWhen.namedConsumerRequestsNegotiation, true);
+  assert.equal(decision.revisitWhen.runtimeMustSupportMultipleContractVersions, true);
+  assert.equal(decision.revisitWhen.externalInteroperabilityRequiresDiscovery, true);
+  assert.equal(decision.revisitWhen.releasedRuntimeSupportChanges, true);
 });
 
 test('external demand observation is advisory evidence, not a permanent runtime invariant', () => {
-  assert.equal(decision.externalObservation.kind, 'maintainer-recon');
-  assert.equal(decision.externalObservation.githubIssueSearch, 'Evidence Contract negotiation discovery');
-  assert.equal(decision.externalObservation.matchingIssuesAtDecisionTime, 0);
-  assert.match(decision.externalObservation.note, /not treated as a durable runtime invariant/i);
-  assert.match(decision.externalObservation.note, /future demand must trigger re-evaluation/i);
+  assert.equal(decision.externalDemand.observedNamedConsumers, 0);
+  assert.equal(decision.externalDemand.observationClass, 'repository-and-maintainer-observation');
+  assert.equal(decision.externalDemand.claimDiscipline, 'current-observation-not-permanent-invariant');
 });
