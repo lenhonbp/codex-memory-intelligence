@@ -3,10 +3,16 @@ name: Real Corpus Validation
 on:
   pull_request:
     paths:
+      - 'src/cli-entry.js'
       - 'src/real-corpus.js'
+      - 'src/real-corpus-execution.js'
       - 'scripts/real-corpus.js'
       - 'corpus/**'
+      - 'evidence/real-corpus/**'
+      - 'tests/cli-stdio-flush.test.js'
       - 'tests/real-corpus.test.js'
+      - 'tests/real-corpus-execution.test.js'
+      - 'tests/real-corpus-transport.test.js'
       - 'docs/REAL_CORPUS_VALIDATION.md'
       - '.github/workflows/real-corpus.yml'
   schedule:
@@ -35,8 +41,8 @@ jobs:
         run: node scripts/real-corpus.js validate --manifest corpus/real-repositories.json
       - name: Validate no-target-execution plan
         run: node scripts/real-corpus.js plan --manifest corpus/real-repositories.json --json
-      - name: Test corpus runner contract
-        run: node --test tests/real-corpus.test.js
+      - name: Test corpus and large-stdout contracts
+        run: node --test tests/cli-stdio-flush.test.js tests/real-corpus.test.js tests/real-corpus-execution.test.js tests/real-corpus-transport.test.js
 
   external-real:
     name: Pinned external repositories
@@ -50,10 +56,18 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - name: Run engineering validation on exact Git SHAs
+        id: corpus
+        continue-on-error: true
         run: node scripts/real-corpus.js run --manifest corpus/real-repositories.json --json > real-corpus-report.json
       - name: Upload bounded engineering report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: real-corpus-report
           path: real-corpus-report.json
           if-no-files-found: error
+      - name: Enforce corpus result after preserving report
+        if: steps.corpus.outcome != 'success'
+        run: |
+          echo 'Real corpus validation failed; inspect the uploaded real-corpus-report artifact.' >&2
+          exit 1

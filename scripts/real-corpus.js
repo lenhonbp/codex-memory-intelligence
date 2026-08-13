@@ -2,10 +2,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  buildRealCorpusPlan,
-  runRealCorpus,
-  validateRealCorpusManifest,
-} from '../src/real-corpus.js';
+  buildRealCorpusExecutionPlan,
+  runRealCorpusExecution,
+  validateRealCorpusExecutionManifest,
+} from '../src/real-corpus-execution.js';
 
 const [command, ...args] = process.argv.slice(2);
 
@@ -48,8 +48,20 @@ function printPlan(plan) {
   }
 }
 
+function printReport(report) {
+  console.log(`Real corpus validation: ${report.summary.passed}/${report.summary.total} passed`);
+  for (const repository of report.repositories) {
+    if (repository.status === 'passed') {
+      const fallback = repository.transport?.fallbackRef ? ` · transport fallback ${repository.transport.fallbackRef}` : '';
+      console.log(`- ${repository.id}: passed · ${repository.fullScan.sourceFiles ?? '?'} source files · ${repository.fullScan.workspaces ?? '?'} workspaces · doctor ${repository.doctor.healthy ? 'healthy' : 'blocked'}${fallback}`);
+    } else {
+      console.log(`- ${repository.id}: failed · ${repository.failure?.code || 'CMI_REAL_CORPUS_REPOSITORY_FAILED'} · ${repository.failure?.message || 'unknown failure'}`);
+    }
+  }
+}
+
 function help() {
-  console.log(`CMI real repository corpus validator\n\nUsage:\n  node scripts/real-corpus.js validate --manifest <file>\n  node scripts/real-corpus.js plan --manifest <file> [--json]\n  node scripts/real-corpus.js run --manifest <file> [--work-root <dir>] [--keep-checkouts] [--json]\n\nThe runner fetches exact Git commit SHAs into disposable checkouts and invokes CMI only. It never installs target dependencies or runs target code, builds, or tests.`);
+  console.log(`CMI real repository corpus validator\n\nUsage:\n  node scripts/real-corpus.js validate --manifest <file>\n  node scripts/real-corpus.js plan --manifest <file> [--json]\n  node scripts/real-corpus.js run --manifest <file> [--work-root <dir>] [--keep-checkouts] [--json]\n\nThe runner validates exact pinned revisions in disposable checkouts and invokes CMI only. An optional fetchRef may be used solely as a transport fallback if a Git server refuses direct SHA fetch; the pinned SHA is still checked out and verified before CMI runs. Target dependencies/code/builds/tests are never executed. Repository failures are retained in the report, later repositories still run, and the command exits non-zero after emitting the complete bounded report.`);
 }
 
 try {
@@ -58,28 +70,24 @@ try {
   } else if (command === 'validate') {
     validateFlags(['--manifest']);
     const { manifest, manifestPath } = await readManifest();
-    const validated = validateRealCorpusManifest(manifest);
+    const validated = validateRealCorpusExecutionManifest(manifest);
     console.log(`Valid real corpus manifest: ${manifestPath} · ${validated.repositories.length} pinned repositories`);
   } else if (command === 'plan') {
     validateFlags(['--manifest', '--json']);
     const { manifest } = await readManifest();
-    const plan = buildRealCorpusPlan(manifest);
+    const plan = buildRealCorpusExecutionPlan(manifest);
     if (hasFlag('--json')) console.log(JSON.stringify(plan, null, 2));
     else printPlan(plan);
   } else if (command === 'run') {
     validateFlags(['--manifest', '--work-root', '--keep-checkouts', '--json']);
     const { manifest } = await readManifest();
-    const report = await runRealCorpus(manifest, {
+    const report = await runRealCorpusExecution(manifest, {
       workRoot: option('--work-root') || undefined,
       keepCheckouts: hasFlag('--keep-checkouts'),
     });
     if (hasFlag('--json')) console.log(JSON.stringify(report, null, 2));
-    else {
-      console.log(`Real corpus validation: ${report.summary.passed}/${report.summary.total} passed`);
-      for (const repository of report.repositories) {
-        console.log(`- ${repository.id}: ${repository.status} · ${repository.fullScan.sourceFiles ?? '?'} source files · ${repository.fullScan.workspaces ?? '?'} workspaces · doctor ${repository.doctor.healthy ? 'healthy' : 'blocked'}`);
-      }
-    }
+    else printReport(report);
+    if (report.status !== 'passed') process.exitCode = 1;
   } else {
     throw new Error(`Unknown command: ${command}`);
   }

@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "kind": "cmi-real-corpus-pilot-evidence",
+  "observedAt": "2026-08-13T10:13:56.833Z",
+  "source": {
+    "workflow": "Real Corpus Validation",
+    "workflowRunId": 31690157805,
+    "headSha": "c3965aec3bd5bfd2b02cb9e3234e083fe5a2513c",
+    "artifactName": "real-corpus-report",
+    "artifactId": 9177031950,
+    "artifactDigest": "sha256:fe51f9a680a9e11a50335a10898369ac0d7962c89a31017d2f8070cc6f797917"
+  },
+  "status": "passed",
+  "policy": {
+    "pinnedRevisions": true,
+    "disposableCheckouts": true,
+    "targetDependenciesInstalled": false,
+    "targetCodeExecuted": false,
+    "targetTestsExecuted": false,
+    "cmiStateScope": "disposable-checkout-only"
+  },
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "healthy": 3
+  },
+  "repositories": [
+    {
+      "id": "cmi-self-host-0-12-1",
+      "repository": "lenhonbp/codex-memory-intelligence",
+      "revision": "b19054f329c81e1e1aefcfe08e0236922cab4acf",
+      "repoClass": "node-javascript",
+      "fullScan": {
+        "wallMs": 352.8,
+        "durationMs": 272.57,
+        "files": 217,
+        "bytes": 1765488,
+        "workspaces": 1,
+        "sourceFiles": 117,
+        "parsedFiles": 117,
+        "reusedFiles": 0,
+        "localEdges": 269,
+        "symbols": 4060
+      },
+      "incrementalScan": {
+        "wallMs": 124.59,
+        "durationMs": 49.21,
+        "files": 217,
+        "bytes": 1765488,
+        "workspaces": 1,
+        "sourceFiles": 117,
+        "parsedFiles": 0,
+        "reusedFiles": 117,
+        "localEdges": 269,
+        "symbols": 4060
+      },
+      "doctor": {
+        "healthy": true,
+        "wallMs": 136.36,
+        "checks": 13
+      },
+      "context": {
+        "query": "portable evidence provenance handoff",
+        "evidenceItems": 8,
+        "wallMs": 167.53
+      },
+      "impact": {
+        "target": "src/portable-evidence.js",
+        "evidenceItems": null,
+        "wallMs": 108.18,
+        "blocked": false
+      },
+      "session": {
+        "startWallMs": 229.5,
+        "closeWallMs": 239.11,
+        "handoffWallMs": 66.7,
+        "handoffProduced": true
+      },
+      "transport": {
+        "exactRevisionFetch": true,
+        "fallbackRef": null
+      }
+    },
+    {
+      "id": "ky-typescript",
+      "repository": "sindresorhus/ky",
+      "revision": "3419113b48e034fdcf8fa6bd3be3da7b3d0d758f",
+      "repoClass": "node-typescript",
+      "fullScan": {
+        "wallMs": 142.16,
+        "durationMs": 69.78,
+        "files": 64,
+        "bytes": 777466,
+        "workspaces": 1,
+        "sourceFiles": 53,
+        "parsedFiles": 53,
+        "reusedFiles": 0,
+        "localEdges": 0,
+        "symbols": 804
+      },
+      "incrementalScan": {
+        "wallMs": 97.5,
+        "durationMs": 28.31,
+        "files": 64,
+        "bytes": 777466,
+        "workspaces": 1,
+        "sourceFiles": 53,
+        "parsedFiles": 0,
+        "reusedFiles": 53,
+        "localEdges": 0,
+        "symbols": 804
+      },
+      "doctor": {
+        "healthy": true,
+        "wallMs": 110.23,
+        "checks": 13
+      },
+      "context": {
+        "query": "request retry hooks timeout",
+        "evidenceItems": 8,
+        "wallMs": 116.49
+      },
+      "impact": {
+        "target": "source/core/Ky.ts",
+        "evidenceItems": null,
+        "wallMs": 91.03,
+        "blocked": false
+      },
+      "session": {
+        "startWallMs": 161.33,
+        "closeWallMs": 176.26,
+        "handoffWallMs": 70.37,
+        "handoffProduced": true
+      }
+    },
+    {
+      "id": "changesets-typescript-monorepo",
+      "repository": "changesets/changesets",
+      "revision": "b4dc91f545ff2afead214278b7b5ebc8d4e96322",
+      "repoClass": "node-typescript-monorepo",
+      "fullScan": {
+        "wallMs": 232.23,
+        "durationMs": 156.67,
+        "files": 320,
+        "bytes": 2530391,
+        "workspaces": 24,
+        "sourceFiles": 159,
+        "parsedFiles": 159,
+        "reusedFiles": 0,
+        "localEdges": 214,
+        "symbols": 1503
+      },
+      "incrementalScan": {
+        "wallMs": 140.22,
+        "durationMs": 68.48,
+        "files": 320,
+        "bytes": 2530391,
+        "workspaces": 24,
+        "sourceFiles": 159,
+        "parsedFiles": 0,
+        "reusedFiles": 159,
+        "localEdges": 214,
+        "symbols": 1503
+      },
+      "doctor": {
+        "healthy": true,
+        "wallMs": 144.87,
+        "checks": 13
+      },
+      "context": {
+        "query": "cli changeset version publish workspace",
+        "evidenceItems": 8,
+        "wallMs": 193.51
+      },
+      "impact": {
+        "target": "packages/cli/src/cli.ts",
+        "evidenceItems": null,
+        "wallMs": 117.98,
+        "blocked": false
+      },
+      "session": {
+        "startWallMs": 234.97,
+        "closeWallMs": 258.73,
+        "handoffWallMs": 74.39,
+        "handoffProduced": true
+      }
+    }
+  ],
+  "claimDiscipline": "engineering-validation-only",
+  "limitations": [
+    "This pilot validates CMI behavior on the three pinned source trees in the committed corpus; it does not prove product-value improvement.",
+    "Context and impact result counts show that the query paths executed; they do not independently establish semantic correctness.",
+    "Timing values are one observed GitHub-hosted run and are not p95, p99, cold-start, concurrency, or comparative productivity measurements.",
+    "The target repositories were not installed, built, tested, or executed by the corpus runner."
+  ]
+}

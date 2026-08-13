@@ -32,6 +32,18 @@ import {
 } from './evaluation.js';
 
 const [command, ...args] = process.argv.slice(2);
+
+async function flushStandardStream(stream) {
+  if (!stream || stream.destroyed || !stream.writable) return;
+  await new Promise((resolve) => {
+    try {
+      stream.write('', () => resolve());
+    } catch {
+      resolve();
+    }
+  });
+}
+
 const NUMERIC_FLAG_MINIMUMS = new Map([
   ['--limit', 1],
   ['--depth', 1],
@@ -72,7 +84,8 @@ validateNumericFlags(args);
 validateTopLevelTrustFlags(args);
 if (!['session', 'finding', 'evaluate'].includes(command)) {
   await import('./cli.js');
-  process.exit();
+  await Promise.all([flushStandardStream(process.stdout), flushStandardStream(process.stderr)]);
+  process.exit(process.exitCode ?? 0);
 }
 
 const json = args.includes('--json');

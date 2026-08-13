@@ -5,7 +5,8 @@
     {
       "id": "cmi-self-host-0-12-1",
       "repository": "lenhonbp/codex-memory-intelligence",
-      "revision": "b19054f329c81e1e1eafcfe08e0236922cab4acf",
+      "revision": "b19054f329c81e1e1aefcfe08e0236922cab4acf",
+      "fetchRef": "refs/heads/main",
       "repoClass": "node-javascript",
       "contextQuery": "portable evidence provenance handoff",
       "impactTarget": "src/portable-evidence.js",
