@@ -31,6 +31,7 @@ import {
 import { VERSION, MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSIONS } from './version.js';
 import { collectExecutableProvenance } from './provenance.js';
 import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidence } from './portable-evidence.js';
+import { strictToolDefinition, validateToolArguments } from './mcp-schema.js';
 
 const root = path.resolve(process.env.CMI_PROJECT_ROOT || process.cwd());
 const writeEnabled = /^(1|true|yes)$/i.test(process.env.CMI_WRITE_ENABLED || '');
@@ -229,7 +230,9 @@ const writeTools = [
   { name: 'refresh_project_memory', title: 'Refresh source fingerprints', description: 'Refresh source fingerprints for one active memory entry without attesting semantic review. Ambiguous prefixes are rejected; bulk refresh requires a separate server opt-in.', inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'Memory ID prefix; use all only when bulk refresh is enabled.' }, refreshedBy: { type: 'string' }, reason: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } },
   { name: 'set_project_memory_state', title: 'Set reviewed memory lifecycle state', description: 'Explicitly activate, deprecate, reject, or supersede one uniquely identified memory entry with reviewer and reason metadata. Superseded state requires an active replacement ID.', inputSchema: { type: 'object', required: ['id','state','reason'], properties: { id: { type: 'string' }, state: { type: 'string', enum: ['active','deprecated','rejected','superseded'] }, reason: { type: 'string', minLength: 1, maxLength: 500 }, changedBy: { type: 'string', maxLength: 100 }, supersededBy: { type: 'string' } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } },
 ];
-function tools() { return writeEnabled ? [...readTools, ...writeTools] : readTools; }
+const allTools = [...readTools, ...writeTools];
+function toolDefinition(name) { return allTools.find((tool) => tool.name === name); }
+function tools() { return (writeEnabled ? allTools : readTools).map(strictToolDefinition); }
 
 const resources = [
   { uri: 'cmi://project/memory', name: 'Project memory', title: 'Project Memory', description: 'Durable project facts and their lifecycle metadata.', mimeType: 'text/markdown' },
@@ -321,8 +324,14 @@ async function handle(message) {
   if (lifecycle !== 'ready') { if (id !== undefined) sendError(id, -32002, 'Server is not initialized.'); return; }
   if (method === 'tools/list') { send({ jsonrpc: '2.0', id, result: { tools: tools() } }); return; }
   if (method === 'tools/call') {
-    if (typeof params?.name !== 'string' || (params.arguments !== undefined && (typeof params.arguments !== 'object' || Array.isArray(params.arguments)))) { sendError(id, -32602, 'Invalid tool parameters.'); return; }
-    try { send({ jsonrpc: '2.0', id, result: await callTool(params.name, params.arguments || {}) }); }
+    if (typeof params?.name !== 'string' || (params.arguments !== undefined && (params.arguments === null || typeof params.arguments !== 'object' || Array.isArray(params.arguments)))) { sendError(id, -32602, 'Invalid tool parameters.'); return; }
+    const args = params.arguments === undefined ? {} : params.arguments;
+    const definition = toolDefinition(params.name);
+    if (definition) {
+      try { validateToolArguments(definition.inputSchema, args); }
+      catch (error) { sendError(id, -32602, error.message); return; }
+    }
+    try { send({ jsonrpc: '2.0', id, result: await callTool(params.name, args) }); }
     catch (error) { send({ jsonrpc: '2.0', id, result: { isError: true, content: [{ type: 'text', text: error.message }] } }); }
     return;
   }

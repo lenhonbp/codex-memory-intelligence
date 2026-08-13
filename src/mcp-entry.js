@@ -34,6 +34,7 @@ import {
   formatEvaluationList,
   formatEvaluationReport,
 } from './evaluation.js';
+import { strictToolDefinition, validateToolArguments } from './mcp-schema.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(process.env.CMI_PROJECT_ROOT || process.cwd());
@@ -51,6 +52,7 @@ let lifecycle = 'new';
 const transforms = new Map();
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function errorResult(id, message) { send({ jsonrpc: '2.0', id: id ?? null, result: { isError: true, content: [{ type: 'text', text: message }] } }); }
+function protocolError(id, code, message) { send({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }); }
 function textResult(text, structuredContent) { return { content: [{ type: 'text', text }], ...(structuredContent ? { structuredContent } : {}) }; }
 function writable() { if (!writeEnabled) throw new Error('MCP durable project writes are disabled. Generate config with cmi mcp-config --write to enable session, finding, and evaluation writes.'); }
 function forward(message, transform) {
@@ -138,7 +140,9 @@ const sessionPrompts = [
   { name: 'continue_from_session_handoff', title: 'Continue from the latest handoff', description: 'Resume project work from the latest CMI handoff instead of asking the user to reconstruct context.', arguments: [] },
 ];
 
-function isLocalTool(name) { return [...sessionReadTools, ...sessionWriteTools, ...evaluationReadTools, ...evaluationWriteTools].some((tool) => tool.name === name); }
+const localTools = [...sessionReadTools, ...sessionWriteTools, ...evaluationReadTools, ...evaluationWriteTools];
+function localToolDefinition(name) { return localTools.find((tool) => tool.name === name); }
+function isLocalTool(name) { return Boolean(localToolDefinition(name)); }
 async function callSessionTool(name, args = {}) {
   if (name === 'get_ambient_task_brief') {
     const result = await buildAmbientTaskBrief(root, args.request || '');
@@ -269,7 +273,13 @@ input.on('line', (line) => {
     if (method === 'notifications/initialized') { lifecycle = 'ready'; forward(message); return; }
     if (method === 'tools/list') {
       forward(message, (response) => {
-        if (response?.result?.tools) response.result.tools.push(...sessionReadTools, ...evaluationReadTools, ...(writeEnabled ? [...sessionWriteTools, ...evaluationWriteTools] : []));
+        if (response?.result?.tools) {
+          response.result.tools.push(...[
+            ...sessionReadTools,
+            ...evaluationReadTools,
+            ...(writeEnabled ? [...sessionWriteTools, ...evaluationWriteTools] : []),
+          ].map(strictToolDefinition));
+        }
         return response;
       });
       return;
@@ -284,7 +294,14 @@ input.on('line', (line) => {
     }
     if (method === 'tools/call' && isLocalTool(params?.name)) {
       if (lifecycle !== 'ready') { errorResult(id, 'Server is not initialized.'); return; }
-      try { send({ jsonrpc: '2.0', id, result: await callSessionTool(params.name, params.arguments || {}) }); }
+      if (params.arguments !== undefined && (params.arguments === null || typeof params.arguments !== 'object' || Array.isArray(params.arguments))) {
+        protocolError(id, -32602, 'Invalid tool parameters.');
+        return;
+      }
+      const args = params.arguments === undefined ? {} : params.arguments;
+      try { validateToolArguments(localToolDefinition(params.name).inputSchema, args); }
+      catch (error) { protocolError(id, -32602, error.message); return; }
+      try { send({ jsonrpc: '2.0', id, result: await callSessionTool(params.name, args) }); }
       catch (error) { errorResult(id, error.message); }
       return;
     }
