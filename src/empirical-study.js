@@ -11,6 +11,7 @@ const CONDITION_ORDER = {
 const CROSS_CONDITION_LEAKAGE = ['none', 'known', 'unknown'];
 const REVIEWER_KINDS = ['human', 'agent', 'unreviewed'];
 const REVIEWER_ASSURANCE = ['declared', 'externally-verified', 'not-applicable'];
+const REVIEWER_BLINDING = ['blinded', 'unblinded', 'unknown'];
 const VERIFICATION_OUTCOMES = ['passed', 'failed', 'mixed', 'not-run', 'unknown'];
 const TASK_OUTCOMES = ['succeeded', 'failed', 'incomplete', 'unknown'];
 const VERIFICATION_CHOICE_OUTCOMES = ['improved', 'unchanged', 'worse', 'not-applicable', 'unknown'];
@@ -77,6 +78,11 @@ function validateIsoPair(startedAt, endedAt) {
   return { startedAt: new Date(startMs).toISOString(), endedAt: new Date(endMs).toISOString() };
 }
 
+function taskDurationMs(result) {
+  if (!result?.startedAt || !result?.endedAt) return null;
+  return Date.parse(result.endedAt) - Date.parse(result.startedAt);
+}
+
 function validateConditionResult(result, study, condition) {
   if (!isObject(result)) throw new Error(`${condition} result must be an object`);
   const timing = validateIsoPair(result.startedAt ?? null, result.endedAt ?? null);
@@ -89,8 +95,10 @@ function validateConditionResult(result, study, condition) {
 
   const reviewerKind = oneOf(result.reviewerKind, REVIEWER_KINDS, `${condition}.reviewerKind`);
   const reviewerAssurance = oneOf(result.reviewerAssurance, REVIEWER_ASSURANCE, `${condition}.reviewerAssurance`);
+  const reviewerBlinding = oneOf(result.reviewerBlinding ?? 'unknown', REVIEWER_BLINDING, `${condition}.reviewerBlinding`);
   if (reviewerKind === 'unreviewed' && reviewerAssurance !== 'not-applicable') throw new Error(`${condition}.reviewerAssurance must be not-applicable when reviewerKind is unreviewed`);
   if (reviewerKind !== 'unreviewed' && reviewerAssurance === 'not-applicable') throw new Error(`${condition}.reviewerAssurance must declare an assurance level for reviewed evidence`);
+  if (reviewerKind === 'unreviewed' && reviewerBlinding !== 'unknown') throw new Error(`${condition}.reviewerBlinding must be unknown when reviewerKind is unreviewed`);
 
   return {
     conditionConfiguration: boundedString(result.conditionConfiguration, `${condition}.conditionConfiguration`, { max: 500 }),
@@ -116,6 +124,7 @@ function validateConditionResult(result, study, condition) {
     handoffScore: nullableScore(result.handoffScore, `${condition}.handoffScore`),
     reviewerKind,
     reviewerAssurance,
+    reviewerBlinding,
     notesReference: boundedString(result.notesReference ?? null, `${condition}.notesReference`, { required: false, max: 300 }),
     ...timing,
   };
@@ -216,6 +225,14 @@ function protocolEligibility(condition) {
     && result.observedStartRevision);
 }
 
+function independentReviewEligibility(condition) {
+  if (condition.status !== 'completed') return false;
+  const result = condition.result;
+  return result.reviewerKind === 'human'
+    && result.reviewerAssurance === 'externally-verified'
+    && result.reviewerBlinding === 'blinded';
+}
+
 function reviewerLabel(result) {
   if (!result || result.reviewerKind === 'unreviewed') return 'unreviewed';
   return `${result.reviewerAssurance === 'externally-verified' ? 'externally-verified' : 'declared'}-${result.reviewerKind}`;
@@ -249,7 +266,9 @@ function conditionSummary(entry) {
     taskOutcome: result.taskOutcome,
     handoffScore: result.handoffScore,
     reviewer: reviewerLabel(result),
+    reviewerBlinding: result.reviewerBlinding,
     timingRecorded: Boolean(result.startedAt && result.endedAt),
+    taskDurationMs: taskDurationMs(result),
   };
 }
 
@@ -267,10 +286,29 @@ function studyLimitations(validated, summaries) {
     if (!result.reconstructionAdequacyReached) limitations.push(`${entry.condition}: adequate reconstruction was not reached, so reconstruction counts are censored.`);
     if (result.reviewerKind !== 'human') limitations.push(`${entry.condition}: outcome review is ${reviewerLabel(result)}, not human-reviewed evidence.`);
     else if (result.reviewerAssurance !== 'externally-verified') limitations.push(`${entry.condition}: human reviewer identity is declared rather than externally authenticated.`);
+    if (result.reviewerKind === 'human' && result.reviewerBlinding !== 'blinded') limitations.push(`${entry.condition}: human review was ${result.reviewerBlinding}, so independent blinded-review eligibility is not satisfied.`);
   }
   limitations.push('A single pair is descriptive evidence only and cannot establish general productivity improvement.');
   limitations.push('The harness validates structure and declared isolation metadata; it does not authenticate repository ownership, reviewer identity, or hidden agent reasoning.');
   return [...new Set(limitations)];
+}
+
+function pairedEffects(plain, cmi) {
+  const plainDuration = taskDurationMs(plain.result);
+  const cmiDuration = taskDurationMs(cmi.result);
+  return {
+    fewerInspections: plain.result.inspectionCount - cmi.result.inspectionCount,
+    fewerSearches: plain.result.searchCount - cmi.result.searchCount,
+    fewerGitQueries: plain.result.gitQueryCount - cmi.result.gitQueryCount,
+    fewerClarifications: plain.result.clarificationCount - cmi.result.clarificationCount,
+    fewerFilesInspected: plain.result.filesInspected.length - cmi.result.filesInspected.length,
+    moreRisksFoundEarly: cmi.result.materialRisksFoundEarly - plain.result.materialRisksFoundEarly,
+    fewerRisksFoundLate: plain.result.materialRisksFoundLate - cmi.result.materialRisksFoundLate,
+    fewerMissedRisks: plain.result.materialRisksMissed - cmi.result.materialRisksMissed,
+    fewerFalsePositives: plain.result.falsePositiveFindings - cmi.result.falsePositiveFindings,
+    higherHandoffScore: plain.result.handoffScore == null || cmi.result.handoffScore == null ? null : cmi.result.handoffScore - plain.result.handoffScore,
+    fasterByMs: plainDuration == null || cmiDuration == null ? null : plainDuration - cmiDuration,
+  };
 }
 
 export function reportStudyLedger(ledger) {
@@ -280,6 +318,7 @@ export function reportStudyLedger(ledger) {
   const cmi = validated.conditions.find((entry) => entry.condition === 'cmi');
   const complete = plain.status === 'completed' && cmi.status === 'completed';
   const eligible = complete && protocolEligibility(plain) && protocolEligibility(cmi);
+  const productValueEligible = eligible && independentReviewEligibility(plain) && independentReviewEligibility(cmi);
   const deltas = complete ? {
     inspectionCount: plain.result.inspectionCount - cmi.result.inspectionCount,
     searchCount: plain.result.searchCount - cmi.result.searchCount,
@@ -302,9 +341,11 @@ export function reportStudyLedger(ledger) {
     order: validated.study.order,
     status: complete ? 'complete' : 'partial',
     protocolEligible: eligible,
+    productValueEligible,
     claimDiscipline: 'descriptive-only',
     conditions: summaries,
     deltas,
+    pairedEffects: complete ? pairedEffects(plain, cmi) : null,
     verificationChoiceOutcome: complete ? cmi.result.verificationChoiceOutcome : 'unknown',
     limitations: studyLimitations(validated, summaries),
   };
@@ -341,12 +382,41 @@ function sumByCondition(entries, field) {
   }, {});
 }
 
+function taskOutcomesByCondition(entries) {
+  return CONDITIONS.reduce((output, condition) => {
+    output[condition] = countBy(entries
+      .filter((entry) => entry.condition === condition)
+      .map((entry) => entry.result.taskOutcome));
+    return output;
+  }, {});
+}
+
+function summarizePairedEffects(reports) {
+  const fields = [
+    'fewerInspections',
+    'fewerSearches',
+    'fewerGitQueries',
+    'fewerClarifications',
+    'fewerFilesInspected',
+    'moreRisksFoundEarly',
+    'fewerRisksFoundLate',
+    'fewerMissedRisks',
+    'fewerFalsePositives',
+    'higherHandoffScore',
+    'fasterByMs',
+  ];
+  return Object.fromEntries(fields.map((field) => [field, numericSummary(reports
+    .map((report) => report.pairedEffects?.[field])
+    .filter((value) => value != null))]));
+}
+
 export function aggregateStudyLedgers(ledgers) {
   if (!Array.isArray(ledgers) || !ledgers.length) throw new Error('At least one empirical study ledger is required');
   const validated = ledgers.map(validateStudyLedger);
   const reports = validated.map(reportStudyLedger);
   const completedReports = reports.filter((report) => report.status === 'complete');
   const eligibleReports = completedReports.filter((report) => report.protocolEligible);
+  const productValueReports = eligibleReports.filter((report) => report.productValueEligible);
 
   const reconstruction = {};
   for (const condition of CONDITIONS) {
@@ -358,16 +428,19 @@ export function aggregateStudyLedgers(ledgers) {
       clarificationCount: numericSummary(rows.map((row) => row.reconstruction.clarificationCount)),
       filesInspected: numericSummary(rows.map((row) => row.reconstruction.filesInspected)),
       handoffScore: numericSummary(rows.map((row) => row.handoffScore).filter((value) => value != null)),
+      taskDurationMs: numericSummary(rows.map((row) => row.taskDurationMs).filter((value) => value != null)),
     };
   }
 
   const allCompletedConditions = validated.flatMap((ledger) => ledger.conditions).filter((entry) => entry.status === 'completed');
+  const pairedTimingReports = completedReports.filter((report) => report.pairedEffects?.fasterByMs != null);
   const limitations = [
     'Aggregate results are descriptive and must be interpreted by represented workflow class before any product claim.',
     'Human and agent review are reported separately and must not be averaged into one usefulness rate.',
     'The harness does not independently authenticate external-real repository or reviewer identity claims.',
   ];
   if (eligibleReports.length < completedReports.length) limitations.push('Some complete pairs were excluded from pooled reconstruction summaries because isolation/equivalent-start requirements were not satisfied.');
+  if (productValueReports.length < eligibleReports.length) limitations.push('Some protocol-eligible pairs lack externally verified blinded human review and are excluded from product-value-reviewed paired summaries.');
   if (!allCompletedConditions.some((entry) => entry.result.reviewerKind === 'human')) limitations.push('No human-reviewed condition outcomes are present.');
 
   return {
@@ -379,14 +452,23 @@ export function aggregateStudyLedgers(ledgers) {
       total: reports.length,
       complete: completedReports.length,
       protocolEligible: eligibleReports.length,
+      productValueEligible: productValueReports.length,
       negativeControls: reports.filter((report) => report.negativeControl).length,
     },
     repeatedTasksPerRepository: countBy(validated.map((ledger) => ledger.study.repositoryStudyId)),
     taskClassDistribution: countBy(validated.map((ledger) => ledger.study.taskClass)),
     orderDistribution: countBy(validated.map((ledger) => ledger.study.order)),
     reviewerDistribution: countBy(allCompletedConditions.map((entry) => reviewerLabel(entry.result))),
+    reviewerBlindingDistribution: countBy(allCompletedConditions.map((entry) => entry.result.reviewerBlinding)),
+    taskOutcomeDistribution: taskOutcomesByCondition(allCompletedConditions),
     verificationChoiceOutcomes: countBy(completedReports.map((report) => report.verificationChoiceOutcome)),
+    timing: {
+      conditionsRecorded: allCompletedConditions.filter((entry) => taskDurationMs(entry.result) != null).length,
+      completePairsWithPairedTiming: pairedTimingReports.length,
+    },
     reconstruction,
+    pairedEffects: summarizePairedEffects(eligibleReports),
+    productValuePairedEffects: summarizePairedEffects(productValueReports),
     materialRisks: {
       foundEarly: sumByCondition(allCompletedConditions, 'materialRisksFoundEarly'),
       foundLate: sumByCondition(allCompletedConditions, 'materialRisksFoundLate'),
@@ -405,5 +487,6 @@ export const EMPIRICAL_STUDY_CONTRACT = Object.freeze({
   orders: [...ORDERS],
   reviewerKinds: [...REVIEWER_KINDS],
   reviewerAssurance: [...REVIEWER_ASSURANCE],
+  reviewerBlinding: [...REVIEWER_BLINDING],
   verificationChoiceOutcomes: [...VERIFICATION_CHOICE_OUTCOMES],
 });

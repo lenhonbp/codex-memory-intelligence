@@ -80,6 +80,7 @@ test('condition capture is immutable and requires the preregistered start revisi
   const ledger = study();
   const withPlain = recordStudyCondition(ledger, 'plain', result());
   assert.equal(withPlain.conditions.find((entry) => entry.condition === 'plain').status, 'completed');
+  assert.equal(withPlain.conditions.find((entry) => entry.condition === 'plain').result.reviewerBlinding, 'unknown');
   assert.throws(() => recordStudyCondition(withPlain, 'plain', result()), /already recorded/i);
   assert.throws(() => recordStudyCondition(ledger, 'cmi', result({ observedStartRevision: 'b'.repeat(40) })), /does not match preregistered revision/i);
 });
@@ -109,6 +110,7 @@ test('paired report exposes raw deltas but remains descriptive-only with declare
   const report = reportStudyLedger(ledger);
   assert.equal(report.status, 'complete');
   assert.equal(report.protocolEligible, true);
+  assert.equal(report.productValueEligible, false);
   assert.equal(report.claimDiscipline, 'descriptive-only');
   assert.deepEqual(report.deltas, {
     inspectionCount: 6,
@@ -120,10 +122,54 @@ test('paired report exposes raw deltas but remains descriptive-only with declare
     falsePositiveFindings: 0,
     handoffScore: 3,
   });
+  assert.equal(report.pairedEffects.fewerInspections, 6);
+  assert.equal(report.pairedEffects.moreRisksFoundEarly, 1);
+  assert.equal(report.pairedEffects.fewerMissedRisks, 1);
+  assert.equal(report.pairedEffects.higherHandoffScore, 3);
+  assert.equal(report.pairedEffects.fasterByMs, null);
   assert.equal(report.verificationChoiceOutcome, 'improved');
   assert.ok(report.limitations.some((item) => /agent/i.test(item)));
   assert.ok(report.limitations.some((item) => /single pair/i.test(item)));
   assert.ok(!Object.hasOwn(report, 'supportsCmi'));
+});
+
+test('externally verified blinded human review and external timing create product-value-eligible paired evidence', () => {
+  let ledger = study();
+  ledger = recordStudyCondition(ledger, 'plain', result({
+    inspectionCount: 10,
+    materialRisksFoundEarly: 1,
+    materialRisksFoundLate: 1,
+    materialRisksMissed: 1,
+    handoffScore: 2,
+    reviewerKind: 'human',
+    reviewerAssurance: 'externally-verified',
+    reviewerBlinding: 'blinded',
+    startedAt: '2026-08-08T09:00:00.000Z',
+    endedAt: '2026-08-08T09:10:00.000Z',
+  }));
+  ledger = recordStudyCondition(ledger, 'cmi', result({
+    inspectionCount: 6,
+    materialRisksFoundEarly: 2,
+    materialRisksFoundLate: 0,
+    materialRisksMissed: 0,
+    handoffScore: 5,
+    reviewerKind: 'human',
+    reviewerAssurance: 'externally-verified',
+    reviewerBlinding: 'blinded',
+    startedAt: '2026-08-08T10:00:00.000Z',
+    endedAt: '2026-08-08T10:06:00.000Z',
+  }));
+
+  const report = reportStudyLedger(ledger);
+  assert.equal(report.protocolEligible, true);
+  assert.equal(report.productValueEligible, true);
+  assert.equal(report.conditions[0].taskDurationMs, 600000);
+  assert.equal(report.conditions[1].taskDurationMs, 360000);
+  assert.equal(report.pairedEffects.fasterByMs, 240000);
+  assert.equal(report.pairedEffects.moreRisksFoundEarly, 1);
+  assert.equal(report.pairedEffects.fewerRisksFoundLate, 1);
+  assert.equal(report.pairedEffects.fewerMissedRisks, 1);
+  assert.equal(report.pairedEffects.higherHandoffScore, 3);
 });
 
 test('cross-condition contamination excludes a complete pair from protocol-eligible pooling', () => {
@@ -133,6 +179,7 @@ test('cross-condition contamination excludes a complete pair from protocol-eligi
   const report = reportStudyLedger(ledger);
   assert.equal(report.status, 'complete');
   assert.equal(report.protocolEligible, false);
+  assert.equal(report.productValueEligible, false);
   assert.ok(report.limitations.some((item) => /cross-condition leakage is known/i.test(item)));
 });
 
@@ -153,22 +200,27 @@ test('aggregate keeps paired results, order balance, negative controls, and revi
     inspectionCount: 3,
     reviewerKind: 'human',
     reviewerAssurance: 'externally-verified',
+    reviewerBlinding: 'blinded',
   }));
   second = recordStudyCondition(second, 'cmi', result({
     inspectionCount: 3,
     verificationChoiceOutcome: 'unchanged',
     reviewerKind: 'human',
     reviewerAssurance: 'externally-verified',
+    reviewerBlinding: 'blinded',
   }));
 
   const aggregate = aggregateStudyLedgers([first, second]);
   assert.equal(aggregate.repositories, 2);
-  assert.deepEqual(aggregate.pairs, { total: 2, complete: 2, protocolEligible: 2, negativeControls: 1 });
+  assert.deepEqual(aggregate.pairs, { total: 2, complete: 2, protocolEligible: 2, productValueEligible: 1, negativeControls: 1 });
   assert.deepEqual(aggregate.orderDistribution, { 'plain-first': 1, 'cmi-first': 1 });
   assert.deepEqual(aggregate.verificationChoiceOutcomes, { improved: 1, unchanged: 1 });
   assert.deepEqual(aggregate.reviewerDistribution, { 'declared-agent': 2, 'externally-verified-human': 2 });
+  assert.deepEqual(aggregate.reviewerBlindingDistribution, { unknown: 2, blinded: 2 });
   assert.equal(aggregate.reconstruction.plain.inspectionCount.median, 6.5);
   assert.equal(aggregate.reconstruction.cmi.inspectionCount.median, 4.5);
+  assert.equal(aggregate.pairedEffects.fewerInspections.median, 2);
+  assert.equal(aggregate.productValuePairedEffects.fewerInspections.median, 0);
   assert.equal(aggregate.claimDiscipline, 'descriptive-only');
   assert.equal(aggregate.pairedResults.length, 2);
 });
@@ -177,6 +229,15 @@ test('ledger rejects absolute or escaping file paths in externally observed insp
   const ledger = study();
   assert.throws(() => recordStudyCondition(ledger, 'plain', result({ filesInspected: ['/tmp/secret.js'] })), /repository-relative/i);
   assert.throws(() => recordStudyCondition(ledger, 'plain', result({ filesInspected: ['src/../outside.js'] })), /must not escape/i);
+});
+
+test('unreviewed evidence cannot claim reviewer blinding', () => {
+  const ledger = study();
+  assert.throws(() => recordStudyCondition(ledger, 'plain', result({
+    reviewerKind: 'unreviewed',
+    reviewerAssurance: 'not-applicable',
+    reviewerBlinding: 'blinded',
+  })), /reviewerBlinding must be unknown/i);
 });
 
 test('CLI can preregister, record, validate, report, and aggregate without writing CMI durable state', async () => {
@@ -201,6 +262,7 @@ test('CLI can preregister, record, validate, report, and aggregate without writi
   const report = JSON.parse(command.stdout);
   assert.equal(report.status, 'complete');
   assert.equal(report.protocolEligible, true);
+  assert.equal(report.productValueEligible, false);
   command = run('aggregate', '--file', ledgerPath, '--json');
   assert.equal(command.status, 0, command.stderr);
   const aggregate = JSON.parse(command.stdout);

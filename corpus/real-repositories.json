@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "kind": "cmi-real-corpus-manifest",
+  "repositories": [
+    {
+      "id": "cmi-self-host-0-12-1",
+      "repository": "lenhonbp/codex-memory-intelligence",
+      "revision": "b19054f329c81e1e1eafcfe08e0236922cab4acf",
+      "repoClass": "node-javascript",
+      "contextQuery": "portable evidence provenance handoff",
+      "impactTarget": "src/portable-evidence.js",
+      "minWorkspaces": 0
+    },
+    {
+      "id": "ky-typescript",
+      "repository": "sindresorhus/ky",
+      "revision": "3419113b48e034fdcf8fa6bd3be3da7b3d0d758f",
+      "repoClass": "node-typescript",
+      "contextQuery": "request retry hooks timeout",
+      "impactTarget": "source/core/Ky.ts",
+      "minWorkspaces": 0
+    },
+    {
+      "id": "changesets-typescript-monorepo",
+      "repository": "changesets/changesets",
+      "revision": "b4dc91f545ff2afead214278b7b5ebc8d4e96322",
+      "repoClass": "node-typescript-monorepo",
+      "contextQuery": "cli changeset version publish workspace",
+      "impactTarget": "packages/cli/src/cli.ts",
+      "minWorkspaces": 2
+    }
+  ]
+}

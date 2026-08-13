@@ -18,16 +18,7 @@ const COMMAND_OPTIONS = {
 };
 
 function usage() {
-  console.log(`CMI empirical study harness
-
-Usage:
-  node scripts/empirical-study.js init --out FILE --study-id ID --pair-id ID --repository-study-id ID --revision SHA --repo-class CLASS --task-class CLASS --order plain-first|cmi-first --agent-configuration TEXT [--task-reference REF] [--acceptance-reference REF] [--negative-control]
-  node scripts/empirical-study.js record --file FILE --condition plain|cmi --input RESULT.json
-  node scripts/empirical-study.js validate --file FILE
-  node scripts/empirical-study.js report --file FILE [--json]
-  node scripts/empirical-study.js aggregate --file FILE [--file FILE ...] [--json]
-
-The harness stores an external study ledger. It does not write to .codex-memory and never upgrades caller-attested evidence into a productivity claim.`);
+  console.log(`CMI empirical study harness\n\nUsage:\n  node scripts/empirical-study.js init --out FILE --study-id ID --pair-id ID --repository-study-id ID --revision SHA --repo-class CLASS --task-class CLASS --order plain-first|cmi-first --agent-configuration TEXT [--task-reference REF] [--acceptance-reference REF] [--negative-control]\n  node scripts/empirical-study.js record --file FILE --condition plain|cmi --input RESULT.json\n  node scripts/empirical-study.js validate --file FILE\n  node scripts/empirical-study.js report --file FILE [--json]\n  node scripts/empirical-study.js aggregate --file FILE [--file FILE ...] [--json]\n\nThe harness stores an external study ledger. It does not write to .codex-memory and never upgrades caller-attested evidence into a productivity claim. Product-value eligibility additionally requires externally verified blinded human review for both conditions.`);
 }
 
 function parseArgs(argv) {
@@ -92,6 +83,21 @@ function writeJson(filePath, value) {
   fs.writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function formatPairedEffects(effects) {
+  if (!effects) return null;
+  const fields = [
+    ['fasterByMs', 'fasterByMs'],
+    ['fewerMissedRisks', 'fewerMissedRisks'],
+    ['fewerFalsePositives', 'fewerFalsePositives'],
+    ['moreRisksFoundEarly', 'moreRisksFoundEarly'],
+    ['higherHandoffScore', 'higherHandoffScore'],
+  ];
+  return fields
+    .filter(([field]) => effects[field] != null)
+    .map(([field, label]) => `${label}=${effects[field]}`)
+    .join(', ');
+}
+
 function printReport(report, json) {
   if (json) {
     console.log(JSON.stringify(report, null, 2));
@@ -101,16 +107,21 @@ function printReport(report, json) {
     console.log(`Study ${report.studyId} / pair ${report.pairId}`);
     console.log(`Status: ${report.status}`);
     console.log(`Protocol eligible: ${report.protocolEligible ? 'yes' : 'no'}`);
+    console.log(`Product-value review eligible: ${report.productValueEligible ? 'yes' : 'no'}`);
     console.log(`Claim discipline: ${report.claimDiscipline}`);
     if (report.deltas) {
       console.log(`Reconstruction delta (plain - cmi): inspections=${report.deltas.inspectionCount}, searches=${report.deltas.searchCount}, gitQueries=${report.deltas.gitQueryCount}, clarifications=${report.deltas.clarificationCount}`);
     }
+    const paired = formatPairedEffects(report.pairedEffects);
+    if (paired) console.log(`Paired effects (positive favors CMI by field definition): ${paired}`);
     for (const limitation of report.limitations) console.log(`- ${limitation}`);
     return;
   }
-  console.log(`Pairs: ${report.pairs.total}; complete=${report.pairs.complete}; eligible=${report.pairs.protocolEligible}`);
+  console.log(`Pairs: ${report.pairs.total}; complete=${report.pairs.complete}; protocolEligible=${report.pairs.protocolEligible}; productValueEligible=${report.pairs.productValueEligible ?? 0}`);
   console.log(`Independent repository study IDs: ${report.repositories}`);
   console.log(`Claim discipline: ${report.claimDiscipline}`);
+  const paired = report.productValuePairedEffects?.fasterByMs;
+  if (paired?.count) console.log(`Product-value-reviewed fasterByMs: n=${paired.count}, median=${paired.median}, range=${paired.range.min}..${paired.range.max}`);
   for (const limitation of report.limitations) console.log(`- ${limitation}`);
 }
 
