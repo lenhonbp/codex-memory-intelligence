@@ -23,16 +23,18 @@ Polyglot support is not inferred from this corpus and is not part of this tranch
 For each manifest entry the runner:
 
 1. creates a disposable Git checkout;
-2. fetches the exact preregistered commit SHA;
-3. verifies `HEAD` equals that SHA;
-4. invokes CMI `init`;
-5. runs a full scan;
-6. runs an unchanged incremental scan to exercise reuse;
-7. runs `cmi doctor`;
-8. runs one bounded `context` query;
-9. runs one bounded `impact` query;
-10. starts, closes, and produces a handoff for a validation session;
-11. removes the disposable checkout unless explicitly retained for debugging.
+2. attempts to fetch the exact preregistered commit SHA;
+3. if the server refuses direct SHA fetch and the manifest declares a bounded `fetchRef`, fetches that ref only as a transport hint;
+4. checks out the preregistered SHA, never the moving ref tip;
+5. verifies `HEAD` equals that SHA;
+6. invokes CMI `init`;
+7. runs a full scan;
+8. runs an unchanged incremental scan to exercise reuse;
+9. runs `cmi doctor`;
+10. runs one bounded `context` query;
+11. runs one bounded `impact` query;
+12. starts, closes, and produces a handoff for a validation session;
+13. removes the disposable checkout unless explicitly retained for debugging.
 
 The runner does **not**:
 
@@ -41,7 +43,7 @@ The runner does **not**:
 - run target builds;
 - execute target package scripts;
 - execute application code from the target repository;
-- follow a moving branch or tag instead of the pinned SHA.
+- treat a moving branch or tag as evidence identity instead of the pinned SHA.
 
 CMI writes only its own state inside the disposable checkout.
 
@@ -54,6 +56,7 @@ Each repository record contains:
   "id": "stable-study-id",
   "repository": "owner/repository",
   "revision": "40-character-git-sha",
+  "fetchRef": "refs/heads/main",
   "repoClass": "node-typescript",
   "contextQuery": "bounded query",
   "impactTarget": "repository/relative/file-or-symbol",
@@ -61,13 +64,17 @@ Each repository record contains:
 }
 ```
 
+`fetchRef` is optional. When present, it must be a bounded `refs/heads/...` or `refs/tags/...` value. It exists only for Git servers that refuse a direct fetch of an otherwise valid historical commit object. The execution plan always attempts the exact revision first, and after any transport fallback the runner checks out and verifies `revision` before CMI is allowed to run.
+
+A changed `fetchRef` does not change the evidence identity. A changed `revision` does.
+
 Supported repository classes are currently:
 
 - `node-javascript`
 - `node-typescript`
 - `node-typescript-monorepo`
 
-URLs, branch names, short SHAs, absolute impact paths, and traversal targets are rejected.
+Repository URLs, branch names in `revision`, short SHAs, unsafe transport refs, absolute impact paths, and traversal targets are rejected.
 
 ## Commands
 
@@ -104,7 +111,7 @@ Failure collection does not make the gate permissive:
 - the overall report has `status: "failed"` when any repository fails;
 - the CLI emits the complete report first and then exits non-zero.
 
-The underlying `runRealCorpus()` library contract remains fail-closed for a single run. Failure collection is an execution-orchestration layer around independent one-repository runs rather than a silent weakening of repository validation.
+The underlying `runRealCorpus()` library contract remains fail-closed for a single run. Failure collection and transport fallback live in the execution-orchestration layer around independent one-repository runs rather than silently weakening the core pinned-revision validator.
 
 ## Report contract
 
@@ -119,6 +126,7 @@ The report records bounded engineering metadata, including:
 - bounded context/impact result counts and wall time;
 - session/handoff completion and wall time;
 - per-repository pass/fail state;
+- whether a declared transport fallback was needed;
 - bounded operational failure diagnostics when a repository does not complete.
 
 The aggregate summary exposes `total`, `passed`, `failed`, and `healthy`, plus a top-level `status` that is `passed` only when the entire corpus passes.
@@ -131,7 +139,7 @@ Reports carry `claimDiscipline: engineering-validation-only` and repeat that tar
 
 Pull requests run the **offline contract gate**: manifest validation, execution-plan validation, and unit tests using injected command runners. This keeps ordinary PR CI deterministic and avoids making external repositories a required dependency of every commit.
 
-The external real-corpus run is scheduled and manually dispatchable. It requires network access because exact Git objects must be fetched, but the revisions themselves do not move automatically.
+The external real-corpus run is scheduled and manually dispatchable. It requires network access because Git objects must be fetched, but the evidence revisions themselves do not move automatically.
 
 The workflow preserves failure evidence before enforcing the red gate: the corpus command is allowed to finish and write `real-corpus-report.json`, the artifact upload runs even after a corpus failure, and a final enforcement step then fails the job. This keeps regressions visible without converting them into green CI.
 
@@ -139,10 +147,10 @@ A scheduled or manually dispatched external failure should be investigated as on
 
 - CMI regression;
 - Git/network operational failure;
-- pinned Git object availability problem;
+- pinned Git object availability/transport problem;
 - a newly exposed parser/graph limitation on the pinned source tree.
 
-Do not silently advance a pin to make the job green.
+Do not silently advance a pin to make the job green. If a server transport rule prevents direct historical-SHA fetch, a reviewed `fetchRef` may be added only when the same pinned revision is still fetched, checked out, and verified.
 
 ## Updating the corpus
 
