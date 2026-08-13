@@ -35,6 +35,23 @@ The synthetic `v2CompatibilityProbe` field and the simulated replacement verific
 
 The gate also fails closed when an upgrade simulation tries to advertise a breaking change as contract version 1, makes prior-version replay optional, or replaces the retained v1 fixture/corpus references with v2-only artifacts.
 
+## Contract negotiation refusal simulation
+
+`tests/fixtures/evidence-contract/negotiation-simulation.json` is also **test-only**. It does not add a runtime handshake, CLI flag, MCP negotiation parameter, schema field, or automatic downgrade behavior.
+
+The simulation models the refusal policy that must hold before any real negotiation surface is introduced:
+
+- contract selection is exact-version only;
+- the current simulated runtime advertises only released Evidence Contract v1;
+- the existence of `v2-simulation.json` does not make v2 runtime-supported;
+- a positive but unsupported version returns an explicit unsupported-version refusal naming both the requested and supported versions;
+- malformed/non-positive/non-integer version values use a distinct invalid-version refusal;
+- unsupported requests do not silently downgrade, silently upgrade, normalize semantics across versions, or fall back to the current contract;
+- when a future simulation adds another supported version, each version must map to its own explicit contract artifact and retained v1 replay remains available;
+- a supported version may not masquerade by pointing at another version's contract artifact.
+
+The refusal codes and message shape in this fixture are simulation contracts only. They are not a claim that production CMI currently exposes an evidence-contract negotiation API. A future production negotiation surface must be reviewed separately and must preserve these fail-closed properties if it adopts equivalent semantics.
+
 ## Legacy durable records
 
 Historical durable records that predate this contract reference remain governed by their existing compatibility exceptions. They must remain readable where the released compatibility policy says they are readable, and they must not be rewritten merely to add contract metadata.
@@ -93,5 +110,7 @@ A consumer-visible change that cannot replay the existing v1 golden exchanges is
 `tests/golden-exchange-negative-compatibility.test.js` is the consumer-break simulation gate. It mutates protected golden exchange values only in test memory and requires each simulated break to be rejected at a concrete contract path, including verification state, `violationEstablished`, Change/Finding linkage, confidence, scope relation, evidence/file addresses, action text, and stable human evidence labels. A separate additive-field control must remain compatible so the negative gate does not accidentally turn the v1 `additive-only` policy into whole-object exactness.
 
 `tests/evidence-contract-upgrade-simulation.test.js` is the dual-version upgrade gate. It requires the v1 contract and golden corpus to remain the released compatibility reference, proves that a synthetic v2 additive superset remains consumable through the retained v1 projection, requires the simulated v2 projection to enforce its own added field, rejects a protected semantic break under v1, and refuses any upgrade plan that drops prior-version regression coverage. The associated `v2-simulation.json` fixture is deliberately non-runtime and must stay labeled simulation-only.
+
+`tests/evidence-contract-negotiation-simulation.test.js` is the unsupported-version refusal gate. It validates the simulation-only negotiation policy, accepts only exact supported versions, distinguishes invalid from unsupported requests, rejects silent downgrade/upgrade/fallback/normalization policy changes, proves that the test-only v2 fixture remains unsupported by the current runtime simulation, and exercises a future exact v1+v2 mapping while still refusing v3. It also rejects cross-version artifact masquerading.
 
 Together, these tests are the compatibility gate. A future runtime change that silently removes or changes protected evidence semantics should fail CI before release.
