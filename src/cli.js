@@ -36,7 +36,8 @@ import { freezePortableEvidence, inspectPortableEvidence, restorePortableEvidenc
 const [cmd, ...args] = process.argv.slice(2);
 const pathCommands = new Set(['init','scan','status','graph','stale','doctor','workspaces','baseline','boundaries']);
 const json = args.includes('--json');
-const VALUE_FLAGS = new Set(['--fail-on','--limit','--workspace','--stale-policy','--depth','--file','--outcome','--verify','--unexpected','--note','--source','--reason','--changed-by','--superseded-by','--reviewed-by','--refreshed-by','--agent']);
+const VALUE_FLAGS = new Set(['--fail-on','--limit','--workspace','--stale-policy','--depth','--file','--outcome','--verify','--unexpected','--note','--source','--reason','--changed-by','--superseded-by','--reviewed-by','--refreshed-by','--agent','--status']);
+const REPEATABLE_VALUE_FLAGS = new Set(['--file','--verify','--unexpected','--note','--source']);
 
 function help() {
   console.log('  cmi provenance [--json]\n  cmi activate [--agent codex|generic] [--json]\n  cmi ambient <user-request> [--json]\n  cmi evidence <freeze|inspect|restore|rebind> <bundle-path> [--json]');
@@ -66,6 +67,10 @@ function positional(excluded = []) {
     output.push(value);
   }
   return output;
+}
+function requireExactPositionals(values, count, usage) {
+  if (values.length !== count) throw new Error(usage);
+  return values;
 }
 function commandRoot() {
   if (!pathCommands.has(cmd)) return process.cwd();
@@ -97,11 +102,17 @@ function allowedFlagsForCommand() {
 function validateFlags() {
   if (!cmd || ['--version','-v','version','help','--help','-h'].includes(cmd)) return;
   const allowed = allowedFlagsForCommand();
-  for (const value of args) {
-    if (!value.startsWith('--')) continue;
-    if (!allowed.has(value)) throw new Error(`Unknown option for ${cmd}: ${value}`);
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (allowed.has(value) && VALUE_FLAGS.has(value)) { index += 1; continue; }
+    if (value === '-h' && cmd === 'change') continue;
+    if (value.startsWith('-') && !allowed.has(value)) throw new Error(`Unknown option for ${cmd}: ${value}`);
   }
-  for (const value of allowed) if (VALUE_FLAGS.has(value) && args.includes(value)) optionValues(value);
+  for (const value of allowed) {
+    if (!VALUE_FLAGS.has(value) || !args.includes(value)) continue;
+    const values = optionValues(value);
+    if (!REPEATABLE_VALUE_FLAGS.has(value) && values.length > 1) throw new Error(`${value} may be specified only once.`);
+  }
 }
 function emitError(error) {
   const payload = { ok: false, error: { code: error?.code || 'CMI_CLI_ERROR', message: error.message, ...(error?.details === undefined ? {} : { details: error.details }) } };
@@ -150,8 +161,7 @@ try {
     console.log(json ? JSON.stringify(result, null, 2) : formatBoundaryMap(result));
   }
   else if (cmd === 'explain-ignore') {
-    const candidate = positional()[0];
-    if (!candidate) throw new Error('Usage: cmi explain-ignore <path> [--directory]');
+    const [candidate] = requireExactPositionals(positional(), 1, 'Usage: cmi explain-ignore <path> [--directory]');
     const result = await explainIgnore(process.cwd(), candidate, { directory: hasFlag('--directory') });
     console.log(json ? JSON.stringify(result, null, 2) : `${result.ignored ? 'IGNORED' : 'INCLUDED'} ${result.path}\n${result.reason}`);
   }
@@ -201,14 +211,12 @@ try {
       console.log(json ? JSON.stringify(result, null, 2) : formatChangeRecord(result));
     }
     else if (action === 'observe') {
-      const selector = values[0];
-      if (!selector) throw new Error('Usage: cmi change observe <id> [--file path ...]');
+      const [selector] = requireExactPositionals(values, 1, 'Usage: cmi change observe <id> [--file path ...]');
       const result = await observeChangeRecord(process.cwd(), selector, { files: optionValues('--file') });
       console.log(json ? JSON.stringify(result, null, 2) : `Observed ${result.observedChangedFiles.length} changed path(s) · attribution ${result.attribution} · prediction gaps ${result.comparison.missedByPrediction.length}`);
     }
     else if (action === 'complete') {
-      const selector = values[0];
-      if (!selector) throw new Error('Usage: cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown]');
+      const [selector] = requireExactPositionals(values, 1, 'Usage: cmi change complete <id> [--outcome succeeded|failed|partial|abandoned|unknown]');
       const result = await completeChangeRecord(process.cwd(), selector, {
         outcome: optionValues('--outcome')[0] || 'unknown',
         files: optionValues('--file'),
@@ -219,12 +227,12 @@ try {
       console.log(json ? JSON.stringify(result, null, 2) : formatChangeRecord(result));
     }
     else if (action === 'show') {
-      const selector = values[0];
-      if (!selector) throw new Error('Usage: cmi change show <id> [--json]');
+      const [selector] = requireExactPositionals(values, 1, 'Usage: cmi change show <id> [--json]');
       const result = await getChangeRecord(process.cwd(), selector);
       console.log(json ? JSON.stringify(result, null, 2) : formatChangeRecord(result));
     }
     else if (action === 'list') {
+      requireExactPositionals(values, 0, 'Usage: cmi change list [--status active|completed] [--limit N] [--json]');
       const result = await listChangeRecords(process.cwd(), { status: optionValues('--status')[0], limit: optionNumber('--limit', 20) });
       console.log(json ? JSON.stringify(result, null, 2) : formatChangeList(result));
     }
@@ -242,8 +250,7 @@ try {
     console.log(`Memory updated: ${metadata.id.slice(0, 8)}${metadata.sources.length ? ` · ${metadata.sources.length} source(s)` : ''}`);
   }
   else if (cmd === 'memory-state') {
-    const [selector, state] = positional(['--reason','--changed-by','--superseded-by']);
-    if (!selector || !state) throw new Error('Usage: cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id]');
+    const [selector, state] = requireExactPositionals(positional(['--reason','--changed-by','--superseded-by']), 2, 'Usage: cmi memory-state <id> <active|deprecated|rejected|superseded> --reason text [--changed-by name] [--superseded-by id]');
     const result = await setMemoryLifecycle(process.cwd(), selector, state, { reason: optionValues('--reason')[0], changedBy: optionValues('--changed-by')[0], supersededBy: optionValues('--superseded-by')[0] });
     console.log(json ? JSON.stringify(result, null, 2) : `Memory ${result.id.slice(0, 8)} is now ${result.state}.`);
   }
@@ -257,8 +264,7 @@ try {
     else if (failOn && !['stale','review','any'].includes(failOn)) throw new Error('--fail-on must be stale, review, or any');
   }
   else if (cmd === 'refresh-memory') {
-    const selector = positional(['--reviewed-by','--refreshed-by','--reason'])[0];
-    if (!selector) throw new Error('Usage: cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]');
+    const [selector] = requireExactPositionals(positional(['--reviewed-by','--refreshed-by','--reason']), 1, 'Usage: cmi refresh-memory <id|all> [--refreshed-by name] [--reason text]');
     const result = await refreshMemory(process.cwd(), selector, { refreshedBy: optionValues('--refreshed-by')[0] || optionValues('--reviewed-by')[0], reason: optionValues('--reason')[0] });
     console.log(`Refreshed ${result.updated} memory entr${result.updated === 1 ? 'y' : 'ies'}; source fingerprints only, semantic review not attested.`);
   }

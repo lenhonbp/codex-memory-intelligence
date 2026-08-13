@@ -90,3 +90,44 @@ test('top-level CLI validation covers missing arguments and invalid stale-policy
   assertCliError(await run(['search', 'main', '--stale-policy', 'invalid'], root), /stale-policy must be/i);
   assertCliError(await run(['search', 'main', '--limit'], root), /--limit requires a value/i);
 });
+
+test('top-level CLI rejects unknown short options instead of treating them as positional input', async () => {
+  const root = await fixture();
+
+  assertCliError(await run(['search', 'main', '-x'], root), /Unknown option for search: -x/i);
+  assertCliError(await run(['status', '-x'], root), /Unknown option for status: -x/i);
+  assertCliError(await run(['change', 'show', 'deadbeef', '-x'], root), /Unknown option for change: -x/i);
+
+  const jsonError = await run(['status', '-x', '--json'], root);
+  assert.equal(jsonError.code, 1);
+  const lines = jsonError.stderr.trim().split(/\r?\n/);
+  assert.equal(lines.length, 1);
+  const payload = JSON.parse(lines[0]);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, 'CMI_CLI_ERROR');
+  assert.match(payload.error.message, /Unknown option for status: -x/i);
+});
+
+test('single-value top-level flags reject duplicate values while repeatable evidence flags remain valid', async () => {
+  const root = await fixture();
+
+  assertCliError(await run(['search', 'main', '--workspace', '.', '--workspace', 'src'], root), /--workspace may be specified only once/i);
+  assertCliError(await run(['change', 'list', '--status', 'active', '--status', 'completed'], root), /--status may be specified only once/i);
+  assertCliError(await run(['activate', '--agent', 'codex', '--agent', 'generic'], root), /--agent may be specified only once/i);
+
+  const remembered = await run(['remember', 'fact', 'repeatable source evidence', '--source', 'package.json', '--source', 'src/main.js'], root);
+  assert.equal(remembered.code, 0, remembered.stderr);
+  assert.match(remembered.stdout, /2 source\(s\)/i);
+});
+
+test('fixed-arity top-level commands reject extra positional arguments before touching durable state', async () => {
+  const root = await fixture();
+
+  assertCliError(await run(['explain-ignore', 'src/main.js', 'extra'], root), /Usage: cmi explain-ignore/i);
+  assertCliError(await run(['change', 'observe', 'deadbeef', 'extra'], root), /Usage: cmi change observe/i);
+  assertCliError(await run(['change', 'complete', 'deadbeef', 'extra'], root), /Usage: cmi change complete/i);
+  assertCliError(await run(['change', 'show', 'deadbeef', 'extra'], root), /Usage: cmi change show/i);
+  assertCliError(await run(['change', 'list', 'extra'], root), /Usage: cmi change list/i);
+  assertCliError(await run(['memory-state', 'deadbeef', 'active', 'extra', '--reason', 'review'], root), /Usage: cmi memory-state/i);
+  assertCliError(await run(['refresh-memory', 'all', 'extra'], root), /Usage: cmi refresh-memory/i);
+});
