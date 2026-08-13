@@ -4,9 +4,23 @@ on:
   pull_request:
     paths:
       - 'src/real-corpus.js'
+      - 'src/real-corpus-execution.js'
       - 'scripts/real-corpus.js'
       - 'corpus/**'
       - 'tests/real-corpus.test.js'
+      - 'tests/real-corpus-execution.test.js'
+      - 'docs/REAL_CORPUS_VALIDATION.md'
+      - '.github/workflows/real-corpus.yml'
+  push:
+    branches:
+      - 'agent/evidence-execution-hardening'
+    paths:
+      - 'src/real-corpus.js'
+      - 'src/real-corpus-execution.js'
+      - 'scripts/real-corpus.js'
+      - 'corpus/**'
+      - 'tests/real-corpus.test.js'
+      - 'tests/real-corpus-execution.test.js'
       - 'docs/REAL_CORPUS_VALIDATION.md'
       - '.github/workflows/real-corpus.yml'
   schedule:
@@ -36,11 +50,11 @@ jobs:
       - name: Validate no-target-execution plan
         run: node scripts/real-corpus.js plan --manifest corpus/real-repositories.json --json
       - name: Test corpus runner contract
-        run: node --test tests/real-corpus.test.js
+        run: node --test tests/real-corpus.test.js tests/real-corpus-execution.test.js
 
   external-real:
     name: Pinned external repositories
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/agent/evidence-execution-hardening')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -50,10 +64,18 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - name: Run engineering validation on exact Git SHAs
+        id: corpus
+        continue-on-error: true
         run: node scripts/real-corpus.js run --manifest corpus/real-repositories.json --json > real-corpus-report.json
       - name: Upload bounded engineering report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: real-corpus-report
           path: real-corpus-report.json
           if-no-files-found: error
+      - name: Enforce corpus result after preserving report
+        if: steps.corpus.outcome != 'success'
+        run: |
+          echo 'Real corpus validation failed; inspect the uploaded real-corpus-report artifact.' >&2
+          exit 1
