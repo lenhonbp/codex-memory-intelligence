@@ -12,7 +12,7 @@ import {
 
 const REVISION = 'a'.repeat(40);
 
-function manifest(overrides = {}) {
+function manifest(repositoryOverrides = {}) {
   return {
     schemaVersion: 1,
     kind: 'cmi-real-corpus-manifest',
@@ -24,18 +24,7 @@ function manifest(overrides = {}) {
       contextQuery: 'workspace publish flow',
       impactTarget: 'packages/cli/src/index.ts',
       minWorkspaces: 1,
-      ...(overrides.repository || {}),
-    }],
-    ...overrides,
-    repositories: overrides.repositories || [{
-      id: 'example-typescript-monorepo',
-      repository: 'example/project',
-      revision: REVISION,
-      repoClass: 'node-typescript-monorepo',
-      contextQuery: 'workspace publish flow',
-      impactTarget: 'packages/cli/src/index.ts',
-      minWorkspaces: 1,
-      ...(overrides.repository || {}),
+      ...repositoryOverrides,
     }],
   };
 }
@@ -44,7 +33,7 @@ function ok(stdout = '') {
   return { status: 0, stdout, stderr: '', wallMs: 2.5 };
 }
 
-function fakeRunner(calls) {
+function fakeRunner(calls, { includeWorkspaceCount = true } = {}) {
   return (command, args, options = {}) => {
     calls.push({ command, args: [...args], cwd: options.cwd });
     if (command === 'git') {
@@ -68,7 +57,7 @@ function fakeRunner(calls) {
           localEdges: 140,
           symbols: 360,
         },
-        workspaces: { count: 3 },
+        ...(includeWorkspaceCount ? { workspaces: { count: 3 } } : {}),
         stack: ['typescript'],
       }));
     }
@@ -85,13 +74,15 @@ function fakeRunner(calls) {
   };
 }
 
-test('real corpus manifest requires pinned SHAs, owner/repo identities, and bounded targets', () => {
+test('real corpus manifest requires path-safe ids, pinned SHAs, owner/repo identities, and bounded targets', () => {
   const validated = validateRealCorpusManifest(manifest());
   assert.equal(validated.repositories[0].revision, REVISION);
   assert.equal(validated.repositories[0].repoClass, 'node-typescript-monorepo');
-  assert.throws(() => validateRealCorpusManifest(manifest({ repository: { revision: 'main' } })), /40-character Git commit SHA/i);
-  assert.throws(() => validateRealCorpusManifest(manifest({ repository: { repository: 'https://github.com/example/project' } })), /owner\/repository/i);
-  assert.throws(() => validateRealCorpusManifest(manifest({ repository: { impactTarget: '../outside.ts' } })), /repository-relative/i);
+  assert.throws(() => validateRealCorpusManifest(manifest({ id: '../escape' })), /path-safe slug/i);
+  assert.throws(() => validateRealCorpusManifest(manifest({ id: 'nested/checkout' })), /path-safe slug/i);
+  assert.throws(() => validateRealCorpusManifest(manifest({ revision: 'main' })), /40-character Git commit SHA/i);
+  assert.throws(() => validateRealCorpusManifest(manifest({ repository: 'https://github.com/example/project' })), /owner\/repository/i);
+  assert.throws(() => validateRealCorpusManifest(manifest({ impactTarget: '../outside.ts' })), /repository-relative/i);
 });
 
 test('real corpus plan makes the no-target-execution policy explicit', () => {
@@ -146,6 +137,24 @@ test('real corpus runner verifies revision and records only CMI engineering metr
 
     const checkoutExists = await fs.stat(path.join(workRoot, 'example-typescript-monorepo')).then(() => true).catch(() => false);
     assert.equal(checkoutExists, false);
+  } finally {
+    await fs.rm(workRoot, { recursive: true, force: true });
+  }
+});
+
+test('real corpus runner fails closed when required workspace evidence is unavailable', async () => {
+  const workRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-real-corpus-workspace-'));
+  const calls = [];
+  try {
+    await assert.rejects(
+      runRealCorpus(manifest({ minWorkspaces: 1 }), {
+        workRoot,
+        cmiEntry: '/fixture/cmi-entry.js',
+        commandRunner: fakeRunner(calls, { includeWorkspaceCount: false }),
+      }),
+      /workspace count is unavailable/i,
+    );
+    assert.equal(calls.some((call) => call.command === process.execPath && call.args.includes('doctor')), false);
   } finally {
     await fs.rm(workRoot, { recursive: true, force: true });
   }
