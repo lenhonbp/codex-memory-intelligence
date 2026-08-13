@@ -116,7 +116,7 @@ async function stopMcp(server) {
   await exited;
 }
 
-function evidenceBlock(text, findingId) {
+function handoffEvidenceBlock(text, findingId) {
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
   const recordIndex = lines.findIndex((line) => line.includes(`finding ${findingId}`));
   assert.notEqual(recordIndex, -1, text);
@@ -124,6 +124,18 @@ function evidenceBlock(text, findingId) {
   while (start > 0 && !lines[start].trimStart().startsWith('- [')) start -= 1;
   let end = recordIndex + 1;
   while (end < lines.length && !lines[end].trimStart().startsWith('- [') && !lines[end].startsWith('## ')) end += 1;
+  return lines.slice(start, end).join('\n').trimEnd();
+}
+
+function closingAlertBlock(text, findingId) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const recordIndex = lines.findIndex((line) => line.includes(`finding ${findingId}`));
+  assert.notEqual(recordIndex, -1, text);
+  let start = recordIndex;
+  while (start > 0 && !/\*\*(?:BLOCKER|WARNING|REMINDER) ·/.test(lines[start])) start -= 1;
+  assert.match(lines[start], /\*\*(?:BLOCKER|WARNING|REMINDER) ·/);
+  let end = recordIndex + 1;
+  while (end < lines.length && lines[end].trim() !== '') end += 1;
   return lines.slice(start, end).join('\n').trimEnd();
 }
 
@@ -162,8 +174,12 @@ function actionFrom(handoff, findingId) {
   return action;
 }
 
-function assertHumanExchange(text, ids) {
-  assert.equal(normalizeValue(evidenceBlock(text, ids.findingId), ids), golden.humanEvidenceBlock);
+function assertHandoffHumanExchange(text, ids) {
+  assert.equal(normalizeValue(handoffEvidenceBlock(text, ids.findingId), ids), golden.handoffHumanEvidenceBlock);
+}
+
+function assertClosingHumanExchange(text, ids) {
+  assert.equal(normalizeValue(closingAlertBlock(text, ids.findingId), ids), golden.closingHumanAlertBlock);
 }
 
 function assertHandoffExchange(handoff, ids, label) {
@@ -191,6 +207,8 @@ test('golden exchange v1 is bounded to real public consumers and the current evi
   assert.match(golden.purpose, /real CLI, MCP tool, and MCP resource/i);
   assert.ok(golden.normalizationPolicy.allowed.every((item) => /Session ID|Change ID|Finding ID|CRLF/.test(item)));
   assert.ok(golden.normalizationPolicy.forbidden.some((item) => /evidence provenance/i.test(item)));
+  assert.match(golden.handoffHumanEvidenceBlock, /^- \[medium\]/);
+  assert.match(golden.closingHumanAlertBlock, /^🟠 \*\*WARNING/);
 });
 
 test('real CLI, MCP tools, and MCP resource replay the v1 golden exchange without semantic normalization', async (t) => {
@@ -217,12 +235,14 @@ test('real CLI, MCP tools, and MCP resource replay the v1 golden exchange withou
   for (const [args, label] of [
     [['session', 'handoff', closed.id], 'CLI session handoff'],
     [['session', 'show', closed.id], 'CLI session show'],
-    [['session', 'closing', closed.id], 'CLI session closing'],
   ]) {
     const result = await runCli(args, root);
     assert.equal(result.code, 0, `${label}: ${result.stderr}`);
-    assertHumanExchange(result.stdout, ids);
+    assertHandoffHumanExchange(result.stdout, ids);
   }
+  const cliClosing = await runCli(['session', 'closing', closed.id], root);
+  assert.equal(cliClosing.code, 0, `CLI session closing: ${cliClosing.stderr}`);
+  assertClosingHumanExchange(cliClosing.stdout, ids);
 
   const server = startMcp(root);
   try {
@@ -231,19 +251,19 @@ test('real CLI, MCP tools, and MCP resource replay the v1 golden exchange withou
     server.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_session_handoff', arguments: { id: closed.id } } });
     const mcpHandoff = await server.waitFor((message) => message.id === 2);
     assert.ok(mcpHandoff.result, JSON.stringify(mcpHandoff));
-    assertHumanExchange(mcpHandoff.result.content[0].text, ids);
+    assertHandoffHumanExchange(mcpHandoff.result.content[0].text, ids);
     assertHandoffExchange(mcpHandoff.result.structuredContent, ids, 'MCP Handoff');
 
     server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_work_session_report', arguments: { id: closed.id } } });
     const mcpReport = await server.waitFor((message) => message.id === 3);
     assert.ok(mcpReport.result, JSON.stringify(mcpReport));
-    assertHumanExchange(mcpReport.result.content[0].text, ids);
+    assertHandoffHumanExchange(mcpReport.result.content[0].text, ids);
     assertHandoffExchange(mcpReport.result.structuredContent.close.handoff, ids, 'MCP Session Report');
 
     server.send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'get_closing_intelligence', arguments: { id: closed.id } } });
     const mcpClosing = await server.waitFor((message) => message.id === 4);
     assert.ok(mcpClosing.result, JSON.stringify(mcpClosing));
-    assertHumanExchange(mcpClosing.result.content[0].text, ids);
+    assertClosingHumanExchange(mcpClosing.result.content[0].text, ids);
     const alert = mcpClosing.result.structuredContent.alerts.find((item) => item.findingId === finding.id);
     assert.ok(alert, JSON.stringify(mcpClosing.result.structuredContent.alerts, null, 2));
     assert.deepEqual(normalizeValue(project(alert, contract.closingAlert.requiredFields, 'MCP Closing alert'), ids), golden.closingAlert);
