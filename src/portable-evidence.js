@@ -28,6 +28,9 @@ const IDENTITY_POLICY_SCHEMA_VERSION = 1;
 const MAX_IGNORE_PATTERNS = 256;
 const MAX_IGNORE_PATTERN_BYTES = 4 * 1024;
 const MAX_IGNORE_TOTAL_BYTES = 64 * 1024;
+const WINDOWS_RESERVED_PORTABLE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+const WINDOWS_UNSAFE_PORTABLE_CHAR = /[<>:"|?*\u0000-\u001f]/;
+const PORTABLE_TRUST_STATEMENT = 'Portable evidence is digest-verified and compatibility-checked, but this bundle is not authenticated or a proof of source authorship.';
 const DEFAULT_IDENTITY_SCAN = {
   configVersion: 4,
   maxFileBytes: 1_000_000,
@@ -95,6 +98,15 @@ function normalizeRelative(value) {
   const parts = raw.split('/').filter(Boolean);
   if (!parts.length || parts.some((item) => item === '.' || item === '..')) throw error('CMI_PORTABLE_PATH_INVALID', `Portable path escapes its bundle: ${value}`);
   return parts.join('/');
+}
+
+function portableArtifactKey(value) {
+  const normalized = normalizeRelative(value);
+  const segments = normalized.split('/');
+  if (segments.some((segment) => WINDOWS_UNSAFE_PORTABLE_CHAR.test(segment) || /[ .]$/.test(segment) || WINDOWS_RESERVED_PORTABLE_NAME.test(segment))) {
+    throw error('CMI_PORTABLE_MANIFEST_INVALID', `Portable artifact path is unsafe across supported filesystems: ${value}`);
+  }
+  return normalized.normalize('NFC').toLowerCase();
 }
 
 function inside(root, candidate) {
@@ -281,12 +293,13 @@ async function evidenceFiles(root) {
   return artifacts;
 }
 
-async function sourceFiles(root, policyInputs = null) {
+async function sourceFiles(root, policyInputs = null, options = {}) {
   const inputs = policyInputs || await readIdentityPolicyInputs(root);
   const matcher = await createIgnoreMatcher(root, inputs.scan);
+  const skippedRelative = Array.isArray(options.skipRelative) ? options.skipRelative : [];
   const files = await walkDirectory(root, root, {
     maxEntries: MAX_SOURCE_FILES,
-    skip: (relative, entry) => matcher.shouldIgnore(relative, entry.isDirectory()),
+    skip: (relative, entry) => skippedRelative.some((prefix) => relative === prefix || relative.startsWith(`${prefix}/`)) || matcher.shouldIgnore(relative, entry.isDirectory()),
   });
   let totalBytes = 0;
   let compatibilityBytes = 0;
@@ -358,11 +371,12 @@ function assertManifestShape(manifest) {
   const seen = new Set();
   const sortedPaths = manifest.evidence.files.map((item) => item?.path || '');
   if (JSON.stringify(sortedPaths) !== JSON.stringify([...sortedPaths].sort((left, right) => left.localeCompare(right)))) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable artifact inventory must be deterministically sorted.');
+  const reservedKey = `.codex-memory/${PORTABLE_PROVENANCE_FILE}`.normalize('NFC').toLowerCase();
   for (const item of manifest.evidence.files) {
     if (!item || typeof item.path !== 'string' || !item.path.startsWith('.codex-memory/')) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable artifact paths must remain inside .codex-memory/.');
     const normalized = normalizeRelative(item.path);
-    const key = process.platform === 'win32' ? item.path.toLowerCase() : item.path;
-    if (normalized !== item.path || item.path.endsWith(`/${PORTABLE_PROVENANCE_FILE}`) || seen.has(key)) throw error('CMI_PORTABLE_MANIFEST_INVALID', `Portable artifact path is duplicate, reserved, or unsafe: ${item.path}`);
+    const key = portableArtifactKey(item.path);
+    if (normalized !== item.path || key === reservedKey || seen.has(key)) throw error('CMI_PORTABLE_MANIFEST_INVALID', `Portable artifact path is duplicate, reserved, or unsafe: ${item.path}`);
     if (!Number.isInteger(item.size) || item.size < 0 || item.size > MAX_PORTABLE_ARTIFACT_BYTES || !/^sha256:[0-9a-f]{64}$/.test(item.digest)) throw error('CMI_PORTABLE_MANIFEST_INVALID', `Portable artifact descriptor is invalid: ${item.path}`);
     seen.add(key);
   }
@@ -420,11 +434,11 @@ function policyInputsMatch(expected, observed, compatibility) {
   return expected.every((item, index) => item.path === observed[index]?.path && item.compatibilitySize === observed[index]?.compatibilitySize && item.compatibilityDigest === observed[index]?.compatibilityDigest);
 }
 
-async function compareProject(manifest, root) {
+async function compareProject(manifest, root, options = {}) {
   const projectRoot = await realpathOrNull(path.resolve(root));
   if (!projectRoot) throw error('CMI_PORTABLE_PATH_INVALID', 'Destination project root could not be resolved safely.');
   const destinationPolicy = await resolveDestinationIdentityPolicy(projectRoot, manifest.project.identityPolicy);
-  const source = await sourceFiles(projectRoot, destinationPolicy.policy);
+  const source = await sourceFiles(projectRoot, destinationPolicy.policy, options);
   const repository = await collectRepositoryProvenance(projectRoot);
   const mismatches = [...destinationPolicy.mismatches];
   const notes = [];
@@ -450,6 +464,34 @@ async function compareProject(manifest, root) {
   let state = 'mismatch';
   if (!mismatches.length) state = exactProof && samePath ? 'exact' : gitCheckoutProof && !sourceIdentityMatch ? 'compatible-git-checkout' : exactProof ? 'compatible-relocated' : 'compatible-content-only';
   return { state, projectRoot, sourceIdentity: source.identity, identityPolicy: source.policy, repository, mismatches, notes, samePath, exactProof, gitCheckoutProof };
+}
+
+function comparisonInvariant(comparison) {
+  return {
+    state: comparison.state,
+    projectRoot: comparison.projectRoot,
+    sourceIdentity: comparison.sourceIdentity,
+    identityPolicy: comparison.identityPolicy,
+    repository: comparison.repository,
+    notes: comparison.notes,
+    samePath: comparison.samePath,
+    exactProof: comparison.exactProof,
+    gitCheckoutProof: comparison.gitCheckoutProof,
+  };
+}
+
+async function revalidateProjectComparison(manifest, expected, operation, options = {}) {
+  const observed = await compareProject(manifest, expected.projectRoot, options);
+  const expectedInvariant = comparisonInvariant(expected);
+  const observedInvariant = comparisonInvariant(observed);
+  if (observed.mismatches.length || canonical(expectedInvariant) !== canonical(observedInvariant)) {
+    throw error('CMI_PORTABLE_READ_RACE', `Destination project identity changed during portable ${operation}; no portable state was committed.`, {
+      expected: expectedInvariant,
+      observed: observedInvariant,
+      mismatches: observed.mismatches,
+    });
+  }
+  return observed;
 }
 
 async function existingEvidenceMatches(root, manifest) {
@@ -488,30 +530,17 @@ function buildProvenanceValue(manifest, comparison, operation) {
     },
     trust: {
       authenticated: false,
-      statement: 'Portable evidence is digest-verified and compatibility-checked, but this bundle is not authenticated or a proof of source authorship.',
+      statement: PORTABLE_TRUST_STATEMENT,
     },
   };
 }
 
 function validateExistingRebindProvenance(value, manifest, comparison) {
-  const valid = value && value.schemaVersion === 1 && value.kind === 'cmi-portable-provenance'
-    && value.original?.manifestIdentity === manifest.identity.digest
-    && canonical(value.original?.sourceIdentity) === canonical(manifest.project.sourceIdentity)
-    && canonical(value.original?.identityPolicy) === canonical(manifest.project.identityPolicy)
-    && canonical(value.original?.repository) === canonical(manifest.project.repository)
-    && value.original?.sourceRevision === manifest.project.sourceRevision
-    && value.requested?.operation === 'rebind'
-    && Number.isFinite(Date.parse(value.requested?.requestedAt || ''))
-    && value.verification?.state === comparison.state
-    && value.verification?.sourceIdentity?.digest === comparison.sourceIdentity.digest
-    && value.verification?.repository?.identity === comparison.repository.identity
-    && value.verification?.repository?.revision === comparison.repository.revision
-    && value.verification?.repository?.worktreeClean === comparison.repository.worktreeClean
-    && value.verification?.samePath === comparison.samePath
-    && value.verification?.exactProof === comparison.exactProof
-    && value.trust?.authenticated === false
-    && typeof value.trust?.statement === 'string' && value.trust.statement.length > 0;
-  if (!valid) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Existing portable provenance is missing, conflicting, or unverifiable; no evidence was overwritten.');
+  const requestedAt = value?.requested?.requestedAt;
+  const validRequestedAt = typeof requestedAt === 'string' && Number.isFinite(Date.parse(requestedAt)) && new Date(requestedAt).toISOString() === requestedAt;
+  const expected = validRequestedAt ? buildProvenanceValue(manifest, comparison, 'rebind') : null;
+  if (expected) expected.requested.requestedAt = requestedAt;
+  if (!expected || canonical(value) !== canonical(expected)) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Existing portable provenance is missing, conflicting, or unverifiable; no evidence was overwritten.');
   return value;
 }
 
@@ -543,13 +572,15 @@ async function stageRestore(root, artifactContents, manifest, comparison, operat
       await safeWriteMemoryFile(temporaryRoot, relative, content, { ifMissing: true });
     }
     const provenance = await writeProvenance(temporaryRoot, manifest, comparison, operation);
+    const stagingRelative = path.relative(projectRoot, temporaryRoot).split(path.sep).join('/');
+    const verifiedComparison = await revalidateProjectComparison(manifest, comparison, operation, { skipRelative: [stagingRelative] });
     const stagedMemory = path.join(temporaryRoot, '.codex-memory');
     const destinationMemory = path.join(projectRoot, '.codex-memory');
     let existing;
     try { existing = await fs.lstat(destinationMemory); } catch (cause) { if (cause?.code !== 'ENOENT') throw cause; }
     if (existing) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Destination .codex-memory appeared during restore; no evidence was overwritten.');
     await fs.rename(stagedMemory, destinationMemory);
-    return provenance;
+    return { provenance, comparison: verifiedComparison };
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }).catch(() => {}); }
 }
 
@@ -647,9 +678,10 @@ export async function restorePortableEvidence(root, bundlePath, options = {}) {
     if (existing.isSymbolicLink() || !existing.isDirectory()) throw error('CMI_PORTABLE_UNSAFE_PATH', 'Destination .codex-memory is not a safe directory; no evidence was overwritten.');
     const same = await existingEvidenceMatches(destination, bundle.manifest).catch((cause) => { throw error('CMI_PORTABLE_DESTINATION_CONFLICT', `Existing destination evidence could not be safely validated; no evidence was overwritten.`, { cause: cause.message }); });
     if (!same) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Destination already contains different or incomplete CMI evidence; no evidence was overwritten.');
-    const provenance = operation === 'rebind' ? await ensureExistingRebindProvenance(destination, bundle.manifest, comparison) : undefined;
-    return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: comparison.state, path: destination, restored: false, alreadyPresent: true, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: comparison, ...(provenance ? { provenance } : {}) };
+    const verifiedComparison = await revalidateProjectComparison(bundle.manifest, comparison, operation);
+    const provenance = operation === 'rebind' ? await ensureExistingRebindProvenance(destination, bundle.manifest, verifiedComparison) : undefined;
+    return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: verifiedComparison.state, path: destination, restored: false, alreadyPresent: true, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: verifiedComparison, ...(provenance ? { provenance } : {}) };
   }
-  const provenance = await stageRestore(destination, artifacts, bundle.manifest, comparison, operation);
-  return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: comparison.state, path: destination, restored: true, alreadyPresent: false, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: comparison, provenance };
+  const staged = await stageRestore(destination, artifacts, bundle.manifest, comparison, operation);
+  return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: staged.comparison.state, path: destination, restored: true, alreadyPresent: false, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: staged.comparison, provenance: staged.provenance };
 }
