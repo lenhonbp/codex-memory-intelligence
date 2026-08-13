@@ -27,7 +27,7 @@
     "mcp:get_closing_intelligence",
     "mcp-resource:cmi://project/session-handoff/latest"
   ],
-  "humanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache/profile.js\n  Source: src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+  "humanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache, src/cache/profile.js\n  Source: src/cache; src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
   "finding": {
     "id": "<FINDING_ID>",
     "key": "prediction-gap:<CHANGE_ID>",
@@ -35,7 +35,7 @@
     "category": "prediction-gap",
     "severity": "medium",
     "title": "Observed related work escaped predicted scope",
-    "detail": "1 changed path(s) were not predicted for related change \"change checkout flow\".",
+    "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
     "confidence": "high",
     "evidenceType": "observed",
     "evidence": [
@@ -43,6 +43,7 @@
       "expected-vs-actual"
     ],
     "relatedFiles": [
+      "src/cache",
       "src/cache/profile.js"
     ],
     "sessionRelevance": "related"
@@ -50,8 +51,8 @@
   "recommendation": {
     "id": "finding-action:prediction-gap:<CHANGE_ID>",
     "priority": "P2",
-    "action": "Review the missed changed paths (src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
-    "reason": "1 changed path(s) were not predicted for related change \"change checkout flow\".",
+    "action": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+    "reason": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
     "evidenceType": "observed",
     "evidence": [
       "change:<CHANGE_ID>",
@@ -67,7 +68,7 @@
     "kind": "prediction-gap",
     "severity": "warning",
     "title": "Observed related work escaped predicted scope",
-    "detail": "1 changed path(s) were not predicted for related change \"change checkout flow\".",
+    "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
     "confidence": "high",
     "evidenceType": "observed",
     "evidence": [
@@ -75,6 +76,14 @@
       "expected-vs-actual"
     ],
     "evidenceAnchors": [
+      {
+        "path": "src/cache",
+        "startLine": null,
+        "endLine": null,
+        "symbol": null,
+        "feature": null,
+        "commit": null
+      },
       {
         "path": "src/cache/profile.js",
         "startLine": null,
@@ -92,12 +101,13 @@
       "<CHANGE_ID>"
     ],
     "relatedFiles": [
+      "src/cache",
       "src/cache/profile.js"
     ],
     "occurrences": 1,
     "findingState": "open",
     "scopeRelation": "current-session",
-    "recommendedAction": "Review the missed changed paths (src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+    "recommendedAction": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
     "violationEstablished": false
   }
 }
