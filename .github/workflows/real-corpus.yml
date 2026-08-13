@@ -65,12 +65,12 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - name: Probe first self-host context stdout shape
+      - name: Probe self-host context capture modes
         if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
-          checkout="$RUNNER_TEMP/self-host-first-context"
+          checkout="$RUNNER_TEMP/self-host-context-probe"
           git init --quiet "$checkout"
           git -C "$checkout" remote add origin https://github.com/lenhonbp/codex-memory-intelligence.git
           git -C "$checkout" fetch --quiet origin refs/heads/main
@@ -79,73 +79,47 @@ jobs:
           node "$GITHUB_WORKSPACE/src/cli-entry.js" scan "$checkout" --full --json >/dev/null
           node "$GITHUB_WORKSPACE/src/cli-entry.js" scan "$checkout" --json >/dev/null
           node "$GITHUB_WORKSPACE/src/cli-entry.js" doctor "$checkout" --json >/dev/null
-          stdout="$RUNNER_TEMP/first-self-host-context.stdout"
-          stderr="$RUNNER_TEMP/first-self-host-context.stderr"
-          set +e
+          stdout="$RUNNER_TEMP/shell-context.stdout"
+          stderr="$RUNNER_TEMP/shell-context.stderr"
           (cd "$checkout" && node "$GITHUB_WORKSPACE/src/cli-entry.js" context 'portable evidence provenance handoff' --json > "$stdout" 2> "$stderr")
-          status=$?
-          set -e
-          CONTEXT_STATUS="$status" CONTEXT_STDOUT="$stdout" CONTEXT_STDERR="$stderr" node --input-type=module <<'NODE'
+          PROBE_CHECKOUT="$checkout" PROBE_ENTRY="$GITHUB_WORKSPACE/src/cli-entry.js" SHELL_STDOUT="$stdout" SHELL_STDERR="$stderr" node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const stdout = fs.readFileSync(process.env.CONTEXT_STDOUT, 'utf8');
-          const stderr = fs.readFileSync(process.env.CONTEXT_STDERR, 'utf8');
-          const trimmed = stdout.trim();
-          let parseOk = false;
-          try { JSON.parse(trimmed); parseOk = true; } catch {}
+          import { spawnSync } from 'node:child_process';
+          function shape(stdout, stderr, status, error = null) {
+            const trimmed = String(stdout || '').trim();
+            let parseOk = false;
+            try { JSON.parse(trimmed); parseOk = true; } catch {}
+            return {
+              status,
+              errorCode: error?.code || null,
+              stdoutBytes: Buffer.byteLength(String(stdout || '')),
+              stdoutLines: stdout ? String(stdout).split(/\r?\n/).length : 0,
+              stdoutFirstCodePoint: trimmed ? trimmed.codePointAt(0) : null,
+              stdoutLastCodePoint: trimmed ? trimmed.codePointAt(trimmed.length - 1) : null,
+              stdoutStartsJsonContainer: trimmed.startsWith('{') || trimmed.startsWith('['),
+              stdoutEndsJsonContainer: trimmed.endsWith('}') || trimmed.endsWith(']'),
+              stdoutJsonParseOk: parseOk,
+              stderrBytes: Buffer.byteLength(String(stderr || '')),
+            };
+          }
+          const shellOut = fs.readFileSync(process.env.SHELL_STDOUT, 'utf8');
+          const shellErr = fs.readFileSync(process.env.SHELL_STDERR, 'utf8');
+          const spawned = spawnSync(process.execPath, [process.env.PROBE_ENTRY, 'context', 'portable evidence provenance handoff', '--json'], {
+            cwd: process.env.PROBE_CHECKOUT,
+            encoding: 'utf8',
+            timeout: 180000,
+            maxBuffer: 16 * 1024 * 1024,
+            env: { ...process.env },
+          });
           console.log(JSON.stringify({
-            contextExitStatus: Number(process.env.CONTEXT_STATUS),
-            stdoutBytes: Buffer.byteLength(stdout),
-            stdoutLines: stdout ? stdout.split(/\r?\n/).length : 0,
-            stdoutFirstCodePoint: trimmed ? trimmed.codePointAt(0) : null,
-            stdoutLastCodePoint: trimmed ? trimmed.codePointAt(trimmed.length - 1) : null,
-            stdoutStartsJsonContainer: trimmed.startsWith('{') || trimmed.startsWith('['),
-            stdoutEndsJsonContainer: trimmed.endsWith('}') || trimmed.endsWith(']'),
-            stdoutJsonParseOk: parseOk,
-            stderrBytes: Buffer.byteLength(stderr),
-            stderrLines: stderr ? stderr.split(/\r?\n/).length : 0,
+            shell: shape(shellOut, shellErr, 0),
+            spawnSync: shape(spawned.stdout, spawned.stderr, spawned.status, spawned.error),
           }, null, 2));
           NODE
       - name: Run engineering validation on exact Git SHAs
         id: corpus
         continue-on-error: true
         run: node scripts/real-corpus.js run --manifest corpus/real-repositories.json --work-root "$RUNNER_TEMP/real-corpus" --keep-checkouts --json > real-corpus-report.json
-      - name: Classify self-host context stdout on validation failure
-        if: steps.corpus.outcome != 'success' && github.event_name == 'push'
-        shell: bash
-        run: |
-          set +e
-          checkout="$RUNNER_TEMP/real-corpus/cmi-self-host-0-12-1"
-          stdout="$RUNNER_TEMP/self-host-context.stdout"
-          stderr="$RUNNER_TEMP/self-host-context.stderr"
-          if [ -d "$checkout" ]; then
-            (cd "$checkout" && node "$GITHUB_WORKSPACE/src/cli-entry.js" context 'portable evidence provenance handoff' --json > "$stdout" 2> "$stderr")
-            status=$?
-          else
-            status=127
-            : > "$stdout"
-            : > "$stderr"
-          fi
-          CONTEXT_STATUS="$status" CONTEXT_STDOUT="$stdout" CONTEXT_STDERR="$stderr" node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const stdout = fs.readFileSync(process.env.CONTEXT_STDOUT, 'utf8');
-          const stderr = fs.readFileSync(process.env.CONTEXT_STDERR, 'utf8');
-          const trimmed = stdout.trim();
-          let parseOk = false;
-          try { JSON.parse(trimmed); parseOk = true; } catch {}
-          console.log(JSON.stringify({
-            contextExitStatus: Number(process.env.CONTEXT_STATUS),
-            stdoutBytes: Buffer.byteLength(stdout),
-            stdoutLines: stdout ? stdout.split(/\r?\n/).length : 0,
-            stdoutTrimmedBytes: Buffer.byteLength(trimmed),
-            stdoutFirstCodePoint: trimmed ? trimmed.codePointAt(0) : null,
-            stdoutLastCodePoint: trimmed ? trimmed.codePointAt(trimmed.length - 1) : null,
-            stdoutStartsJsonContainer: trimmed.startsWith('{') || trimmed.startsWith('['),
-            stdoutEndsJsonContainer: trimmed.endsWith('}') || trimmed.endsWith(']'),
-            stdoutJsonParseOk: parseOk,
-            stderrBytes: Buffer.byteLength(stderr),
-            stderrLines: stderr ? stderr.split(/\r?\n/).length : 0,
-          }, null, 2));
-          NODE
       - name: Upload bounded engineering report
         if: always()
         uses: actions/upload-artifact@v4
