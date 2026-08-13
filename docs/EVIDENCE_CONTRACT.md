@@ -77,4 +77,6 @@ A consumer-visible change that cannot replay the existing v1 golden exchanges is
 
 `tests/golden-exchange-corpus.test.js` adds real-consumer replay against the checked-in v1 golden exchange fixture. The test obtains its read data from the public CLI/MCP/resource surfaces, projects only fields protected by `v1.json`, and compares them against the consumer-owned golden artifacts for the three bounded archetypes.
 
+`tests/golden-exchange-negative-compatibility.test.js` is the consumer-break simulation gate. It mutates protected golden exchange values only in test memory and requires each simulated break to be rejected at a concrete contract path, including verification state, `violationEstablished`, Change/Finding linkage, confidence, scope relation, evidence/file addresses, action text, and stable human evidence labels. A separate additive-field control must remain compatible so the negative gate does not accidentally turn the v1 `additive-only` policy into whole-object exactness.
+
 Together, these tests are the compatibility gate. A future runtime change that silently removes or changes protected evidence semantics should fail CI before release.
