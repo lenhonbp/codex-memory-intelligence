@@ -20,8 +20,8 @@ The repository README and security policy should point new users to the latest s
 
 As of 2026-08-13, the supported public release is:
 
-- `v0.12.1`
-- npm: `codex-memory-intelligence@0.12.1`
+- `v0.13.0`
+- npm: `codex-memory-intelligence@0.13.0`
 
 Security fixes and compatibility guidance target the current supported release unless a specific exception is documented.
 
@@ -70,6 +70,7 @@ Use these files for historical detail rather than expanding the current-product 
 
 - `CHANGELOG.md` — version changes;
 - `docs/RELEASE_STATUS.md` — current publication/evidence status;
+- `docs/V0_13_0_RELEASE.md` — canonical v0.13.0 publication record;
 - `docs/V0_12_1_RELEASE.md` — canonical v0.12.1 publication record;
 - `docs/EVALUATION.md` and `docs/field-evidence/` — bounded evaluation evidence;
 - `LICENSING.md` — license transition and commercial-license path;
