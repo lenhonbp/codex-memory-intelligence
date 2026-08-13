@@ -40,6 +40,12 @@ function validateRevision(value, name) {
   return revision.toLowerCase();
 }
 
+function validateId(value, name) {
+  const id = boundedString(value, name, { max: 120 });
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(id)) throw new Error(`${name} must be a path-safe slug`);
+  return id;
+}
+
 function validateRepository(value, name) {
   const repository = boundedString(value, name, { max: 180 });
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
@@ -59,7 +65,7 @@ function validateTarget(value, name) {
 function validateRepositoryEntry(entry, index) {
   if (!isObject(entry)) throw new Error(`repositories[${index}] must be an object`);
   return {
-    id: boundedString(entry.id, `repositories[${index}].id`, { max: 120 }),
+    id: validateId(entry.id, `repositories[${index}].id`),
     repository: validateRepository(entry.repository, `repositories[${index}].repository`),
     revision: validateRevision(entry.revision, `repositories[${index}].revision`),
     repoClass: oneOf(entry.repoClass, REPO_CLASSES, `repositories[${index}].repoClass`),
@@ -210,6 +216,9 @@ async function runRepository(entry, options) {
     const fullRun = commandRunner(process.execPath, [cmiEntry, 'scan', checkout, '--full', '--json'], { cwd: root, timeoutMs: DEFAULT_TIMEOUT_MS });
     const fullValue = parseJsonOutput(fullRun, `${entry.id} full scan`);
     const fullScan = scanSummary(fullValue, fullRun.wallMs);
+    if (entry.minWorkspaces > 0 && fullScan.workspaces == null) {
+      throw new Error(`${entry.id}: workspace count is unavailable but minWorkspaces=${entry.minWorkspaces}`);
+    }
     if (fullScan.workspaces != null && fullScan.workspaces < entry.minWorkspaces) {
       throw new Error(`${entry.id}: expected at least ${entry.minWorkspaces} workspaces, observed ${fullScan.workspaces}`);
     }
