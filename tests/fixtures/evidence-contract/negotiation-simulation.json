@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "simulationOnly": true,
+  "runtimeNegotiationImplemented": false,
+  "name": "cmi-evidence-contract-negotiation-simulation",
+  "currentRuntimeContractVersion": 1,
+  "supportedContractVersions": [1],
+  "knownButUnsupportedSimulations": [2],
+  "contractArtifacts": {
+    "1": {
+      "contractFixture": "v1.json",
+      "goldenFixture": "golden-exchange-v1.json"
+    }
+  },
+  "policy": {
+    "selection": "exact-match-only",
+    "unsupported": "fail-closed",
+    "silentDowngrade": false,
+    "silentUpgrade": false,
+    "semanticNormalizationAcrossVersions": false,
+    "fallbackToCurrentOnUnsupported": false
+  },
+  "refusal": {
+    "code": "CMI_EVIDENCE_CONTRACT_UNSUPPORTED",
+    "messageTemplate": "Evidence Contract version <REQUESTED_VERSION> is not supported by this runtime simulation. Supported versions: <SUPPORTED_VERSIONS>.",
+    "mustIncludeRequestedVersion": true,
+    "mustIncludeSupportedVersions": true
+  },
+  "invalidRequest": {
+    "code": "CMI_EVIDENCE_CONTRACT_INVALID_VERSION",
+    "message": "Evidence Contract version must be a positive integer."
+  },
+  "retainedArtifacts": {
+    "contractV1": "v1.json",
+    "goldenV1": "golden-exchange-v1.json",
+    "v2Simulation": "v2-simulation.json"
+  }
+}
