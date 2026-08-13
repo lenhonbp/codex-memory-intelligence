@@ -92,6 +92,20 @@ node scripts/real-corpus.js run --manifest corpus/real-repositories.json --json
 
 For controlled debugging only, `--work-root <dir>` selects the checkout parent and `--keep-checkouts` preserves disposable checkouts.
 
+## Failure-preserving execution
+
+The CLI execution layer runs each validated repository as an independent pinned sub-run. A failure in one repository does **not** stop later repositories from being exercised.
+
+Failure collection does not make the gate permissive:
+
+- a failed repository is recorded with `status: "failed"`;
+- failure diagnostics are bounded and do not serialize error stacks;
+- later repositories still run so the report shows the full corpus state;
+- the overall report has `status: "failed"` when any repository fails;
+- the CLI emits the complete report first and then exits non-zero.
+
+The underlying `runRealCorpus()` library contract remains fail-closed for a single run. Failure collection is an execution-orchestration layer around independent one-repository runs rather than a silent weakening of repository validation.
+
 ## Report contract
 
 The report records bounded engineering metadata, including:
@@ -103,7 +117,11 @@ The report records bounded engineering metadata, including:
 - graph edge/symbol counts;
 - doctor health/check count;
 - bounded context/impact result counts and wall time;
-- session/handoff completion and wall time.
+- session/handoff completion and wall time;
+- per-repository pass/fail state;
+- bounded operational failure diagnostics when a repository does not complete.
+
+The aggregate summary exposes `total`, `passed`, `failed`, and `healthy`, plus a top-level `status` that is `passed` only when the entire corpus passes.
 
 It intentionally does not store retrieved source snippets as ground truth. Context/impact result counts show that the query path executed; they do not assert semantic correctness.
 
@@ -111,11 +129,13 @@ Reports carry `claimDiscipline: engineering-validation-only` and repeat that tar
 
 ## CI policy
 
-Pull requests run the **offline contract gate**: manifest validation, execution-plan validation, and unit tests using an injected command runner. This keeps ordinary PR CI deterministic and avoids making external repositories a required dependency of every commit.
+Pull requests run the **offline contract gate**: manifest validation, execution-plan validation, and unit tests using injected command runners. This keeps ordinary PR CI deterministic and avoids making external repositories a required dependency of every commit.
 
 The external real-corpus run is scheduled and manually dispatchable. It requires network access because exact Git objects must be fetched, but the revisions themselves do not move automatically.
 
-A scheduled external failure should be investigated as one of:
+The workflow preserves failure evidence before enforcing the red gate: the corpus command is allowed to finish and write `real-corpus-report.json`, the artifact upload runs even after a corpus failure, and a final enforcement step then fails the job. This keeps regressions visible without converting them into green CI.
+
+A scheduled or manually dispatched external failure should be investigated as one of:
 
 - CMI regression;
 - Git/network operational failure;
