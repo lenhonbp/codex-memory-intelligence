@@ -4,6 +4,36 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-13
+
+Feature release for operational sharing trust and stronger real-repository/product-evidence validation after `v0.12.1`.
+
+### Added
+
+- Added **Operational Trust** as an additive read-only `cmi-trust` binary with `doctor` and `export` gates for Git-sharing policy, bounded credential-like-content scanning, stable diagnostics, cross-platform path canonicalization, and fail-closed share-candidate checks.
+- Added a pinned real-repository corpus plus failure-preserving execution/transport infrastructure, dedicated CI, machine-readable evidence, and engineering-validation reports that preserve exact revisions and never execute target-repository tests or application commands.
+- Expanded the external empirical-study harness with blinded-review provenance, reviewer assurance/blinding boundaries, externally observed timing support, and stricter `productValueEligible` requirements.
+- Added a lightweight Product Value Regression workflow for routine continuation/context/impact feature checks so normal engineering does not require a full claim-grade study.
+
+### Changed
+
+- Product-value and real-corpus evidence now distinguish engineering correctness, protocol eligibility, product-value-review eligibility, paired observations, limitations, and claim boundaries instead of collapsing them into a single success signal.
+- Real-repository execution now preserves partial artifacts before failure and supports an exact-revision transport fallback while keeping repository identity and revision pinning auditable.
+- Public release/security metadata is advanced to the `v0.13.0` supported line.
+
+### Fixed
+
+- Fixed the CLI large-stdout completion path so successful commands can flush bounded large output before process exit instead of truncating externally consumed results.
+- Hardened real-corpus orchestration and transport error handling so failed repositories remain visible as failed evidence rather than disappearing from the aggregate.
+
+### Evidence limits
+
+- The real-repository corpus is engineering validation of CMI behavior on pinned public repositories; it is not a productivity benchmark and does not prove application correctness in those repositories.
+- The first controlled product-value pilot remains descriptive-only: answer-quality results were mixed/neutral, and a favorable continuation/handoff wall-clock observation does not establish a causal productivity effect.
+- No pair is `productValueEligible` without blinded externally-verified human review; current agent-blinded reviews remain QA evidence only.
+- `cmi-trust` is a conservative pre-share guard, not DLP, malware scanning, authentication, or proof that content is safe to disclose.
+- This release does not establish proven productivity, universal-agent effectiveness, production Evidence Contract negotiation, or v1 readiness.
+
 ## [0.12.1] - 2026-08-13
 
 Maintenance hardening release for CLI/MCP request boundaries and Portable Evidence trust integrity after `v0.12.0`.
