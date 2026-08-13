@@ -85,7 +85,7 @@ test('current public package, CLI, MCP, and trust inventory has no production co
   assert.equal(readme.includes('Evidence Contract discovery'), false);
 });
 
-test('repository evidence addresses remain concrete and cover each production-surface boundary', () => {
+test('repository evidence addresses remain concrete and cover each retained decision boundary', () => {
   const paths = decision.repositoryEvidence.map((entry) => entry.path);
   assert.deepEqual(paths, [
     'package.json',
@@ -134,14 +134,19 @@ test('NO-GO preserves the specification corpus and requires re-evaluation when r
   assert.equal(decision.noGoRequirements.doNotAdvertiseV2SimulationAsRuntimeSupport, true);
   assert.equal(decision.noGoRequirements.retainSimulationAndGoldenRegressionCorpus, true);
   assert.equal(decision.noGoRequirements.retainEvidenceContractV1Compatibility, true);
-  assert.equal(decision.revisitWhen.namedConsumerRequestsNegotiation, true);
-  assert.equal(decision.revisitWhen.runtimeMustSupportMultipleContractVersions, true);
-  assert.equal(decision.revisitWhen.externalInteroperabilityRequiresDiscovery, true);
-  assert.equal(decision.revisitWhen.releasedRuntimeSupportChanges, true);
+  assert.equal(decision.noGoRequirements.reEvaluateOnTriggerEvidence, true);
+
+  assert.equal(decision.reEvaluationTriggers.length, 4);
+  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('named production consumer')));
+  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('second Evidence Contract version')));
+  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('interoperability failure')));
+  assert.ok(decision.reEvaluationTriggers.some((item) => item.includes('external integration')));
 });
 
 test('external demand observation is advisory evidence, not a permanent runtime invariant', () => {
-  assert.equal(decision.externalDemand.observedNamedConsumers, 0);
-  assert.equal(decision.externalDemand.observationClass, 'repository-and-maintainer-observation');
-  assert.equal(decision.externalDemand.claimDiscipline, 'current-observation-not-permanent-invariant');
+  assert.equal(decision.externalObservation.kind, 'maintainer-recon');
+  assert.equal(decision.externalObservation.githubIssueSearch, 'Evidence Contract negotiation discovery');
+  assert.equal(decision.externalObservation.matchingIssuesAtDecisionTime, 0);
+  assert.match(decision.externalObservation.note, /not treated as a durable runtime invariant/i);
+  assert.match(decision.externalObservation.note, /future demand must trigger re-evaluation/i);
 });
