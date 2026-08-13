@@ -1,18 +1,20 @@
 # CMI v0.12.1 Release Candidate
 
-Status: **PREPARED — NOT PUBLISHED**.
+Status: **HISTORICAL RELEASE-CANDIDATE RECORD — PUBLICATION COMPLETED**.
 
 Prepared: 2026-08-13.
 
-Base: `main@1fc60abd443426d777d566325267ebc1e3717d5e`.
+Preparation base: `main@1fc60abd443426d777d566325267ebc1e3717d5e`.
 
-Current supported public release remains `v0.12.0` / `codex-memory-intelligence@0.12.0` until a separately authorized publish workflow succeeds.
+The candidate was subsequently merged and published successfully as `v0.12.1` from release target `6d1336aee4475fb899992899d01cb8c6f11d201d`.
+
+Canonical final publication record: [CMI v0.12.1 Public Release](V0_12_1_RELEASE.md).
 
 ## Purpose
 
 v0.12.1 packages the maintenance and trust-boundary hardening merged after v0.12.0. It does not open a new feature program.
 
-The release candidate includes:
+The release candidate included:
 
 - CLI malformed-input hardening from PR #89;
 - strict MCP tool-argument validation from PR #90;
@@ -31,21 +33,21 @@ Neither digest is authentication, a signature, backup authenticity, nor proof of
 
 ## Evidence Contract boundary
 
-Evidence Contract v2 remains simulation-only. The repository now carries executable simulation gates for upgrade compatibility, unsupported-version refusal, capability advertisement, and discovery-to-negotiation TOCTOU behavior, but no production discovery/negotiation surface is added.
+Evidence Contract v2 remains simulation-only. The repository carries executable simulation gates for upgrade compatibility, unsupported-version refusal, capability advertisement, and discovery-to-negotiation TOCTOU behavior, but no production discovery/negotiation surface is added.
 
 `PRODUCTION_CONTRACT_SURFACE_NO_GO` remains the current decision while only Evidence Contract v1 is runtime-supported and no named production consumer requires negotiation.
 
-## Release gate
+## Completed release gate
 
-This candidate is not authorization to publish.
+The candidate gate was completed successfully:
 
-Before publication:
+1. release-preparation PR #93 passed hosted CI and CodeQL and was squash-merged to `main`;
+2. `package.json`, `src/version.js`, and `CHANGELOG.md` were aligned to `0.12.1`;
+3. the guarded publish workflow passed release metadata, repository verification, benchmark smoke, and package smoke;
+4. `release/v0.12.1` was created from exact current `main`, then the workflow created tag `v0.12.1`, published through npm Trusted Publishing, verified registry visibility, created the GitHub Release, and removed the temporary release branch;
+5. post-publication status/policy documentation was advanced to v0.12.1.
 
-1. merge the release-preparation PR to `main` only after hosted CI and CodeQL pass on its final head;
-2. confirm `package.json`, `src/version.js`, and `CHANGELOG.md` all resolve to `0.12.1`;
-3. verify `npm run release:check -- v0.12.1`, repository verification, benchmark smoke, and package smoke through the guarded publish workflow;
-4. only after explicit maintainer authorization, create `release/v0.12.1` from the exact current `main` head so the publish workflow can tag, publish through npm Trusted Publishing, create the GitHub Release, and remove the temporary release branch;
-5. after successful publication, update `docs/RELEASE_STATUS.md` and `docs/RELEASE_POLICY.md` from v0.12.0 to the verified v0.12.1 release evidence.
+See [CMI v0.12.1 Public Release](V0_12_1_RELEASE.md) for the exact workflow/run/release identifiers.
 
 ## Claim boundary
 
