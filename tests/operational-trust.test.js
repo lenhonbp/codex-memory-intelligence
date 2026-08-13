@@ -93,7 +93,7 @@ test('credential-like durable content blocks trust while never echoing the crede
 });
 
 test('symlinked share-candidate state fails closed without following the target', async (t) => {
-  if (process.platform === 'win32') t.skip('Symlink creation is not reliably available without elevated Windows privileges.');
+  if (process.platform === 'win32') return t.skip('Symlink creation is not reliably available without elevated Windows privileges.');
   const root = await fixture();
   try {
     const outside = path.join(root, 'outside.txt');
