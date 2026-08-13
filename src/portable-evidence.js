@@ -10,8 +10,17 @@ import { checkStaleMemory } from './stale.js';
 import { collectExecutableProvenance, collectRepositoryProvenance } from './provenance.js';
 import { ensureSafeMemoryRoot, safeReadMemoryJson, safeWriteMemoryFile, DEFAULT_MAX_GENERATED_CACHE_BYTES } from './storage.js';
 import { looksSensitive, SECRET_GUARD_DESCRIPTION } from './sensitive.js';
+import {
+  PORTABLE_SCHEMA_VERSION,
+  PORTABLE_MANIFEST_TRUST_BOUNDARY,
+  isSupportedPortableSchemaVersion,
+  createPortableManifestIntegrity,
+  validatePortableManifestIntegrity,
+  portableManifestIntegrityView,
+  portableManifestOriginBound,
+} from './portable-manifest-integrity.js';
 
-export const PORTABLE_SCHEMA_VERSION = 2;
+export { PORTABLE_SCHEMA_VERSION };
 export const PORTABLE_KIND = 'cmi-portable-evidence';
 export const PORTABLE_PROVENANCE_FILE = 'portable-provenance.json';
 export const MAX_PORTABLE_MANIFEST_BYTES = 2 * 1024 * 1024;
@@ -356,7 +365,7 @@ function validateSourceIdentity(identity) {
 
 function assertManifestShape(manifest) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest must be a JSON object.');
-  if (manifest.schemaVersion !== PORTABLE_SCHEMA_VERSION || manifest.kind !== PORTABLE_KIND) throw error('CMI_PORTABLE_SCHEMA_UNSUPPORTED', `Unsupported portable manifest schema or kind (schema ${manifest.schemaVersion || 'unknown'}).`);
+  if (!isSupportedPortableSchemaVersion(manifest.schemaVersion) || manifest.kind !== PORTABLE_KIND) throw error('CMI_PORTABLE_SCHEMA_UNSUPPORTED', `Unsupported portable manifest schema or kind (schema ${manifest.schemaVersion || 'unknown'}).`);
   const sourceIdentity = manifest.project?.sourceIdentity;
   const repository = manifest.project?.repository;
   if (manifest.format?.algorithm !== 'sha256' || manifest.format?.bundleLayout !== 'directory-v1' || manifest.format?.authenticated !== false || manifest.evidence?.format?.artifactRoot !== '.codex-memory' || manifest.evidence?.format?.storageSchemaVersion !== 1 || !manifest.evidence?.format?.reservedFiles?.includes(PORTABLE_PROVENANCE_FILE)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable manifest format is unsupported or incomplete.');
@@ -382,6 +391,8 @@ function assertManifestShape(manifest) {
   }
   if (manifest.evidence.digest !== evidenceDigest(manifest.evidence.files)) throw error('CMI_PORTABLE_MANIFEST_INVALID', 'Portable evidence inventory digest does not match its entries.');
   if (!manifest.identity || manifest.identity.algorithm !== 'sha256' || manifest.identity.digest !== buildIdentityDigest(manifest)) throw error('CMI_PORTABLE_MANIFEST_CORRUPT', 'Portable manifest identity digest does not verify.');
+  const integrity = validatePortableManifestIntegrity(manifest);
+  if (!integrity.valid) throw error(integrity.code, integrity.reason);
   return manifest;
 }
 
@@ -460,10 +471,14 @@ async function compareProject(manifest, root, options = {}) {
   if (!workspaceMatch) mismatches.push({ dimension: 'identity-policy.workspace-inputs', expected: policy.workspaceInputs, observed: source.policy.workspaceInputs, reason: 'Workspace input identity differs from the frozen policy.' });
   const exactProof = sourceIdentityMatch && !mismatches.length && (!manifest.project.repository?.identity || Boolean(repository.identity)) && (!manifest.project.sourceRevision || Boolean(repository.revision)) && (!manifest.project.repository?.identity || manifest.project.repository.identity === repository.identity) && (!manifest.project.sourceRevision || manifest.project.sourceRevision === repository.revision) && (manifest.project.worktreeClean === null || repository.worktreeClean === manifest.project.worktreeClean);
   const frozenPath = manifest.project.location?.path || null;
-  const samePath = Boolean(frozenPath && path.resolve(frozenPath) === projectRoot);
+  const samePathObserved = Boolean(frozenPath && path.resolve(frozenPath) === projectRoot);
+  const originBound = portableManifestOriginBound(manifest);
+  const samePath = originBound && samePathObserved;
+  const originBinding = originBound ? 'integrity-bound' : 'legacy-unbound';
+  if (!originBound && samePathObserved) notes.push('Portable Evidence v2 project.location is not identity-bound; exact-location classification is unavailable.');
   let state = 'mismatch';
   if (!mismatches.length) state = exactProof && samePath ? 'exact' : gitCheckoutProof && !sourceIdentityMatch ? 'compatible-git-checkout' : exactProof ? 'compatible-relocated' : 'compatible-content-only';
-  return { state, projectRoot, sourceIdentity: source.identity, identityPolicy: source.policy, repository, mismatches, notes, samePath, exactProof, gitCheckoutProof };
+  return { state, projectRoot, sourceIdentity: source.identity, identityPolicy: source.policy, repository, mismatches, notes, samePathObserved, samePath, originBinding, exactProof, gitCheckoutProof };
 }
 
 function comparisonInvariant(comparison) {
@@ -474,7 +489,9 @@ function comparisonInvariant(comparison) {
     identityPolicy: comparison.identityPolicy,
     repository: comparison.repository,
     notes: comparison.notes,
+    samePathObserved: comparison.samePathObserved,
     samePath: comparison.samePath,
+    originBinding: comparison.originBinding,
     exactProof: comparison.exactProof,
     gitCheckoutProof: comparison.gitCheckoutProof,
   };
@@ -510,6 +527,10 @@ function buildProvenanceValue(manifest, comparison, operation) {
     kind: 'cmi-portable-provenance',
     original: {
       manifestIdentity: manifest.identity.digest,
+      ...(manifest.schemaVersion === PORTABLE_SCHEMA_VERSION ? {
+        portableSchemaVersion: manifest.schemaVersion,
+        manifestIntegrity: manifest.integrity.digest,
+      } : {}),
       frozenAt: manifest.creation.frozenAt,
       sourceIdentity: manifest.project.sourceIdentity,
       identityPolicy: manifest.project.identityPolicy,
@@ -523,7 +544,9 @@ function buildProvenanceValue(manifest, comparison, operation) {
       sourceIdentity: comparison.sourceIdentity,
       identityPolicy: comparison.identityPolicy,
       repository: comparison.repository,
+      samePathObserved: comparison.samePathObserved,
       samePath: comparison.samePath,
+      originBinding: comparison.originBinding,
       exactProof: comparison.exactProof,
       gitCheckoutProof: comparison.gitCheckoutProof,
       notes: comparison.notes,
@@ -623,9 +646,10 @@ export async function freezePortableEvidence(root, bundlePath) {
       health: { state: projectStatus.evidenceHealth?.state || 'unknown', memory: projectStatus.memoryHealth || null, graph: projectStatus.graphHealth || null },
     },
     creation: { frozenAt: nowIso(), tool: 'cmi evidence freeze' },
-    provenance: { requestedRebind: null, trustBoundary: 'observed identity and compatibility evidence; not authenticated provenance' },
+    provenance: { requestedRebind: null, trustBoundary: PORTABLE_MANIFEST_TRUST_BOUNDARY },
   };
   manifest.identity = { algorithm: 'sha256', digest: buildIdentityDigest(manifest) };
+  manifest.integrity = createPortableManifestIntegrity(manifest);
   assertManifestShape(manifest);
   let createdTarget = false;
   try {
@@ -648,13 +672,13 @@ export async function freezePortableEvidence(root, bundlePath) {
     if (cause?.code?.startsWith?.('CMI_')) throw cause;
     throw error('CMI_PORTABLE_FREEZE_FAILED', 'Portable freeze failed before producing a complete bundle.', { cause: cause?.code || 'unknown' });
   }
-  return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, path: target, state: 'frozen', identity: manifest.identity, artifacts: artifacts.length, evidenceDigest: manifest.evidence.digest, authenticated: false, manifest };
+  return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, path: target, state: 'frozen', identity: manifest.identity, manifestIntegrity: portableManifestIntegrityView(manifest), artifacts: artifacts.length, evidenceDigest: manifest.evidence.digest, authenticated: false, manifest };
 }
 
 export async function inspectPortableEvidence(bundlePath) {
   const bundle = await readManifest(bundlePath);
   const artifacts = await readBundleArtifacts(bundle);
-  return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, path: bundle.target, state: 'verified', identity: bundle.manifest.identity, artifacts: artifacts.length, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, manifest: bundle.manifest };
+  return { schemaVersion: bundle.manifest.schemaVersion, kind: PORTABLE_KIND, path: bundle.target, state: 'verified', identity: bundle.manifest.identity, manifestIntegrity: portableManifestIntegrityView(bundle.manifest), artifacts: artifacts.length, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, manifest: bundle.manifest };
 }
 
 export async function restorePortableEvidence(root, bundlePath, options = {}) {
@@ -674,14 +698,15 @@ export async function restorePortableEvidence(root, bundlePath, options = {}) {
   const destination = comparison.projectRoot;
   let existing;
   try { existing = await fs.lstat(path.join(destination, '.codex-memory')); } catch (cause) { if (cause?.code !== 'ENOENT') throw cause; }
+  const manifestIntegrity = portableManifestIntegrityView(bundle.manifest);
   if (existing) {
     if (existing.isSymbolicLink() || !existing.isDirectory()) throw error('CMI_PORTABLE_UNSAFE_PATH', 'Destination .codex-memory is not a safe directory; no evidence was overwritten.');
     const same = await existingEvidenceMatches(destination, bundle.manifest).catch((cause) => { throw error('CMI_PORTABLE_DESTINATION_CONFLICT', `Existing destination evidence could not be safely validated; no evidence was overwritten.`, { cause: cause.message }); });
     if (!same) throw error('CMI_PORTABLE_DESTINATION_CONFLICT', 'Destination already contains different or incomplete CMI evidence; no evidence was overwritten.');
     const verifiedComparison = await revalidateProjectComparison(bundle.manifest, comparison, operation);
     const provenance = operation === 'rebind' ? await ensureExistingRebindProvenance(destination, bundle.manifest, verifiedComparison) : undefined;
-    return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: verifiedComparison.state, path: destination, restored: false, alreadyPresent: true, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: verifiedComparison, ...(provenance ? { provenance } : {}) };
+    return { schemaVersion: bundle.manifest.schemaVersion, kind: PORTABLE_KIND, state: verifiedComparison.state, path: destination, restored: false, alreadyPresent: true, identity: bundle.manifest.identity, manifestIntegrity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: verifiedComparison, ...(provenance ? { provenance } : {}) };
   }
   const staged = await stageRestore(destination, artifacts, bundle.manifest, comparison, operation);
-  return { schemaVersion: PORTABLE_SCHEMA_VERSION, kind: PORTABLE_KIND, state: staged.comparison.state, path: destination, restored: true, alreadyPresent: false, identity: bundle.manifest.identity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: staged.comparison, provenance: staged.provenance };
+  return { schemaVersion: bundle.manifest.schemaVersion, kind: PORTABLE_KIND, state: staged.comparison.state, path: destination, restored: true, alreadyPresent: false, identity: bundle.manifest.identity, manifestIntegrity, evidenceDigest: bundle.manifest.evidence.digest, authenticated: false, verification: staged.comparison, provenance: staged.provenance };
 }
