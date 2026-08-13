@@ -113,6 +113,14 @@ Failure collection does not make the gate permissive:
 
 The underlying `runRealCorpus()` library contract remains fail-closed for a single run. Failure collection and transport fallback live in the execution-orchestration layer around independent one-repository runs rather than silently weakening the core pinned-revision validator.
 
+## Large CLI output boundary
+
+The first live self-host corpus execution exposed a process-boundary defect that ordinary fixtures had not exercised: large JSON output written by the top-level CLI could be truncated when stdout was captured through a pipe because `cli-entry.js` forced `process.exit()` immediately after the delegated CLI module returned.
+
+The top-level entrypoint now flushes stdout and stderr before the existing forced-exit boundary. `tests/cli-stdio-flush.test.js` locks the regression with a context response larger than 200 KB captured through `spawnSync`; the complete output must remain parseable JSON.
+
+This fix is part of the real-corpus evidence tranche because the failure was discovered by executing the committed corpus rather than by a synthetic correctness-only test.
+
 ## Report contract
 
 The report records bounded engineering metadata, including:
@@ -135,9 +143,30 @@ It intentionally does not store retrieved source snippets as ground truth. Conte
 
 Reports carry `claimDiscipline: engineering-validation-only` and repeat that target code was not executed.
 
+## First preserved live pilot
+
+The first fully passing three-repository live execution is preserved at:
+
+`evidence/real-corpus/2026-08-13-pilot.json`
+
+Its provenance points to GitHub Actions workflow run `31690157805`, head `c3965aec3bd5bfd2b02cb9e3234e083fe5a2513c`, artifact `real-corpus-report` / ID `9177031950`, and artifact digest `sha256:fe51f9a680a9e11a50335a10898369ac0d7962c89a31017d2f8070cc6f797917`.
+
+That run reported:
+
+- 3 repositories total;
+- 3 passed;
+- 0 failed;
+- 3 with healthy doctor state;
+- complete full-scan, incremental-reuse, context, impact, session-close, and handoff paths on every pinned source tree;
+- no target dependency installation, target build/test invocation, or target-code execution.
+
+The stored timing values are **one observed GitHub-hosted execution only**. They are not p95/p99 measurements, cold-start measurements, concurrency/lock-contention evidence, or productivity measurements. The pilot remains `engineering-validation-only` and must not be presented as evidence that CMI makes an agent faster or more correct.
+
+The final passing run fetched the self-host exact revision directly, so the optional `fetchRef` transport fallback was **not** exercised by that passing artifact. The fallback exists because an earlier live run encountered a real direct-SHA transport refusal; its exact-revision behavior is covered by the execution-plan and transport regression tests.
+
 ## CI policy
 
-Pull requests run the **offline contract gate**: manifest validation, execution-plan validation, and unit tests using injected command runners. This keeps ordinary PR CI deterministic and avoids making external repositories a required dependency of every commit.
+Pull requests run the **offline contract gate**: manifest validation, execution-plan validation, the large-stdout regression, and corpus unit tests using injected command runners. This keeps ordinary PR CI deterministic and avoids making external repositories a required dependency of every commit.
 
 The external real-corpus run is scheduled and manually dispatchable. It requires network access because Git objects must be fetched, but the evidence revisions themselves do not move automatically.
 
