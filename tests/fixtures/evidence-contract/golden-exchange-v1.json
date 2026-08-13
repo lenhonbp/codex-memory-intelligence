@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": 1,
+  "evidenceContractVersion": 1,
+  "name": "cmi-golden-exchange",
+  "scenario": "prediction-gap",
+  "purpose": "Consumer-owned golden exchange projection captured from real CLI, MCP tool, and MCP resource read surfaces. Only volatile runtime identity is tokenized; evidence meaning and protected public fields remain exact.",
+  "normalizationPolicy": {
+    "allowed": [
+      "Replace the generated Session ID with <SESSION_ID>.",
+      "Replace the generated Change ID with <CHANGE_ID>.",
+      "Replace the generated Finding ID with <FINDING_ID>.",
+      "Normalize CRLF to LF in human text."
+    ],
+    "forbidden": [
+      "Do not remove or rewrite evidence provenance, confidence, verification state, scope relation, file paths, actions, or violation establishment.",
+      "Do not normalize missing fields into present fields.",
+      "Do not project timestamps or temporary filesystem paths into the golden exchange."
+    ]
+  },
+  "surfaces": [
+    "cli:session-handoff",
+    "cli:session-show",
+    "cli:session-closing",
+    "mcp:get_session_handoff",
+    "mcp:get_work_session_report",
+    "mcp:get_closing_intelligence",
+    "mcp-resource:cmi://project/session-handoff/latest"
+  ],
+  "handoffHumanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache, src/cache/profile.js\n  Source: src/cache; src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+  "closingHumanAlertBlock": "🟠 **WARNING · Observed related work escaped predicted scope**\n2 changed path(s) were not predicted for related change \"change checkout flow\".\nEvidence: observed · confidence high · observed\nRecord: finding <FINDING_ID> · change <CHANGE_ID> · scope current-session\nFiles: src/cache, src/cache/profile.js\nSource: src/cache; src/cache/profile.js\nAction: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+  "finding": {
+    "id": "<FINDING_ID>",
+    "key": "prediction-gap:<CHANGE_ID>",
+    "state": "open",
+    "category": "prediction-gap",
+    "severity": "medium",
+    "title": "Observed related work escaped predicted scope",
+    "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
+    "confidence": "high",
+    "evidenceType": "observed",
+    "evidence": [
+      "change:<CHANGE_ID>",
+      "expected-vs-actual"
+    ],
+    "relatedFiles": [
+      "src/cache",
+      "src/cache/profile.js"
+    ],
+    "sessionRelevance": "related"
+  },
+  "recommendation": {
+    "id": "finding-action:prediction-gap:<CHANGE_ID>",
+    "priority": "P2",
+    "action": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+    "reason": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
+    "evidenceType": "observed",
+    "evidence": [
+      "change:<CHANGE_ID>",
+      "expected-vs-actual"
+    ],
+    "confidence": "high",
+    "relatedFindingIds": [
+      "<FINDING_ID>"
+    ]
+  },
+  "closingAlert": {
+    "findingId": "<FINDING_ID>",
+    "kind": "prediction-gap",
+    "severity": "warning",
+    "title": "Observed related work escaped predicted scope",
+    "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
+    "confidence": "high",
+    "evidenceType": "observed",
+    "evidence": [
+      "change:<CHANGE_ID>",
+      "expected-vs-actual"
+    ],
+    "evidenceAnchors": [
+      {
+        "path": "src/cache",
+        "startLine": null,
+        "endLine": null,
+        "symbol": null,
+        "feature": null,
+        "commit": null
+      },
+      {
+        "path": "src/cache/profile.js",
+        "startLine": null,
+        "endLine": null,
+        "symbol": null,
+        "feature": null,
+        "commit": null
+      }
+    ],
+    "verificationState": "observed",
+    "relatedFindingIds": [
+      "<FINDING_ID>"
+    ],
+    "relatedChangeIds": [
+      "<CHANGE_ID>"
+    ],
+    "relatedFiles": [
+      "src/cache",
+      "src/cache/profile.js"
+    ],
+    "occurrences": 1,
+    "findingState": "open",
+    "scopeRelation": "current-session",
+    "recommendedAction": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+    "violationEstablished": false
+  }
+}
