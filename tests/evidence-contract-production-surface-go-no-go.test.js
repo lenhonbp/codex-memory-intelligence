@@ -24,6 +24,7 @@ const handshake = readJson(path.join(fixtureDir, 'handshake-toctou-simulation.js
 const packageJson = JSON.parse(readRepo('package.json'));
 const cliEntry = readRepo('src/cli-entry.js');
 const mcpEntry = readRepo('src/mcp-entry.js');
+const trustEntry = readRepo('src/trust-entry.js');
 const readme = readRepo('README.md');
 
 test('production contract surface decision is evidence-bound and currently NO-GO', () => {
@@ -57,14 +58,19 @@ test('NO-GO agrees with the retained simulation authority instead of treating v2
   assert.equal(handshake.runtimeNegotiationImplemented, false);
 });
 
-test('current public package, CLI, and MCP inventory has no production contract negotiation surface', () => {
-  assert.deepEqual(packageJson.bin, {
-    cmi: 'src/cli-entry.js',
-    'cmi-mcp': 'src/mcp-entry.js',
-  });
+test('current public package, CLI, MCP, and trust inventory has no production contract negotiation surface', () => {
+  assert.equal(packageJson.bin.cmi, 'src/cli-entry.js');
+  assert.equal(packageJson.bin['cmi-mcp'], 'src/mcp-entry.js');
+  assert.equal(packageJson.bin['cmi-trust'], 'src/trust-entry.js');
+  assert.deepEqual(Object.keys(packageJson.bin).sort(), ['cmi', 'cmi-mcp', 'cmi-trust']);
 
-  for (const token of ['--evidence-contract-version', '--contract-version', 'contract discover', 'contract negotiate']) {
-    assert.equal(cliEntry.includes(token), false, `unexpected CLI production contract surface token: ${token}`);
+  for (const [surface, source] of [
+    ['CLI', cliEntry],
+    ['trust CLI', trustEntry],
+  ]) {
+    for (const token of ['--evidence-contract-version', '--contract-version', 'contract discover', 'contract negotiate']) {
+      assert.equal(source.includes(token), false, `unexpected ${surface} production contract surface token: ${token}`);
+    }
   }
 
   for (const token of [
@@ -79,7 +85,7 @@ test('current public package, CLI, and MCP inventory has no production contract 
   assert.equal(readme.includes('Evidence Contract discovery'), false);
 });
 
-test('repository evidence addresses remain concrete and cover each production-surface boundary', () => {
+test('repository evidence addresses remain concrete and cover each retained decision boundary', () => {
   const paths = decision.repositoryEvidence.map((entry) => entry.path);
   assert.deepEqual(paths, [
     'package.json',
