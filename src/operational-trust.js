@@ -35,10 +35,22 @@ async function runGit(root, args) {
 }
 
 async function trackedMemoryFiles(root) {
-  let top;
-  try { top = (await runGit(root, ['rev-parse', '--show-toplevel'])).trim(); }
+  let rawTop;
+  try { rawTop = (await runGit(root, ['rev-parse', '--show-toplevel'])).trim(); }
   catch { return { available: false, tracked: [], reason: 'Git repository metadata is unavailable; CMI cannot verify which project-memory files would be shared through Git.' }; }
-  const projectRelative = slash(path.relative(top, path.resolve(root)));
+
+  let top;
+  let projectRoot;
+  try {
+    [top, projectRoot] = await Promise.all([
+      fs.realpath(rawTop),
+      fs.realpath(path.resolve(root)),
+    ]);
+  } catch {
+    return { available: false, tracked: [], reason: 'Git worktree or project root could not be canonicalized for sharing-policy inspection.' };
+  }
+
+  const projectRelative = slash(path.relative(top, projectRoot));
   if (projectRelative.startsWith('../') || path.isAbsolute(projectRelative)) return { available: false, tracked: [], reason: 'Project root is outside the detected Git worktree.' };
   const scope = projectRelative && projectRelative !== '.' ? `${projectRelative}/${MEMORY_DIR}` : MEMORY_DIR;
   let output;
