@@ -1,0 +1,46 @@
+name: Operational Trust
+
+on:
+  pull_request:
+    paths:
+      - 'src/operational-trust.js'
+      - 'src/trust-entry.js'
+      - 'tests/operational-trust.test.js'
+      - 'docs/OPERATIONAL_TRUST.md'
+      - 'package.json'
+      - '.github/workflows/operational-trust.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/operational-trust.js'
+      - 'src/trust-entry.js'
+      - 'tests/operational-trust.test.js'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operational-trust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Trust contract · Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Operational trust tests
+        run: node --test tests/operational-trust.test.js
+      - name: CLI identity
+        run: node src/trust-entry.js --version
