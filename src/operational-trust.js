@@ -49,38 +49,46 @@ async function trackedMemoryFiles(root) {
   return { available: true, tracked, reason: null };
 }
 
-async function readIgnorePolicy(memoryRoot) {
-  const target = path.join(memoryRoot, '.gitignore');
-  let stat;
-  try { stat = await fs.lstat(target); }
-  catch (error) {
-    if (error?.code === 'ENOENT') return { present: false, safe: true, missing: [...REQUIRED_IGNORE_RULES] };
-    return { present: false, safe: false, missing: [...REQUIRED_IGNORE_RULES] };
-  }
-  if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 64 * 1024) return { present: true, safe: false, missing: [...REQUIRED_IGNORE_RULES] };
-  const rules = (await fs.readFile(target, 'utf8')).split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
-  return { present: true, safe: true, missing: REQUIRED_IGNORE_RULES.filter((rule) => !rules.includes(rule)) };
-}
-
 async function readStableText(target, maxBytes) {
   const before = await fs.lstat(target);
   if (before.isSymbolicLink() || !before.isFile()) throw new Error('unsafe-entry');
   if (before.size > maxBytes) throw new Error('oversized');
   const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
   let handle;
+  let usedNoFollow = Boolean(noFollow);
   try { handle = await fs.open(target, fsConstants.O_RDONLY | noFollow); }
   catch (error) {
     if (!noFollow || !['EINVAL', 'ENOTSUP'].includes(error?.code)) throw error;
+    usedNoFollow = false;
     handle = await fs.open(target, fsConstants.O_RDONLY);
   }
   try {
     const opened = await handle.stat();
     if (!opened.isFile() || opened.size > maxBytes || opened.dev !== before.dev || opened.ino !== before.ino) throw new Error('read-race');
+    if (!usedNoFollow) {
+      const current = await fs.lstat(target);
+      if (current.isSymbolicLink() || !current.isFile() || current.dev !== opened.dev || current.ino !== opened.ino) throw new Error('read-race');
+    }
     const bytes = await handle.readFile();
+    if (bytes.byteLength > maxBytes) throw new Error('oversized');
+    const after = await handle.stat();
+    if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) throw new Error('read-race');
     const text = bytes.toString('utf8');
     if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error('non-text');
     return { text, bytes: bytes.byteLength };
   } finally { await handle?.close().catch(() => {}); }
+}
+
+async function readIgnorePolicy(memoryRoot) {
+  const target = path.join(memoryRoot, '.gitignore');
+  try {
+    const value = await readStableText(target, 64 * 1024);
+    const rules = value.text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+    return { present: true, safe: true, missing: REQUIRED_IGNORE_RULES.filter((rule) => !rules.includes(rule)) };
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { present: false, safe: true, missing: [...REQUIRED_IGNORE_RULES] };
+    return { present: true, safe: false, missing: [...REQUIRED_IGNORE_RULES] };
+  }
 }
 
 async function scanDirectory(memoryRoot) {
@@ -180,7 +188,7 @@ export async function scanExportCandidate(filePath) {
   const target = path.resolve(raw);
   let value;
   try { value = await readStableText(target, MAX_EXPORT_BYTES); }
-  catch (error) {
+  catch {
     return { schemaVersion: 1, state: 'blocked', safeToShare: false, file: path.basename(target), bytesScanned: 0, findings: [check('CMI_TRUST_EXPORT_UNSCANNABLE', path.basename(target), 'Export candidate is not a bounded stable UTF-8 regular file and cannot receive a clean sharing attestation.')], guard: SECRET_GUARD_DESCRIPTION };
   }
   const sensitive = looksSensitive(value.text);
