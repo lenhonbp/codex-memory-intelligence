@@ -23,12 +23,13 @@ CMI stores human-reviewable project intelligence under `.codex-memory/` and does
 - **Ambient + Closing Intelligence** — agent-facing project guidance and bounded end-of-session signals when the runtime follows the integration contract.
 - **Portable Agent Skills** — eight open-format Skill artifacts shipped under `skills/`.
 - **MCP integration** — read-only by default, with explicit opt-in for durable project writes.
+- **Operational Trust** — additive `cmi-trust` pre-share checks for generated-state policy and obvious accidental credentials.
 
 CMI intentionally treats **evidence as evidence**: a warning is not automatically a product blocker, historical correlation is not causality, and inference is never automatically promoted into durable project truth.
 
 ## Get CMI
 
-**Current supported release: `v0.12.0` / `codex-memory-intelligence@0.12.0`.**
+**Current supported release: `v0.13.0` / `codex-memory-intelligence@0.13.0`.**
 
 For new installations, use the current npm package:
 
@@ -209,6 +210,19 @@ The MCP interface does not authorize CMI to execute arbitrary project commands. 
 
 See [MCP Integration](docs/MCP.md).
 
+## Operational Trust
+
+Before sharing CMI state or one exported evidence file, use the additive read-only trust gate:
+
+```bash
+cmi-trust doctor .
+cmi-trust export <file>
+```
+
+Operational Trust checks the generated/transient Git-sharing policy and performs bounded credential-like-content scanning. It is conservative and fail-closed, but it is not DLP, malware scanning, authentication, or proof that content is safe to disclose.
+
+See [Operational Trust](docs/OPERATIONAL_TRUST.md).
+
 ## Common commands
 
 ```text
@@ -231,6 +245,8 @@ cmi evidence freeze|inspect|restore|rebind ...
 cmi mcp-config [--write] [--bulk-refresh]
 cmi activate
 cmi --version
+cmi-trust doctor [path] [--json]
+cmi-trust export <file> [--json]
 ```
 
 Use `cmi --help` and command-specific help for the complete current CLI surface.
@@ -274,7 +290,7 @@ Key boundaries include:
 
 Review `.codex-memory/` before publishing it.
 
-See [Security](SECURITY.md) and [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md).
+See [Security](SECURITY.md), [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), and [Operational Trust](docs/OPERATIONAL_TRUST.md).
 
 ## Release and version policy
 
@@ -301,6 +317,7 @@ See [Release & Version Policy](docs/RELEASE_POLICY.md), [Security](SECURITY.md),
 - [Durable Memory Lifecycle](docs/MEMORY_LIFECYCLE.md)
 - [MCP Integration](docs/MCP.md)
 - [Skills](docs/SKILLS.md)
+- [Operational Trust](docs/OPERATIONAL_TRUST.md)
 - [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md)
 - [Ignore Semantics](docs/IGNORE.md)
 
@@ -309,6 +326,8 @@ See [Release & Version Policy](docs/RELEASE_POLICY.md), [Security](SECURITY.md),
 - [Release & Version Policy](docs/RELEASE_POLICY.md)
 - [Current Release Status](docs/RELEASE_STATUS.md)
 - [Real-Repository Evaluation](docs/EVALUATION.md)
+- [Real Corpus Validation](docs/REAL_CORPUS_VALIDATION.md)
+- [Product Value Regression](docs/PRODUCT_VALUE_REGRESSION.md)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Releasing](docs/RELEASING.md)
