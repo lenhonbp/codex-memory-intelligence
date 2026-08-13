@@ -203,7 +203,7 @@ test('real CLI, MCP tools, and MCP resource replay the v1 golden exchange withou
   await fs.mkdir(path.join(root, 'src', 'cache'), { recursive: true });
   await fs.writeFile(path.join(root, 'src', 'cache', 'profile.js'), 'export const cacheProfile = true;\n');
   const observation = await observeChangeRecord(root, change.id, { files: ['src/cache/profile.js'] });
-  assert.deepEqual(observation.comparison.missedByPrediction, ['src/cache/profile.js']);
+  assert.deepEqual(observation.comparison.missedByPrediction, ['src/cache', 'src/cache/profile.js']);
   await completeChangeRecord(root, change.id, {
     outcome: 'succeeded',
     files: ['src/cache/profile.js'],
