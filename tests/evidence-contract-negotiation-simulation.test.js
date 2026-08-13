@@ -19,13 +19,19 @@ function fail(pathName, detail) {
   throw new Error(`Contract negotiation simulation break at ${pathName}: ${detail}`);
 }
 
+function expectedContractFixture(version) {
+  if (version === v1.contractVersion) return 'v1.json';
+  if (version === v2Simulation.simulatedContractVersion) return 'v2-simulation.json';
+  return null;
+}
+
 function validateNegotiationPlan(plan) {
   if (plan.simulationOnly !== true) fail('simulationOnly', 'negotiation fixture must remain simulation-only');
   if (plan.runtimeNegotiationImplemented !== false) {
     fail('runtimeNegotiationImplemented', 'simulation must not claim runtime negotiation support');
   }
-  if (plan.currentRuntimeContractVersion !== v1.contractVersion) {
-    fail('currentRuntimeContractVersion', `expected released contract ${v1.contractVersion}`);
+  if (!Number.isInteger(plan.currentRuntimeContractVersion) || plan.currentRuntimeContractVersion < 1) {
+    fail('currentRuntimeContractVersion', 'current runtime contract must be a positive integer');
   }
   if (!Array.isArray(plan.supportedContractVersions) || plan.supportedContractVersions.length === 0) {
     fail('supportedContractVersions', 'at least one exact supported version is required');
@@ -38,6 +44,10 @@ function validateNegotiationPlan(plan) {
     const artifacts = plan.contractArtifacts?.[String(version)];
     if (!artifacts || typeof artifacts.contractFixture !== 'string' || !artifacts.contractFixture) {
       fail(`contractArtifacts.${version}.contractFixture`, 'each supported version must map to an explicit contract artifact');
+    }
+    const expectedFixture = expectedContractFixture(version);
+    if (expectedFixture && artifacts.contractFixture !== expectedFixture) {
+      fail(`contractArtifacts.${version}.contractFixture`, `version ${version} must map to ${expectedFixture}`);
     }
   }
   if (!plan.supportedContractVersions.includes(plan.currentRuntimeContractVersion)) {
@@ -220,6 +230,7 @@ test('negotiation policy cannot be weakened into downgrade, upgrade, normalizati
 
 test('a future simulated runtime may add v2 only by exact mapping while retaining v1 and still refusing v3', () => {
   const future = clone(negotiation);
+  future.currentRuntimeContractVersion = 2;
   future.supportedContractVersions = [1, 2];
   future.knownButUnsupportedSimulations = [];
   future.contractArtifacts['2'] = {
@@ -255,15 +266,15 @@ test('a supported version cannot be mapped to another version artifact or overla
   }, 'knownButUnsupportedSimulations');
 
   const masquerading = clone(negotiation);
+  masquerading.currentRuntimeContractVersion = 2;
   masquerading.supportedContractVersions = [1, 2];
   masquerading.knownButUnsupportedSimulations = [];
   masquerading.contractArtifacts['2'] = {
     contractFixture: 'v1.json',
     goldenFixture: 'golden-exchange-v1.json',
   };
-
-  const selected = negotiateContract(masquerading, 2);
-  assert.equal(selected.selectedContractVersion, 2);
-  assert.equal(selected.contractFixture, 'v1.json');
-  assert.notEqual(selected.contractFixture, 'v2-simulation.json');
+  assert.throws(
+    () => validateNegotiationPlan(masquerading),
+    /Contract negotiation simulation break at contractArtifacts\.2\.contractFixture:/,
+  );
 });
