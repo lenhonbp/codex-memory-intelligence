@@ -8,21 +8,7 @@ on:
       - 'src/real-corpus-execution.js'
       - 'scripts/real-corpus.js'
       - 'corpus/**'
-      - 'tests/cli-stdio-flush.test.js'
-      - 'tests/real-corpus.test.js'
-      - 'tests/real-corpus-execution.test.js'
-      - 'tests/real-corpus-transport.test.js'
-      - 'docs/REAL_CORPUS_VALIDATION.md'
-      - '.github/workflows/real-corpus.yml'
-  push:
-    branches:
-      - 'agent/evidence-execution-hardening'
-    paths:
-      - 'src/cli-entry.js'
-      - 'src/real-corpus.js'
-      - 'src/real-corpus-execution.js'
-      - 'scripts/real-corpus.js'
-      - 'corpus/**'
+      - 'evidence/real-corpus/**'
       - 'tests/cli-stdio-flush.test.js'
       - 'tests/real-corpus.test.js'
       - 'tests/real-corpus-execution.test.js'
@@ -60,7 +46,7 @@ jobs:
 
   external-real:
     name: Pinned external repositories
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/agent/evidence-execution-hardening')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
