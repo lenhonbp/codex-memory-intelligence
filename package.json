@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "cmi": "src/cli-entry.js",
-    "cmi-mcp": "src/mcp-entry.js"
+    "cmi-mcp": "src/mcp-entry.js",
+    "cmi-trust": "src/trust-entry.js"
   },
   "scripts": {
     "test": "node --test",
@@ -15,6 +16,7 @@
     "verify": "npm run check && npm run quality && npm test",
     "benchmark": "node scripts/benchmark.js",
     "benchmark:smoke": "node scripts/benchmark.js --files 120 --json",
+    "trust:check": "node src/trust-entry.js doctor . --json",
     "release:check": "node scripts/verify-release.js",
     "package:smoke": "node scripts/package-smoke.js",
     "prepack": "npm run verify"
