@@ -42,7 +42,7 @@ A v2 manifest carrying a v3-style `integrity` block is rejected rather than inte
 
 For v3 restores/rebinds, durable `portable-provenance.json` records the portable schema version and v3 manifest integrity digest in addition to the deterministic manifest identity. Existing rebind provenance must still match the complete generated durable shape before reuse.
 
-For retained v2 bundles, those v3-only provenance fields are not synthesized. This preserves the old provenance shape while making the legacy origin limitation explicit in verification output.
+For retained v2 bundles, v3-only original-manifest fields such as `portableSchemaVersion` and `manifestIntegrity` are not synthesized. Current verification output can expose the explicit `samePathObserved` and `originBinding` diagnostics, while a released relocated v2 `portable-provenance.json` that predates those two fields remains reusable only when its older fields still exactly match the current demoted trust state. A legacy provenance record that depended on unbound location to claim `exact` does not match and is rejected.
 
 ## Trust boundary
 
