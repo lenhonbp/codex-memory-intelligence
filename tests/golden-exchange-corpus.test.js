@@ -142,7 +142,7 @@ function closingAlertBlock(text, findingId) {
   while (start > 0 && !/\*\*(?:BLOCKER|WARNING|REMINDER) ·/.test(lines[start])) start -= 1;
   assert.match(lines[start], /\*\*(?:BLOCKER|WARNING|REMINDER) ·/);
   let end = recordIndex + 1;
-  while (end < lines.length && lines[end].trim() !== '') end += 1;
+  while (end < lines.length && lines[end].trim() !== '' && !lines[end].startsWith('→ **Next:**')) end += 1;
   return lines.slice(start, end).join('\n').trimEnd();
 }
 
