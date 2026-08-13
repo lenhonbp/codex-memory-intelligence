@@ -27,7 +27,8 @@
     "mcp:get_closing_intelligence",
     "mcp-resource:cmi://project/session-handoff/latest"
   ],
-  "humanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache, src/cache/profile.js\n  Source: src/cache; src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+  "handoffHumanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache, src/cache/profile.js\n  Source: src/cache; src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+  "closingHumanAlertBlock": "🟠 **WARNING · Observed related work escaped predicted scope**\n2 changed path(s) were not predicted for related change \"change checkout flow\".\nEvidence: observed · confidence high · observed\nRecord: finding <FINDING_ID> · change <CHANGE_ID> · scope current-session\nFiles: src/cache, src/cache/profile.js\nSource: src/cache; src/cache/profile.js\nAction: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
   "finding": {
     "id": "<FINDING_ID>",
     "key": "prediction-gap:<CHANGE_ID>",
