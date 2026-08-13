@@ -1,15 +1,14 @@
 {
   "schemaVersion": 1,
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "evidenceContractVersion": 1,
   "name": "cmi-golden-exchange",
-  "scenario": "prediction-gap",
-  "purpose": "Consumer-owned golden exchange projection captured from real CLI, MCP tool, and MCP resource read surfaces. Only volatile runtime identity is tokenized; evidence meaning and protected public fields remain exact.",
+  "purpose": "Consumer-owned golden exchange projections captured from real CLI, MCP tool, and MCP resource read surfaces. Only volatile runtime identity is tokenized; evidence meaning and protected public fields remain exact.",
   "normalizationPolicy": {
     "allowed": [
-      "Replace the generated Session ID with <SESSION_ID>.",
-      "Replace the generated Change ID with <CHANGE_ID>.",
-      "Replace the generated Finding ID with <FINDING_ID>.",
+      "Replace a generated Session ID with <SESSION_ID>.",
+      "Replace a generated Change ID with <CHANGE_ID> when the archetype contains one.",
+      "Replace a generated Finding ID with <FINDING_ID>.",
       "Normalize CRLF to LF in human text."
     ],
     "forbidden": [
@@ -27,88 +26,231 @@
     "mcp:get_closing_intelligence",
     "mcp-resource:cmi://project/session-handoff/latest"
   ],
-  "handoffHumanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache, src/cache/profile.js\n  Source: src/cache; src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
-  "closingHumanAlertBlock": "🟠 **WARNING · Observed related work escaped predicted scope**\n2 changed path(s) were not predicted for related change \"change checkout flow\".\nEvidence: observed · confidence high · observed\nRecord: finding <FINDING_ID> · change <CHANGE_ID> · scope current-session\nFiles: src/cache, src/cache/profile.js\nSource: src/cache; src/cache/profile.js\nAction: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
-  "finding": {
-    "id": "<FINDING_ID>",
-    "key": "prediction-gap:<CHANGE_ID>",
-    "state": "open",
-    "category": "prediction-gap",
-    "severity": "medium",
-    "title": "Observed related work escaped predicted scope",
-    "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
-    "confidence": "high",
-    "evidenceType": "observed",
-    "evidence": [
-      "change:<CHANGE_ID>",
-      "expected-vs-actual"
-    ],
-    "relatedFiles": [
-      "src/cache",
-      "src/cache/profile.js"
-    ],
-    "sessionRelevance": "related"
-  },
-  "recommendation": {
-    "id": "finding-action:prediction-gap:<CHANGE_ID>",
-    "priority": "P2",
-    "action": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
-    "reason": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
-    "evidenceType": "observed",
-    "evidence": [
-      "change:<CHANGE_ID>",
-      "expected-vs-actual"
-    ],
-    "confidence": "high",
-    "relatedFindingIds": [
-      "<FINDING_ID>"
-    ]
-  },
-  "closingAlert": {
-    "findingId": "<FINDING_ID>",
-    "kind": "prediction-gap",
-    "severity": "warning",
-    "title": "Observed related work escaped predicted scope",
-    "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
-    "confidence": "high",
-    "evidenceType": "observed",
-    "evidence": [
-      "change:<CHANGE_ID>",
-      "expected-vs-actual"
-    ],
-    "evidenceAnchors": [
-      {
-        "path": "src/cache",
-        "startLine": null,
-        "endLine": null,
-        "symbol": null,
-        "feature": null,
-        "commit": null
+  "archetypes": [
+    "prediction-gap",
+    "verification-failed",
+    "graph-drift"
+  ],
+  "exchanges": {
+    "prediction-gap": {
+      "handoffHumanEvidenceBlock": "- [medium] Observed related work escaped predicted scope\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Files: src/cache, src/cache/profile.js\n  Source: src/cache; src/cache/profile.js\n  Evidence: observed · confidence high · observed\n  Action: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+      "closingHumanAlertBlock": "🟠 **WARNING · Observed related work escaped predicted scope**\n2 changed path(s) were not predicted for related change \"change checkout flow\".\nEvidence: observed · confidence high · observed\nRecord: finding <FINDING_ID> · change <CHANGE_ID> · scope current-session\nFiles: src/cache, src/cache/profile.js\nSource: src/cache; src/cache/profile.js\nAction: Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+      "finding": {
+        "id": "<FINDING_ID>",
+        "key": "prediction-gap:<CHANGE_ID>",
+        "state": "open",
+        "category": "prediction-gap",
+        "severity": "medium",
+        "title": "Observed related work escaped predicted scope",
+        "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
+        "confidence": "high",
+        "evidenceType": "observed",
+        "evidence": [
+          "change:<CHANGE_ID>",
+          "expected-vs-actual"
+        ],
+        "relatedFiles": [
+          "src/cache",
+          "src/cache/profile.js"
+        ],
+        "sessionRelevance": "related"
       },
-      {
-        "path": "src/cache/profile.js",
-        "startLine": null,
-        "endLine": null,
-        "symbol": null,
-        "feature": null,
-        "commit": null
+      "recommendation": {
+        "id": "finding-action:prediction-gap:<CHANGE_ID>",
+        "priority": "P2",
+        "action": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+        "reason": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
+        "evidenceType": "observed",
+        "evidence": [
+          "change:<CHANGE_ID>",
+          "expected-vs-actual"
+        ],
+        "confidence": "high",
+        "relatedFindingIds": [
+          "<FINDING_ID>"
+        ]
+      },
+      "closingAlert": {
+        "findingId": "<FINDING_ID>",
+        "kind": "prediction-gap",
+        "severity": "warning",
+        "title": "Observed related work escaped predicted scope",
+        "detail": "2 changed path(s) were not predicted for related change \"change checkout flow\".",
+        "confidence": "high",
+        "evidenceType": "observed",
+        "evidence": [
+          "change:<CHANGE_ID>",
+          "expected-vs-actual"
+        ],
+        "evidenceAnchors": [
+          {
+            "path": "src/cache",
+            "startLine": null,
+            "endLine": null,
+            "symbol": null,
+            "feature": null,
+            "commit": null
+          },
+          {
+            "path": "src/cache/profile.js",
+            "startLine": null,
+            "endLine": null,
+            "symbol": null,
+            "feature": null,
+            "commit": null
+          }
+        ],
+        "verificationState": "observed",
+        "relatedFindingIds": [
+          "<FINDING_ID>"
+        ],
+        "relatedChangeIds": [
+          "<CHANGE_ID>"
+        ],
+        "relatedFiles": [
+          "src/cache",
+          "src/cache/profile.js"
+        ],
+        "occurrences": 1,
+        "findingState": "open",
+        "scopeRelation": "current-session",
+        "recommendedAction": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
+        "violationEstablished": false
       }
-    ],
-    "verificationState": "observed",
-    "relatedFindingIds": [
-      "<FINDING_ID>"
-    ],
-    "relatedChangeIds": [
-      "<CHANGE_ID>"
-    ],
-    "relatedFiles": [
-      "src/cache",
-      "src/cache/profile.js"
-    ],
-    "occurrences": 1,
-    "findingState": "open",
-    "scopeRelation": "current-session",
-    "recommendedAction": "Review the missed changed paths (src/cache, src/cache/profile.js) and decide whether future scope/boundary expectations should be updated.",
-    "violationEstablished": false
+    },
+    "verification-failed": {
+      "handoffHumanEvidenceBlock": "- [critical] Verification failed: npm test\n  Record: finding <FINDING_ID> · change <CHANGE_ID>\n  Evidence: observed · confidence high · established\n  Action: Fix the failing verification \"npm test\" and rerun it before expanding scope.",
+      "closingHumanAlertBlock": "🔴 **BLOCKER · Verification failed: npm test**\nRelated change \"verify checkout failure\" records a failed verification.\nEvidence: observed · confidence high · established\nRecord: finding <FINDING_ID> · change <CHANGE_ID> · scope current-session\nAction: Fix the failing verification \"npm test\" and rerun it before expanding scope.",
+      "finding": {
+        "id": "<FINDING_ID>",
+        "key": "verification-failed:<CHANGE_ID>:npm test",
+        "state": "open",
+        "category": "verification-failed",
+        "severity": "critical",
+        "title": "Verification failed: npm test",
+        "detail": "Related change \"verify checkout failure\" records a failed verification.",
+        "confidence": "high",
+        "evidenceType": "observed",
+        "evidence": [
+          "change:<CHANGE_ID>",
+          "verification:npm test"
+        ],
+        "relatedFiles": [],
+        "sessionRelevance": "related"
+      },
+      "recommendation": {
+        "id": "finding-action:verification-failed:<CHANGE_ID>:npm test",
+        "priority": "P0",
+        "action": "Fix the failing verification \"npm test\" and rerun it before expanding scope.",
+        "reason": "Related change \"verify checkout failure\" records a failed verification.",
+        "evidenceType": "observed",
+        "evidence": [
+          "change:<CHANGE_ID>",
+          "verification:npm test"
+        ],
+        "confidence": "high",
+        "relatedFindingIds": [
+          "<FINDING_ID>"
+        ]
+      },
+      "closingAlert": {
+        "findingId": "<FINDING_ID>",
+        "kind": "verification-failed",
+        "severity": "blocker",
+        "title": "Verification failed: npm test",
+        "detail": "Related change \"verify checkout failure\" records a failed verification.",
+        "confidence": "high",
+        "evidenceType": "observed",
+        "evidence": [
+          "change:<CHANGE_ID>",
+          "verification:npm test"
+        ],
+        "evidenceAnchors": [],
+        "verificationState": "established",
+        "relatedFindingIds": [
+          "<FINDING_ID>"
+        ],
+        "relatedChangeIds": [
+          "<CHANGE_ID>"
+        ],
+        "relatedFiles": [],
+        "occurrences": 1,
+        "findingState": "open",
+        "scopeRelation": "current-session",
+        "recommendedAction": "Fix the failing verification \"npm test\" and rerun it before expanding scope.",
+        "violationEstablished": true
+      }
+    },
+    "graph-drift": {
+      "handoffHumanEvidenceBlock": "- [medium] Project graph has drifted from source\n  Record: finding <FINDING_ID>\n  Files: src/service.js\n  Source: src/service.js\n  Evidence: observed · confidence high · observed\n  Action: Run `cmi scan`, then refresh task context/impact before making further dependent changes.",
+      "closingHumanAlertBlock": "🟠 **WARNING · Project graph has drifted from source**\nStored graph evidence no longer matches current source (1 stale, 0 missing node(s)).\nEvidence: observed · confidence high · observed\nRecord: finding <FINDING_ID> · scope current-session\nFiles: src/service.js\nSource: src/service.js\nAction: Run `cmi scan`, then refresh task context/impact before making further dependent changes.",
+      "finding": {
+        "id": "<FINDING_ID>",
+        "key": "graph-drift:graph",
+        "state": "open",
+        "category": "graph-drift",
+        "severity": "medium",
+        "title": "Project graph has drifted from source",
+        "detail": "Stored graph evidence no longer matches current source (1 stale, 0 missing node(s)).",
+        "confidence": "high",
+        "evidenceType": "observed",
+        "evidence": [
+          "source-fingerprint-mismatch"
+        ],
+        "relatedFiles": [
+          "src/service.js"
+        ],
+        "sessionRelevance": null
+      },
+      "recommendation": {
+        "id": "finding-action:graph-drift:graph",
+        "priority": "P1",
+        "action": "Run `cmi scan`, then refresh task context/impact before making further dependent changes.",
+        "reason": "Stored graph evidence no longer matches current source (1 stale, 0 missing node(s)).",
+        "evidenceType": "observed",
+        "evidence": [
+          "source-fingerprint-mismatch"
+        ],
+        "confidence": "high",
+        "relatedFindingIds": [
+          "<FINDING_ID>"
+        ]
+      },
+      "closingAlert": {
+        "findingId": "<FINDING_ID>",
+        "kind": "graph-drift",
+        "severity": "warning",
+        "title": "Project graph has drifted from source",
+        "detail": "Stored graph evidence no longer matches current source (1 stale, 0 missing node(s)).",
+        "confidence": "high",
+        "evidenceType": "observed",
+        "evidence": [
+          "source-fingerprint-mismatch"
+        ],
+        "evidenceAnchors": [
+          {
+            "path": "src/service.js",
+            "startLine": null,
+            "endLine": null,
+            "symbol": null,
+            "feature": null,
+            "commit": null
+          }
+        ],
+        "verificationState": "observed",
+        "relatedFindingIds": [
+          "<FINDING_ID>"
+        ],
+        "relatedChangeIds": [],
+        "relatedFiles": [
+          "src/service.js"
+        ],
+        "occurrences": 1,
+        "findingState": "open",
+        "scopeRelation": "current-session",
+        "recommendedAction": "Run `cmi scan`, then refresh task context/impact before making further dependent changes.",
+        "violationEstablished": false
+      }
+    }
   }
 }
