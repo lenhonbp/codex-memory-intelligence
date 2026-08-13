@@ -165,6 +165,31 @@ test('legacy v2 remains readable but unbound location can never promote exact re
   assert.equal(restored.provenance.original.manifestIntegrity, undefined);
 });
 
+test('released relocated v2 rebind provenance remains reusable without synthesizing v3 verification fields', async () => {
+  const root = await project('cmi-portable-integrity-v2-provenance-');
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-portable-integrity-v2-provenance-bundle-'));
+  const bundle = await freezePortableEvidence(root, path.join(parent, 'bundle'));
+  const destination = path.join(parent, 'destination');
+  await copyWithoutMemory(root, destination);
+  await asLegacyV2(bundle.path);
+
+  const restored = await restorePortableEvidence(destination, bundle.path, { rebind: true });
+  assert.equal(restored.state, 'compatible-relocated');
+
+  const provenancePath = path.join(destination, '.codex-memory', 'portable-provenance.json');
+  const legacyProvenance = JSON.parse(await fs.readFile(provenancePath, 'utf8'));
+  delete legacyProvenance.verification.samePathObserved;
+  delete legacyProvenance.verification.originBinding;
+  await fs.writeFile(provenancePath, `${JSON.stringify(legacyProvenance, null, 2)}\n`);
+
+  const reused = await restorePortableEvidence(destination, bundle.path, { rebind: true });
+  assert.equal(reused.alreadyPresent, true);
+  assert.equal(reused.state, 'compatible-relocated');
+  assert.equal(reused.provenance.verification.samePathObserved, undefined);
+  assert.equal(reused.provenance.verification.originBinding, undefined);
+  assert.equal(reused.verification.originBinding, 'legacy-unbound');
+});
+
 test('v3 bound origin retains exact restore semantics at the frozen project location', async () => {
   const root = await project('cmi-portable-integrity-exact-');
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-portable-integrity-exact-bundle-'));
