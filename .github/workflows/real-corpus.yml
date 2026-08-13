@@ -9,6 +9,7 @@ on:
       - 'corpus/**'
       - 'tests/real-corpus.test.js'
       - 'tests/real-corpus-execution.test.js'
+      - 'tests/real-corpus-transport.test.js'
       - 'docs/REAL_CORPUS_VALIDATION.md'
       - '.github/workflows/real-corpus.yml'
   push:
@@ -21,6 +22,7 @@ on:
       - 'corpus/**'
       - 'tests/real-corpus.test.js'
       - 'tests/real-corpus-execution.test.js'
+      - 'tests/real-corpus-transport.test.js'
       - 'docs/REAL_CORPUS_VALIDATION.md'
       - '.github/workflows/real-corpus.yml'
   schedule:
@@ -50,7 +52,7 @@ jobs:
       - name: Validate no-target-execution plan
         run: node scripts/real-corpus.js plan --manifest corpus/real-repositories.json --json
       - name: Test corpus runner contract
-        run: node --test tests/real-corpus.test.js tests/real-corpus-execution.test.js
+        run: node --test tests/real-corpus.test.js tests/real-corpus-execution.test.js tests/real-corpus-transport.test.js
 
   external-real:
     name: Pinned external repositories
