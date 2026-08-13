@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "simulationOnly": true,
+  "runtimeSupported": false,
+  "name": "cmi-evidence-surface-v2-upgrade-simulation",
+  "baseContractVersion": 1,
+  "simulatedContractVersion": 2,
+  "purpose": "Test-only dual-version upgrade fixture. It proves versioning mechanics without declaring Evidence Contract v2 as a supported runtime contract.",
+  "legacyReplay": {
+    "required": true,
+    "contractFixture": "v1.json",
+    "goldenFixture": "golden-exchange-v1.json"
+  },
+  "additiveProbe": {
+    "field": "v2CompatibilityProbe",
+    "values": {
+      "finding": "finding-v2",
+      "recommendation": "recommendation-v2",
+      "closingAlert": "closing-alert-v2"
+    },
+    "meaning": "Synthetic test-only field used to prove that a v2 consumer can require an added field while a retained v1 consumer continues projecting only v1 fields."
+  },
+  "breakingChange": {
+    "archetype": "verification-failed",
+    "path": "closingAlert.verificationState",
+    "from": "established",
+    "to": "confirmed",
+    "fromContractVersion": 1,
+    "toContractVersion": 2,
+    "requiresVersionBump": true,
+    "meaning": "Synthetic test-only semantic replacement used to prove that a breaking evidence meaning cannot be advertised as v1 and is permitted only inside the explicit v2 simulation while v1 replay remains retained."
+  },
+  "guardrails": [
+    "This fixture is not a runtime negotiation surface and must never be treated as evidence that Evidence Contract v2 is released or supported.",
+    "The released v1 fixture and v1 golden corpus remain unchanged and independently replayable.",
+    "A breaking semantic change must not pass as contract version 1.",
+    "A simulated contract upgrade must retain prior-version regression coverage.",
+    "The synthetic v2CompatibilityProbe field has no product semantics outside this test fixture."
+  ]
+}
