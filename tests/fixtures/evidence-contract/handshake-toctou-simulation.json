@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "simulationOnly": true,
+  "runtimeHandshakeImplemented": false,
+  "runtimeCapabilityAdvertisementImplemented": false,
+  "runtimeNegotiationImplemented": false,
+  "name": "cmi-evidence-contract-discovery-negotiation-handshake-toctou-simulation",
+  "sources": {
+    "capabilityAdvertisementFixture": "capability-advertisement-simulation.json",
+    "negotiationFixture": "negotiation-simulation.json",
+    "contractV1": "v1.json",
+    "goldenV1": "golden-exchange-v1.json",
+    "v2Simulation": "v2-simulation.json"
+  },
+  "lifecycle": [
+    "discover",
+    "choose-exact-version",
+    "negotiate",
+    "consume-replay"
+  ],
+  "bindingPolicy": {
+    "discoveryFingerprint": "required",
+    "authorityFingerprint": "required",
+    "revalidateCapabilityBeforeNegotiation": true,
+    "revalidateAuthorityBeforeNegotiation": true,
+    "revalidateCapabilityBeforeConsume": true,
+    "revalidateAuthorityBeforeConsume": true,
+    "exactVersionContinuity": true,
+    "exactArtifactContinuity": true,
+    "silentDowngrade": false,
+    "silentUpgrade": false,
+    "artifactSubstitution": false,
+    "staleState": "fail-closed"
+  },
+  "refusal": {
+    "staleCode": "CMI_EVIDENCE_CONTRACT_HANDSHAKE_STALE",
+    "selectionCode": "CMI_EVIDENCE_CONTRACT_HANDSHAKE_SELECTION_MISMATCH",
+    "artifactCode": "CMI_EVIDENCE_CONTRACT_HANDSHAKE_ARTIFACT_MISMATCH"
+  }
+}
