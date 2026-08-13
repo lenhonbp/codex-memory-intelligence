@@ -22,6 +22,19 @@ A new evidence-contract version is required when a change removes or renames a p
 
 A future contract bump must retain regression coverage for the prior version. Do not delete the v1 fixture merely because the runtime has advanced.
 
+## Dual-version upgrade simulation
+
+`tests/fixtures/evidence-contract/v2-simulation.json` is an explicitly **test-only** upgrade fixture. It does not declare Evidence Contract v2 released, supported, negotiated, or available from the runtime.
+
+The simulation proves two different compatibility situations without changing production behavior:
+
+- **Additive dual-read:** a synthetic v2-only field can be required by a simulated v2 consumer while a v1 consumer continues to project only the protected v1 fields and replays the existing v1 golden corpus unchanged.
+- **Intentional breaking upgrade:** a synthetic change to protected evidence meaning must fail when replayed as v1. It may exist only inside the explicit simulated next-version expectation, and the upgrade plan must still retain both `v1.json` and `golden-exchange-v1.json` regression coverage.
+
+The synthetic `v2CompatibilityProbe` field and the simulated replacement verification value have no product semantics. They exist only to test versioning mechanics. A future real Evidence Contract v2 must define its own reviewed semantics instead of copying these probes.
+
+The gate also fails closed when an upgrade simulation tries to advertise a breaking change as contract version 1, makes prior-version replay optional, or replaces the retained v1 fixture/corpus references with v2-only artifacts.
+
 ## Legacy durable records
 
 Historical durable records that predate this contract reference remain governed by their existing compatibility exceptions. They must remain readable where the released compatibility policy says they are readable, and they must not be rewritten merely to add contract metadata.
@@ -78,5 +91,7 @@ A consumer-visible change that cannot replay the existing v1 golden exchanges is
 `tests/golden-exchange-corpus.test.js` adds real-consumer replay against the checked-in v1 golden exchange fixture. The test obtains its read data from the public CLI/MCP/resource surfaces, projects only fields protected by `v1.json`, and compares them against the consumer-owned golden artifacts for the three bounded archetypes.
 
 `tests/golden-exchange-negative-compatibility.test.js` is the consumer-break simulation gate. It mutates protected golden exchange values only in test memory and requires each simulated break to be rejected at a concrete contract path, including verification state, `violationEstablished`, Change/Finding linkage, confidence, scope relation, evidence/file addresses, action text, and stable human evidence labels. A separate additive-field control must remain compatible so the negative gate does not accidentally turn the v1 `additive-only` policy into whole-object exactness.
+
+`tests/evidence-contract-upgrade-simulation.test.js` is the dual-version upgrade gate. It requires the v1 contract and golden corpus to remain the released compatibility reference, proves that a synthetic v2 additive superset remains consumable through the retained v1 projection, requires the simulated v2 projection to enforce its own added field, rejects a protected semantic break under v1, and refuses any upgrade plan that drops prior-version regression coverage. The associated `v2-simulation.json` fixture is deliberately non-runtime and must stay labeled simulation-only.
 
 Together, these tests are the compatibility gate. A future runtime change that silently removes or changes protected evidence semantics should fail CI before release.
