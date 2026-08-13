@@ -68,7 +68,46 @@ jobs:
       - name: Run engineering validation on exact Git SHAs
         id: corpus
         continue-on-error: true
-        run: node scripts/real-corpus.js run --manifest corpus/real-repositories.json --json > real-corpus-report.json
+        run: node scripts/real-corpus.js run --manifest corpus/real-repositories.json --work-root "$RUNNER_TEMP/real-corpus" --keep-checkouts --json > real-corpus-report.json
+      - name: Classify self-host context stdout on validation failure
+        if: steps.corpus.outcome != 'success' && github.event_name == 'push'
+        shell: bash
+        run: |
+          set +e
+          checkout="$RUNNER_TEMP/real-corpus/cmi-self-host-0-12-1"
+          stdout="$RUNNER_TEMP/self-host-context.stdout"
+          stderr="$RUNNER_TEMP/self-host-context.stderr"
+          if [ -d "$checkout" ]; then
+            (cd "$checkout" && node "$GITHUB_WORKSPACE/src/cli-entry.js" context 'portable evidence provenance handoff' --json > "$stdout" 2> "$stderr")
+            status=$?
+          else
+            status=127
+            : > "$stdout"
+            : > "$stderr"
+          fi
+          CONTEXT_STATUS="$status" CONTEXT_STDOUT="$stdout" CONTEXT_STDERR="$stderr" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const stdout = fs.readFileSync(process.env.CONTEXT_STDOUT, 'utf8');
+          const stderr = fs.readFileSync(process.env.CONTEXT_STDERR, 'utf8');
+          const trimmed = stdout.trim();
+          let parseOk = false;
+          try { JSON.parse(trimmed); parseOk = true; } catch {}
+          const first = trimmed ? trimmed.codePointAt(0) : null;
+          const last = trimmed ? trimmed.codePointAt(trimmed.length - 1) : null;
+          console.log(JSON.stringify({
+            contextExitStatus: Number(process.env.CONTEXT_STATUS),
+            stdoutBytes: Buffer.byteLength(stdout),
+            stdoutLines: stdout ? stdout.split(/\r?\n/).length : 0,
+            stdoutTrimmedBytes: Buffer.byteLength(trimmed),
+            stdoutFirstCodePoint: first,
+            stdoutLastCodePoint: last,
+            stdoutStartsJsonContainer: trimmed.startsWith('{') || trimmed.startsWith('['),
+            stdoutEndsJsonContainer: trimmed.endsWith('}') || trimmed.endsWith(']'),
+            stdoutJsonParseOk: parseOk,
+            stderrBytes: Buffer.byteLength(stderr),
+            stderrLines: stderr ? stderr.split(/\r?\n/).length : 0,
+          }, null, 2));
+          NODE
       - name: Upload bounded engineering report
         if: always()
         uses: actions/upload-artifact@v4
