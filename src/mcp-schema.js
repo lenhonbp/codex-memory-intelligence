@@ -1,4 +1,4 @@
-export function strictInputSchema(schema) {
+export function strictInputSchema(schema, closeObject = true) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
   const next = { ...schema };
   if (schema.properties) {
@@ -7,12 +7,20 @@ export function strictInputSchema(schema) {
     );
   }
   if (schema.items) next.items = strictInputSchema(schema.items);
-  if (schema.type === 'object' && schema.properties && schema.additionalProperties === undefined) {
+  if (closeObject && schema.type === 'object' && schema.properties && schema.additionalProperties === undefined) {
     next.additionalProperties = false;
   }
-  if (Array.isArray(schema.allOf)) next.allOf = schema.allOf.map((item) => strictInputSchema(item));
-  if (schema.if) next.if = strictInputSchema(schema.if);
-  if (schema.then) next.then = strictInputSchema(schema.then);
+  if (Array.isArray(schema.allOf)) {
+    next.allOf = schema.allOf.map((clause) => {
+      if (!clause || typeof clause !== 'object' || Array.isArray(clause)) return clause;
+      const nextClause = { ...clause };
+      if (clause.if) nextClause.if = strictInputSchema(clause.if, false);
+      if (clause.then) nextClause.then = strictInputSchema(clause.then, false);
+      return nextClause;
+    });
+  }
+  if (schema.if) next.if = strictInputSchema(schema.if, false);
+  if (schema.then) next.then = strictInputSchema(schema.then, false);
   return next;
 }
 
