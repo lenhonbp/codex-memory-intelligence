@@ -145,7 +145,7 @@ test('legacy v2 remains readable but unbound location can never promote exact re
   await copyWithoutMemory(root, destination);
 
   const manifest = await asLegacyV2(bundle.path);
-  manifest.project.location.path = destination;
+  manifest.project.location.path = await fs.realpath(destination);
   await writeManifest(bundle.path, manifest);
 
   const inspected = await inspectPortableEvidence(bundle.path);
