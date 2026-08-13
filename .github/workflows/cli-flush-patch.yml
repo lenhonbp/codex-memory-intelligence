@@ -1,0 +1,51 @@
+name: Temporary CLI Flush Patch
+
+on:
+  push:
+    branches:
+      - 'agent/evidence-execution-hardening'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Patch cli-entry flush boundary
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/cli-entry.js')
+          text = path.read_text(encoding='utf-8')
+          if 'async function flushStandardStream' in text:
+              raise SystemExit(0)
+
+          anchor = "const [command, ...args] = process.argv.slice(2);\n"
+          helper = """const [command, ...args] = process.argv.slice(2);\n\nasync function flushStandardStream(stream) {\n  if (!stream || stream.destroyed || !stream.writable) return;\n  await new Promise((resolve) => {\n    try {\n      stream.write('', () => resolve());\n    } catch {\n      resolve();\n    }\n  });\n}\n\n"""
+          if anchor not in text:
+              raise SystemExit('cli-entry command anchor not found')
+          text = text.replace(anchor, helper, 1)
+
+          old = """if (!['session', 'finding', 'evaluate'].includes(command)) {\n  await import('./cli.js');\n  process.exit();\n}\n"""
+          new = """if (!['session', 'finding', 'evaluate'].includes(command)) {\n  await import('./cli.js');\n  await Promise.all([flushStandardStream(process.stdout), flushStandardStream(process.stderr)]);\n  process.exit(process.exitCode ?? 0);\n}\n"""
+          if old not in text:
+              raise SystemExit('cli-entry exit boundary not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- src/cli-entry.js; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/cli-entry.js
+          git commit -m 'fix: flush CLI stdio before forced exit'
+          git push origin HEAD:agent/evidence-execution-hardening
