@@ -17,6 +17,8 @@ const mcp = fileURLToPath(new URL('../src/mcp-entry.js', import.meta.url));
 const contract = JSON.parse(await fs.readFile(path.join(here, 'fixtures', 'evidence-contract', 'v1.json'), 'utf8'));
 const golden = JSON.parse(await fs.readFile(path.join(here, 'fixtures', 'evidence-contract', 'golden-exchange-v1.json'), 'utf8'));
 
+const ARCHETYPES = ['prediction-gap', 'verification-failed', 'graph-drift'];
+
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cmi-golden-exchange-'));
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'golden-exchange-corpus', type: 'module' }));
@@ -44,6 +46,11 @@ async function initializeGit(root, context) {
     throw error;
   }
   return true;
+}
+
+async function commitPaths(root, files, message) {
+  await execFileAsync('git', ['add', ...files], { cwd: root, windowsHide: true });
+  await execFileAsync('git', ['commit', '-m', message], { cwd: root, windowsHide: true });
 }
 
 function runCli(args, cwd) {
@@ -101,7 +108,7 @@ function startMcp(root) {
 }
 
 async function initializeMcp(server) {
-  server.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'golden-exchange-corpus', version: '1.0.0' } } });
+  server.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'golden-exchange-corpus', version: '2.0.0' } } });
   await server.waitFor((message) => message.id === 1);
   server.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
 }
@@ -141,11 +148,11 @@ function closingAlertBlock(text, findingId) {
 
 function normalizeValue(value, ids) {
   if (typeof value === 'string') {
-    return value
-      .replaceAll(ids.sessionId, '<SESSION_ID>')
-      .replaceAll(ids.changeId, '<CHANGE_ID>')
-      .replaceAll(ids.findingId, '<FINDING_ID>')
-      .replace(/\r\n/g, '\n');
+    let normalized = value.replace(/\r\n/g, '\n');
+    if (ids.sessionId) normalized = normalized.replaceAll(ids.sessionId, '<SESSION_ID>');
+    if (ids.changeId) normalized = normalized.replaceAll(ids.changeId, '<CHANGE_ID>');
+    if (ids.findingId) normalized = normalized.replaceAll(ids.findingId, '<FINDING_ID>');
+    return normalized;
   }
   if (Array.isArray(value)) return value.map((item) => normalizeValue(item, ids));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeValue(item, ids)]));
@@ -174,48 +181,73 @@ function actionFrom(handoff, findingId) {
   return action;
 }
 
-function assertHandoffHumanExchange(text, ids) {
-  assert.equal(normalizeValue(handoffEvidenceBlock(text, ids.findingId), ids), golden.handoffHumanEvidenceBlock);
+function assertHandoffHumanExchange(text, ids, exchange) {
+  assert.equal(normalizeValue(handoffEvidenceBlock(text, ids.findingId), ids), exchange.handoffHumanEvidenceBlock);
 }
 
-function assertClosingHumanExchange(text, ids) {
-  assert.equal(normalizeValue(closingAlertBlock(text, ids.findingId), ids), golden.closingHumanAlertBlock);
+function assertClosingHumanExchange(text, ids, exchange) {
+  assert.equal(normalizeValue(closingAlertBlock(text, ids.findingId), ids), exchange.closingHumanAlertBlock);
 }
 
-function assertHandoffExchange(handoff, ids, label) {
+function assertHandoffExchange(handoff, ids, exchange, label) {
   const finding = findingFrom(handoff, ids.findingId);
   const action = actionFrom(handoff, ids.findingId);
-  assert.deepEqual(normalizeValue(project(finding, contract.finding.requiredFields, `${label} Finding`), ids), golden.finding);
-  assert.deepEqual(normalizeValue(project(action, contract.recommendation.requiredFields, `${label} Recommendation`), ids), golden.recommendation);
+  assert.deepEqual(normalizeValue(project(finding, contract.finding.requiredFields, `${label} Finding`), ids), exchange.finding);
+  assert.deepEqual(normalizeValue(project(action, contract.recommendation.requiredFields, `${label} Recommendation`), ids), exchange.recommendation);
 }
 
-test('golden exchange v1 is bounded to real public consumers and the current evidence contract', () => {
-  assert.equal(golden.schemaVersion, 1);
-  assert.equal(golden.corpusVersion, 1);
-  assert.equal(golden.evidenceContractVersion, contract.contractVersion);
-  assert.equal(golden.name, 'cmi-golden-exchange');
-  assert.equal(golden.scenario, 'prediction-gap');
-  assert.deepEqual(golden.surfaces, [
-    'cli:session-handoff',
-    'cli:session-show',
-    'cli:session-closing',
-    'mcp:get_session_handoff',
-    'mcp:get_work_session_report',
-    'mcp:get_closing_intelligence',
-    'mcp-resource:cmi://project/session-handoff/latest',
-  ]);
-  assert.match(golden.purpose, /real CLI, MCP tool, and MCP resource/i);
-  assert.ok(golden.normalizationPolicy.allowed.every((item) => /Session ID|Change ID|Finding ID|CRLF/.test(item)));
-  assert.ok(golden.normalizationPolicy.forbidden.some((item) => /evidence provenance/i.test(item)));
-  assert.match(golden.handoffHumanEvidenceBlock, /^- \[medium\]/);
-  assert.match(golden.closingHumanAlertBlock, /^🟠 \*\*WARNING/);
-});
+async function assertAcrossConsumers(root, closed, finding, ids, exchange, category) {
+  for (const [args, label] of [
+    [['session', 'handoff', closed.id], 'CLI session handoff'],
+    [['session', 'show', closed.id], 'CLI session show'],
+  ]) {
+    const result = await runCli(args, root);
+    assert.equal(result.code, 0, `${category} ${label}: ${result.stderr}`);
+    assertHandoffHumanExchange(result.stdout, ids, exchange);
+  }
 
-test('real CLI, MCP tools, and MCP resource replay the v1 golden exchange without semantic normalization', async (t) => {
+  const cliClosing = await runCli(['session', 'closing', closed.id], root);
+  assert.equal(cliClosing.code, 0, `${category} CLI session closing: ${cliClosing.stderr}`);
+  assertClosingHumanExchange(cliClosing.stdout, ids, exchange);
+
+  const server = startMcp(root);
+  try {
+    await initializeMcp(server);
+
+    server.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_session_handoff', arguments: { id: closed.id } } });
+    const mcpHandoff = await server.waitFor((message) => message.id === 2);
+    assert.ok(mcpHandoff.result, JSON.stringify(mcpHandoff));
+    assertHandoffHumanExchange(mcpHandoff.result.content[0].text, ids, exchange);
+    assertHandoffExchange(mcpHandoff.result.structuredContent, ids, exchange, `${category} MCP Handoff`);
+
+    server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_work_session_report', arguments: { id: closed.id } } });
+    const mcpReport = await server.waitFor((message) => message.id === 3);
+    assert.ok(mcpReport.result, JSON.stringify(mcpReport));
+    assertHandoffHumanExchange(mcpReport.result.content[0].text, ids, exchange);
+    assertHandoffExchange(mcpReport.result.structuredContent.close.handoff, ids, exchange, `${category} MCP Session Report`);
+
+    server.send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'get_closing_intelligence', arguments: { id: closed.id } } });
+    const mcpClosing = await server.waitFor((message) => message.id === 4);
+    assert.ok(mcpClosing.result, JSON.stringify(mcpClosing));
+    assertClosingHumanExchange(mcpClosing.result.content[0].text, ids, exchange);
+    const alert = mcpClosing.result.structuredContent.alerts.find((item) => item.findingId === finding.id);
+    assert.ok(alert, JSON.stringify(mcpClosing.result.structuredContent.alerts, null, 2));
+    assert.deepEqual(normalizeValue(project(alert, contract.closingAlert.requiredFields, `${category} MCP Closing alert`), ids), exchange.closingAlert);
+
+    server.send({ jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'cmi://project/session-handoff/latest' } });
+    const resource = await server.waitFor((message) => message.id === 5);
+    assert.ok(resource.result, JSON.stringify(resource));
+    const resourceHandoff = JSON.parse(resource.result.contents[0].text);
+    assertHandoffExchange(resourceHandoff, ids, exchange, `${category} MCP Handoff Resource`);
+  } finally {
+    await stopMcp(server);
+  }
+}
+
+async function predictionGapScenario(t) {
   const root = await fixture();
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  if (!await initializeGit(root, t)) return;
-
+  if (!await initializeGit(root, t)) return null;
   const change = await startChangeRecord(root, 'change checkout flow');
   const session = await startSession(root, 'change checkout flow');
   await fs.mkdir(path.join(root, 'src', 'cache'), { recursive: true });
@@ -230,50 +262,85 @@ test('real CLI, MCP tools, and MCP resource replay the v1 golden exchange withou
   const closed = await closeSession(root, session.id, { outcome: 'succeeded' });
   const finding = closed.close.handoff.openFindings.find((item) => item.category === 'prediction-gap' && item.evidence.includes(`change:${change.id}`));
   assert.ok(finding, JSON.stringify(closed.close.handoff.openFindings, null, 2));
-  const ids = { sessionId: closed.id, changeId: change.id, findingId: finding.id };
+  return { root, closed, finding, ids: { sessionId: closed.id, changeId: change.id, findingId: finding.id } };
+}
 
-  for (const [args, label] of [
-    [['session', 'handoff', closed.id], 'CLI session handoff'],
-    [['session', 'show', closed.id], 'CLI session show'],
-  ]) {
-    const result = await runCli(args, root);
-    assert.equal(result.code, 0, `${label}: ${result.stderr}`);
-    assertHandoffHumanExchange(result.stdout, ids);
+async function verificationFailedScenario(t) {
+  const root = await fixture();
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  if (!await initializeGit(root, t)) return null;
+  const change = await startChangeRecord(root, 'verify checkout failure');
+  const session = await startSession(root, 'verify checkout failure');
+  await completeChangeRecord(root, change.id, {
+    outcome: 'failed',
+    files: [],
+    verifications: [{ name: 'npm test', status: 'failed' }],
+  });
+  const closed = await closeSession(root, session.id);
+  const finding = closed.close.handoff.openFindings.find((item) => item.category === 'verification-failed' && item.evidence.includes(`change:${change.id}`));
+  assert.ok(finding, JSON.stringify(closed.close.handoff.openFindings, null, 2));
+  return { root, closed, finding, ids: { sessionId: closed.id, changeId: change.id, findingId: finding.id } };
+}
+
+async function graphDriftScenario(t) {
+  const root = await fixture();
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  if (!await initializeGit(root, t)) return null;
+  await fs.writeFile(path.join(root, 'src', 'service.js'), 'export function service() { return false; }\n');
+  await commitPaths(root, ['src/service.js'], 'Create pre-session graph drift');
+  const session = await startSession(root, 'inspect already-stale project intelligence');
+  const closed = await closeSession(root, session.id, { outcome: 'investigated', notes: ['No project mutation occurred in this session.'] });
+  const finding = closed.close.handoff.openFindings.find((item) => item.category === 'graph-drift' && item.relatedFiles.includes('src/service.js'));
+  assert.ok(finding && !finding.evidence.includes('session-source-mutation'), JSON.stringify(closed.close.handoff.openFindings, null, 2));
+  return { root, closed, finding, ids: { sessionId: closed.id, findingId: finding.id } };
+}
+
+const SCENARIOS = [
+  ['prediction-gap', predictionGapScenario],
+  ['verification-failed', verificationFailedScenario],
+  ['graph-drift', graphDriftScenario],
+];
+
+test('golden exchange v1 corpus v2 is bounded to three high-signal real-consumer archetypes', () => {
+  assert.equal(golden.schemaVersion, 1);
+  assert.equal(golden.corpusVersion, 2);
+  assert.equal(golden.evidenceContractVersion, contract.contractVersion);
+  assert.equal(golden.name, 'cmi-golden-exchange');
+  assert.deepEqual(golden.archetypes, ARCHETYPES);
+  assert.deepEqual(Object.keys(golden.exchanges), ARCHETYPES);
+  assert.deepEqual(golden.surfaces, [
+    'cli:session-handoff',
+    'cli:session-show',
+    'cli:session-closing',
+    'mcp:get_session_handoff',
+    'mcp:get_work_session_report',
+    'mcp:get_closing_intelligence',
+    'mcp-resource:cmi://project/session-handoff/latest',
+  ]);
+  assert.match(golden.purpose, /real CLI, MCP tool, and MCP resource/i);
+  assert.ok(golden.normalizationPolicy.allowed.every((item) => /Session ID|Change ID|Finding ID|CRLF/.test(item)));
+  assert.ok(golden.normalizationPolicy.forbidden.some((item) => /evidence provenance/i.test(item)));
+
+  for (const category of ARCHETYPES) {
+    const exchange = golden.exchanges[category];
+    assert.equal(exchange.finding.category, category);
+    assert.match(exchange.handoffHumanEvidenceBlock, /^- \[(?:critical|high|medium|low|info)\]/);
+    assert.match(exchange.closingHumanAlertBlock, /^(?:🔴|🟠|🟡) \*\*(?:BLOCKER|WARNING|REMINDER)/);
   }
-  const cliClosing = await runCli(['session', 'closing', closed.id], root);
-  assert.equal(cliClosing.code, 0, `CLI session closing: ${cliClosing.stderr}`);
-  assertClosingHumanExchange(cliClosing.stdout, ids);
+  assert.equal(golden.exchanges['verification-failed'].closingAlert.verificationState, 'established');
+  assert.equal(golden.exchanges['verification-failed'].closingAlert.violationEstablished, true);
+  assert.equal(golden.exchanges['graph-drift'].closingAlert.verificationState, 'observed');
+  assert.equal(golden.exchanges['graph-drift'].closingAlert.violationEstablished, false);
+});
 
-  const server = startMcp(root);
-  try {
-    await initializeMcp(server);
-
-    server.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_session_handoff', arguments: { id: closed.id } } });
-    const mcpHandoff = await server.waitFor((message) => message.id === 2);
-    assert.ok(mcpHandoff.result, JSON.stringify(mcpHandoff));
-    assertHandoffHumanExchange(mcpHandoff.result.content[0].text, ids);
-    assertHandoffExchange(mcpHandoff.result.structuredContent, ids, 'MCP Handoff');
-
-    server.send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_work_session_report', arguments: { id: closed.id } } });
-    const mcpReport = await server.waitFor((message) => message.id === 3);
-    assert.ok(mcpReport.result, JSON.stringify(mcpReport));
-    assertHandoffHumanExchange(mcpReport.result.content[0].text, ids);
-    assertHandoffExchange(mcpReport.result.structuredContent.close.handoff, ids, 'MCP Session Report');
-
-    server.send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'get_closing_intelligence', arguments: { id: closed.id } } });
-    const mcpClosing = await server.waitFor((message) => message.id === 4);
-    assert.ok(mcpClosing.result, JSON.stringify(mcpClosing));
-    assertClosingHumanExchange(mcpClosing.result.content[0].text, ids);
-    const alert = mcpClosing.result.structuredContent.alerts.find((item) => item.findingId === finding.id);
-    assert.ok(alert, JSON.stringify(mcpClosing.result.structuredContent.alerts, null, 2));
-    assert.deepEqual(normalizeValue(project(alert, contract.closingAlert.requiredFields, 'MCP Closing alert'), ids), golden.closingAlert);
-
-    server.send({ jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'cmi://project/session-handoff/latest' } });
-    const resource = await server.waitFor((message) => message.id === 5);
-    assert.ok(resource.result, JSON.stringify(resource));
-    const resourceHandoff = JSON.parse(resource.result.contents[0].text);
-    assertHandoffExchange(resourceHandoff, ids, 'MCP Handoff Resource');
-  } finally {
-    await stopMcp(server);
+test('real CLI, MCP tools, and MCP resource replay all expanded v1 golden exchanges without semantic normalization', async (t) => {
+  assert.deepEqual(SCENARIOS.map(([category]) => category), ARCHETYPES);
+  for (const [category, buildScenario] of SCENARIOS) {
+    await t.test(category, async (subtest) => {
+      const scenario = await buildScenario(subtest);
+      if (!scenario) return;
+      assert.equal(scenario.finding.category, category);
+      await assertAcrossConsumers(scenario.root, scenario.closed, scenario.finding, scenario.ids, golden.exchanges[category], category);
+    });
   }
 });
