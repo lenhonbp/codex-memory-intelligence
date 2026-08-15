@@ -29,6 +29,46 @@
       "contextQuery": "cli changeset version publish workspace",
       "impactTarget": "packages/cli/src/cli.ts",
       "minWorkspaces": 2
+    },
+    {
+      "id": "flask-python",
+      "repository": "pallets/flask",
+      "revision": "2a8a38b051fc248865730bf3511bf2e2ea325e81",
+      "fetchRef": "refs/heads/main",
+      "repoClass": "python",
+      "contextQuery": "application factory request context session",
+      "impactTarget": "src/flask/app.py",
+      "minWorkspaces": 0
+    },
+    {
+      "id": "chi-go",
+      "repository": "go-chi/chi",
+      "revision": "8b258c7bb28f97a5f2a856ff7ef962578fec9215",
+      "fetchRef": "refs/heads/master",
+      "repoClass": "go",
+      "contextQuery": "router middleware context routing",
+      "impactTarget": "middleware/middleware.go",
+      "minWorkspaces": 0
+    },
+    {
+      "id": "clap-rust",
+      "repository": "clap-rs/clap",
+      "revision": "5b81f1012da19f1474decfe7ffcfb437f59ccba4",
+      "fetchRef": "refs/heads/master",
+      "repoClass": "rust",
+      "contextQuery": "cli argument parser builder derive",
+      "impactTarget": "clap_builder/src/builder/mod.rs",
+      "minWorkspaces": 0
+    },
+    {
+      "id": "doctrine-orm-php",
+      "repository": "doctrine/orm",
+      "revision": "c9a73325e3b277a5cbe20ae84204ef340009c28d",
+      "fetchRef": "refs/heads/3.6.x",
+      "repoClass": "php",
+      "contextQuery": "entity manager mapping persistence",
+      "impactTarget": "src/EntityManager.php",
+      "minWorkspaces": 0
     }
   ]
 }

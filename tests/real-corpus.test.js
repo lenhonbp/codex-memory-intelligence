@@ -183,5 +183,9 @@ test('real corpus contract exposes supported repository classes without claiming
     'node-javascript',
     'node-typescript',
     'node-typescript-monorepo',
+    'python',
+    'go',
+    'rust',
+    'php',
   ]);
 });

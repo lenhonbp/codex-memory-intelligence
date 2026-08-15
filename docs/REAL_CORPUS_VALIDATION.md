@@ -16,7 +16,19 @@ The initial classes are intentionally bounded to CMI's strongest current evidenc
 - TypeScript application/library repository;
 - TypeScript monorepo.
 
-Polyglot support is not inferred from this corpus and is not part of this tranche.
+A polyglot tranche added explicit language classes so the corpus can grow beyond Node/TypeScript without pretending that structural parsing equals language-server-grade accuracy. The current accepted engineering-validation corpus classes are:
+
+- `node-javascript`
+- `node-typescript`
+- `node-typescript-monorepo`
+- `python`
+- `go`
+- `rust`
+- `php`
+
+The class list is bounded and validator-controlled: adding a class is an explicit product decision rather than an implicit parser assumption, and classes are deliberately short lowercase slugs to keep the contract machine-stable.
+
+Because the corpus validation is execution-free and dependency-free (no `pip`, `go build`, `cargo`, or `composer` invocation), non-Node repositories are exercised through the same pinned disposable-checkout probes — init, full scan, incremental reuse, doctor, context, impact, and session handoff — as structural parsing works without installed runtimes. Parser limitations on unfamiliar language structures remain best-effort and advisory; corpus presence does not upgrade them into compiler-grade coverage. Corpus inclusion does not establish language-complete parsing, universal polyglot support, target-application correctness, or product-value evidence.
 
 ## Safety boundary
 
@@ -68,11 +80,7 @@ Each repository record contains:
 
 A changed `fetchRef` does not change the evidence identity. A changed `revision` does.
 
-Supported repository classes are currently:
-
-- `node-javascript`
-- `node-typescript`
-- `node-typescript-monorepo`
+Accepted engineering-validation corpus classes are currently listed above and must stay in sync with the validator's `REPO_CLASSES` allow-list in `src/real-corpus.js`.
 
 Repository URLs, branch names in `revision`, short SHAs, unsafe transport refs, absolute impact paths, and traversal targets are rejected.
 

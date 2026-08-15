@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const REAL_CORPUS_SCHEMA_VERSION = 1;
 const REAL_CORPUS_MANIFEST_KIND = 'cmi-real-corpus-manifest';
 const REAL_CORPUS_REPORT_KIND = 'cmi-real-corpus-report';
-const REPO_CLASSES = ['node-javascript', 'node-typescript', 'node-typescript-monorepo'];
+const REPO_CLASSES = ['node-javascript', 'node-typescript', 'node-typescript-monorepo', 'python', 'go', 'rust', 'php'];
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_CMI_ENTRY = fileURLToPath(new URL('./cli-entry.js', import.meta.url));
 
