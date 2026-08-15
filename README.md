@@ -324,6 +324,7 @@ See [Release & Version Policy](docs/RELEASE_POLICY.md), [Security](SECURITY.md),
 ### Release, evaluation, and project history
 
 - [Release & Version Policy](docs/RELEASE_POLICY.md)
+- [Deprecation Policy](docs/DEPRECATION_POLICY.md)
 - [Current Release Status](docs/RELEASE_STATUS.md)
 - [Real-Repository Evaluation](docs/EVALUATION.md)
 - [Real Corpus Validation](docs/REAL_CORPUS_VALIDATION.md)

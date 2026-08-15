@@ -4,6 +4,16 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Expanded the pinned real corpus from 3 to 7 repositories with Python, Go, Rust, and PHP engineering-validation probes.
+- Added the public [Deprecation Policy](docs/DEPRECATION_POLICY.md) for CLI, MCP, durable-state, and shipped Skill contracts.
+
+### Evidence limits
+
+- Corpus inclusion does not establish productivity or product-value evidence, language-complete parser support, or universal polyglot support.
+
+
 ## [0.13.0] - 2026-08-13
 
 Feature release for operational sharing trust and stronger real-repository/product-evidence validation after `v0.12.1`.
