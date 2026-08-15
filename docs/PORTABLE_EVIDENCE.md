@@ -21,9 +21,21 @@ Changing any of those fields without recomputing the v3 integrity digest fails c
 
 The v3 origin location is therefore integrity-bound. An otherwise exact restore can be classified `exact` only when that bound frozen location matches the resolved destination project root.
 
+## Published schema compatibility policy
+
+The supported bundle-version contract is published in [Portable Schema Compatibility](PORTABLE_SCHEMA_COMPATIBILITY.md) and encoded in `PORTABLE_SCHEMA_COMPATIBILITY` in `src/portable-manifest-integrity.js` so documentation and executable behavior can be regression-checked together.
+
+The current matrix is deliberately small:
+
+- schema v2: public since `v0.12.0`, legacy-supported for inspect/restore/rebind, no longer written;
+- schema v3: public since `v0.12.1`, current writer and supported for inspect/restore/rebind;
+- any other schema: unsupported and fail-closed with `CMI_PORTABLE_SCHEMA_UNSUPPORTED`.
+
+This is a supported pre-v1 compatibility statement, not a promise that every future CMI release will support every historical portable format forever. Removal or deprecation of a supported public schema must follow the public deprecation policy rather than silently narrowing compatibility.
+
 ## Retained Portable Evidence v2 compatibility
 
-Schema v2 remains readable and restorable under its released identity algorithm. CMI does not silently expand the old v2 identity material, because doing so would reinterpret already-produced v2 digests without a schema change.
+Schema v2 was the public writer in `v0.12.0` and remains readable and restorable under its released identity algorithm. CMI does not silently expand the old v2 identity material, because doing so would reinterpret already-produced v2 digests without a schema change.
 
 The following v2 manifest fields were outside the released core identity material and are reported as legacy-unbound:
 

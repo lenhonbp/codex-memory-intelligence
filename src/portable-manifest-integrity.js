@@ -5,7 +5,32 @@ export const PORTABLE_SCHEMA_VERSION = 3;
 export const PORTABLE_MANIFEST_INTEGRITY_COVERAGE = 'manifest-provenance-v1';
 export const PORTABLE_MANIFEST_TRUST_BOUNDARY = 'observed identity and compatibility evidence; not authenticated provenance';
 
-const SUPPORTED = new Set([LEGACY_PORTABLE_SCHEMA_VERSION, PORTABLE_SCHEMA_VERSION]);
+export const PORTABLE_SCHEMA_COMPATIBILITY = Object.freeze([
+  Object.freeze({
+    schemaVersion: LEGACY_PORTABLE_SCHEMA_VERSION,
+    status: 'legacy-supported',
+    firstPublicRelease: 'v0.12.0',
+    writer: false,
+    inspect: true,
+    restore: true,
+    rebind: true,
+    manifestIntegrity: 'legacy-partial',
+    originBinding: 'legacy-unbound',
+  }),
+  Object.freeze({
+    schemaVersion: PORTABLE_SCHEMA_VERSION,
+    status: 'current',
+    firstPublicRelease: 'v0.12.1',
+    writer: true,
+    inspect: true,
+    restore: true,
+    rebind: true,
+    manifestIntegrity: 'verified',
+    originBinding: 'integrity-bound',
+  }),
+]);
+
+const SUPPORTED = new Set(PORTABLE_SCHEMA_COMPATIBILITY.map((entry) => entry.schemaVersion));
 const LEGACY_UNBOUND_FIELDS = [
   'cmi.invocationKind',
   'cmi.packageRoot',
@@ -17,6 +42,23 @@ const LEGACY_UNBOUND_FIELDS = [
 
 function canonical(value) { return JSON.stringify(value); }
 function digestText(value) { return `sha256:${crypto.createHash('sha256').update(value).digest('hex')}`; }
+
+export function portableSchemaCompatibility(value) {
+  const supported = PORTABLE_SCHEMA_COMPATIBILITY.find((entry) => entry.schemaVersion === value);
+  if (supported) return { ...supported };
+  return {
+    schemaVersion: value,
+    status: 'unsupported',
+    firstPublicRelease: null,
+    writer: false,
+    inspect: false,
+    restore: false,
+    rebind: false,
+    manifestIntegrity: 'unsupported',
+    originBinding: 'unsupported',
+    failureCode: 'CMI_PORTABLE_SCHEMA_UNSUPPORTED',
+  };
+}
 
 export function isSupportedPortableSchemaVersion(value) {
   return SUPPORTED.has(value);
