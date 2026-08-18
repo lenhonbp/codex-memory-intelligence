@@ -65,7 +65,7 @@ test('activation teaches a truthful bounded CMI Provenance Mark contract', async
 
   assert.match(first, /Keep this content/);
   assert.match(first, /### CMI Provenance/);
-  assert.match(first, /CMI-assisted workflow.*Evidence tracked by Codex Memory Intelligence/);
+  assert.match(first, /CMI-assisted workflow.*Durable session evidence recorded by Codex Memory Intelligence/);
   assert.match(first, /only when a real durable CMI Session was successfully created and finalized/i);
   assert.match(first, /actual observed full Session ID/i);
   assert.match(first, /only when an actual associated Change record exists and its ID was observed/i);
