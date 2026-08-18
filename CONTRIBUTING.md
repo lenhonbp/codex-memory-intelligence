@@ -16,6 +16,8 @@ npm run benchmark:smoke
 npm run package:smoke
 ```
 
+Agents performing repository work must also follow the proactive checklist, evidence, and completion discipline in [AGENTS.md](AGENTS.md) and the [Agent Engineering Playbook](docs/AGENT_ENGINEERING_PLAYBOOK.md).
+
 ## Design rules
 
 - Preserve local-first operation and human-reviewable Markdown memory.
