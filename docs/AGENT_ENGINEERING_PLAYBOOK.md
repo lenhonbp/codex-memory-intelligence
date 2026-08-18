@@ -186,6 +186,12 @@ Unproven claims:
 
 Use `Status: complete` only when the implementation scope reaches its local definition of done. A local commit or successful local gate is not proof that a push, Draft PR, CI run, external integration, or release succeeded.
 
+### CMI Provenance Mark
+
+After the completion report and any evidence-backed `### CMI Intelligence` section, substantial CMI-assisted work ends with the compact mark defined in [CMI Provenance Mark](PROVENANCE_MARK.md). The evidence-backed form requires an actually finalized durable Session. Use only Session and optional Change IDs observed from CMI; never fabricate them. If the operating contract applied but durable evidence was not recorded or the lifecycle was unavailable, use the document's explicit degraded form instead.
+
+When PR creation or update is already authorized, the agent may put the same truthful mark inside the document's single replaceable `cmi-provenance` block. The mark does not authorize creating a PR, changing source files, or altering Git commit metadata merely for branding.
+
 ## 11. CMI Session / Change / Handoff Boundaries
 
 Keep each state owner distinct:
