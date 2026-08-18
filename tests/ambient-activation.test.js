@@ -84,6 +84,22 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.equal(await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8'), config1);
 });
 
+test('activation contract protects bounded managed integration sections from unrelated consumer tasks', async () => {
+  const root = await rootFixture();
+  await activateProject(root, { agent: 'codex' });
+  const agents = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
+
+  assert.match(agents, /### CMI-managed integration boundaries/);
+  assert.match(agents, /`AGENTS\.md`: from the HTML comment marker `&lt;!-- cmi-managed:start --&gt;` through `&lt;!-- cmi-managed:end --&gt;`/);
+  assert.match(agents, /`\.codex\/config\.toml`: from `# cmi-managed:start` through `# cmi-managed:end`/);
+  assert.match(agents, /`\.gitignore`: from `# cmi-managed:todo-ignore-start` through `# cmi-managed:todo-ignore-end`/);
+  assert.match(agents, /not globally immutable; only the bounded managed sections are CMI-owned/i);
+  assert.match(agents, /Normal product and documentation tasks must not edit content inside them/i);
+  assert.match(agents, /allowed only when the user explicitly asks to modify CMI integration or activation itself/i);
+  assert.match(agents, /do not repurpose CMI-managed instructions as project documentation/i);
+  assert.match(agents, /Choose a repository-owned file only when repository evidence supports that target; otherwise report that no suitable target exists/i);
+});
+
 test('activation keeps todo state ephemeral while preserving user-owned ignore policy byte-for-byte', async () => {
   const root = await rootFixture();
   const userIgnore = '# User-owned rules\ndist/\n!.agent/keep.md\n';

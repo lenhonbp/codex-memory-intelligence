@@ -22,6 +22,16 @@ function agentsBlock(localCli) {
 
 CMI is activated for this project. The user may give short, natural requests and does not need to mention CMI or restate its workflow.
 
+### CMI-managed integration boundaries
+
+- CMI activation owns only the content inside these bounded managed sections:
+  - \`AGENTS.md\`: from the HTML comment marker \`&lt;!-- cmi-managed:start --&gt;\` through \`&lt;!-- cmi-managed:end --&gt;\`.
+  - \`.codex/config.toml\`: from \`# cmi-managed:start\` through \`# cmi-managed:end\`.
+  - \`.gitignore\`: from \`# cmi-managed:todo-ignore-start\` through \`# cmi-managed:todo-ignore-end\`.
+- These files are not globally immutable; only the bounded managed sections are CMI-owned. Normal product and documentation tasks must not edit content inside them.
+- Changes inside those managed sections are allowed only when the user explicitly asks to modify CMI integration or activation itself.
+- If a task sounds relevant to guidance but no appropriate consumer-owned target exists, do not repurpose CMI-managed instructions as project documentation. Choose a repository-owned file only when repository evidence supports that target; otherwise report that no suitable target exists.
+
 ### Portable agent engineering workflow
 
 - A short prompt does not imply a trivial task. Calibrate the work to repository evidence and risk, not prompt length.
