@@ -9,6 +9,8 @@ const AGENTS_BEGIN = '<!-- cmi-managed:start -->';
 const AGENTS_END = '<!-- cmi-managed:end -->';
 const CODEX_BEGIN = '# cmi-managed:start';
 const CODEX_END = '# cmi-managed:end';
+const TODO_IGNORE_BEGIN = '# cmi-managed:todo-ignore-start';
+const TODO_IGNORE_END = '# cmi-managed:todo-ignore-end';
 
 function agentsBlock(localCli) {
   const localCommand = localCliInvocation(localCli?.relativeEntrypoint || CMI_LOCAL_ENTRYPOINT);
@@ -16,6 +18,16 @@ function agentsBlock(localCli) {
 ## CMI ambient project intelligence
 
 CMI is activated for this project. The user may give short, natural requests and does not need to mention CMI or restate its workflow.
+
+### Portable agent engineering workflow
+
+- A short prompt does not imply a trivial task. Calibrate the work to repository evidence and risk, not prompt length.
+- Before substantive repository mutation, create or update the live checklist at \`.agent/todo.md\` before substantive implementation. Keep it small and evolving as evidence changes.
+- Work constraint-first: establish the user goal, repository instructions, source of truth, implementation boundary, relevant evidence, and likely scope before editing.
+- Continue autonomously through discovery → implementation → focused verification → broader repository verification → diff review. Do not wait for repeated “continue” prompts between authorized phases.
+- On a meaningful failure, follow this recovery loop: record the exact failure → identify the false assumption → update the checklist → make the smallest correction → run the narrowest decisive retry → run the broader regression checks.
+- A source edit is not completion. Verification must be proportional to risk, and the final report must distinguish implementation, focused verification, repository verification, CI, external/live verification, and release readiness.
+- \`.agent/todo.md\` is ignored, ephemeral working state. It is not durable CMI memory, project truth, session or handoff authority, architecture documentation, or a release record. Do not commit it.
 
 For every substantive repository task:
 - Get a CMI ambient task brief early, using the user's request verbatim when practical. Prefer the MCP tool \`get_ambient_task_brief\`; if MCP is unavailable, the local executable fallback for \`cmi ambient\` is the exact project-local CMI package from the project root: \`${localCommand} ambient \"<user request>\" --json\`. Do not begin with bare \`cmi\`: a PATH miss is not evidence that CMI is unavailable. This brief is read-only health/context evidence, not a completed session.
@@ -41,13 +53,26 @@ If CMI is unavailable or blocked, continue only with evidence you can actually e
 ${AGENTS_END}`;
 }
 
-const CODEX_BLOCK = `${CODEX_BEGIN}
+function tomlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function codexBlock(localCli) {
+  const localMcp = localCli?.relativeMcpEntrypoint;
+  const command = localMcp ? 'node' : 'npx';
+  const args = localMcp ? [localMcp.startsWith('.') ? localMcp : `./${localMcp}`] : ['--no', '--package=codex-memory-intelligence', 'cmi-mcp'];
+  return `${CODEX_BEGIN}
 [mcp_servers.cmi]
-command = "npx"
-args = ["--no", "--package=codex-memory-intelligence", "cmi-mcp"]
+command = ${tomlString(command)}
+args = [${args.map(tomlString).join(', ')}]
 cwd = "."
 env = { CMI_WRITE_ENABLED = "1" }
 ${CODEX_END}`;
+}
+
+const TODO_IGNORE_BLOCK = `${TODO_IGNORE_BEGIN}
+.agent/todo.md
+${TODO_IGNORE_END}`;
 
 function occurrences(text, value) {
   let count = 0;
@@ -74,6 +99,12 @@ function normalizedManagedContent(existing, begin, end, block, label) {
   }
   const prefix = text && !text.endsWith('\n') ? `${text}\n` : text;
   return `${prefix}${prefix ? '\n' : ''}${block}\n`;
+}
+
+function normalizedManagedPrefixContent(existing, begin, end, block, label) {
+  const text = existing ?? '';
+  if (text.includes(begin) || text.includes(end)) return normalizedManagedContent(existing, begin, end, block, label);
+  return `${block}\n${text ? `\n${text}` : ''}`;
 }
 
 async function assertSafeIntegrationParents(root, relative) {
@@ -123,21 +154,26 @@ async function atomicWrite(root, relative, content) {
   catch (error) { await fs.rm(temporary, { force: true }).catch(() => {}); throw error; }
 }
 
-async function planAgents(root) {
+async function planAgents(root, localCli) {
   const existing = await readIntegrationFile(root, 'AGENTS.md');
-  const localCli = await findLocalCliEntrypoint(root);
   const next = normalizedManagedContent(existing, AGENTS_BEGIN, AGENTS_END, agentsBlock(localCli), 'AGENTS.md');
   return { path: 'AGENTS.md', existing, next, changed: next !== existing, managed: true };
 }
 
-async function planCodexConfig(root) {
+async function planCodexConfig(root, localCli) {
   const existing = await readIntegrationFile(root, '.codex/config.toml');
   const text = existing ?? '';
   if (/^\s*\[mcp_servers\.cmi\]\s*$/m.test(text) && !text.includes(CODEX_BEGIN)) {
     throw new Error('.codex/config.toml already contains an unmanaged [mcp_servers.cmi] section. CMI will not overwrite it; reconcile that configuration explicitly first.');
   }
-  const next = normalizedManagedContent(existing, CODEX_BEGIN, CODEX_END, CODEX_BLOCK, '.codex/config.toml');
+  const next = normalizedManagedContent(existing, CODEX_BEGIN, CODEX_END, codexBlock(localCli), '.codex/config.toml');
   return { path: '.codex/config.toml', existing, next, changed: next !== existing, managed: true, writeEnabled: true };
+}
+
+async function planTodoIgnore(root) {
+  const existing = await readIntegrationFile(root, '.gitignore');
+  const next = normalizedManagedPrefixContent(existing, TODO_IGNORE_BEGIN, TODO_IGNORE_END, TODO_IGNORE_BLOCK, '.gitignore');
+  return { path: '.gitignore', existing, next, changed: next !== existing, managed: true, ephemeralPath: '.agent/todo.md' };
 }
 
 async function applyPlan(root, plan) {
@@ -151,8 +187,9 @@ export async function activateProject(root, options = {}) {
   const agent = String(options.agent || 'codex').trim().toLowerCase();
   if (!['codex', 'generic'].includes(agent)) throw new Error('Activation agent must be codex or generic.');
 
+  const localCli = agent === 'codex' ? await findLocalCliEntrypoint(resolvedRoot) : null;
   const plans = agent === 'codex'
-    ? [await planAgents(resolvedRoot), await planCodexConfig(resolvedRoot)]
+    ? [await planAgents(resolvedRoot, localCli), await planCodexConfig(resolvedRoot, localCli), await planTodoIgnore(resolvedRoot)]
     : [];
 
   await initProject(resolvedRoot);

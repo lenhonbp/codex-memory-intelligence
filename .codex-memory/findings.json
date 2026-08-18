@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-18T16:01:10.217Z",
+  "findings": [
+    {
+      "schemaVersion": 1,
+      "id": "a19f856f-4407-476c-8d82-405b58392804",
+      "state": "open",
+      "key": "preexisting-worktree:56eb4b63-f424-435b-8831-003fe75533a1",
+      "category": "preexisting-worktree",
+      "severity": "medium",
+      "title": "Session attribution started from a dirty worktree",
+      "detail": "3 project path(s) were already dirty when the session started. CMI cannot attribute later edits to those same paths from path status alone.",
+      "confidence": "high",
+      "evidenceType": "observed",
+      "sessionRelevance": null,
+      "evidence": [
+        "session-start-git-baseline"
+      ],
+      "relatedFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "autoResolvable": false,
+      "firstSeen": "2026-08-18T16:00:54.808Z",
+      "lastSeen": "2026-08-18T16:01:10.216Z",
+      "occurrences": 2,
+      "sessions": [
+        "56eb4b63-f424-435b-8831-003fe75533a1"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "b153bb03-bbd5-4c2f-a583-74ad139e8320",
+      "state": "open",
+      "key": "prediction-gap:b2c804f3-026d-4161-a842-9707cfe40f9f",
+      "category": "prediction-gap",
+      "severity": "medium",
+      "title": "Observed related work escaped predicted scope",
+      "detail": "3 changed path(s) were not predicted for related change \"portable consumer workflow activation and exact local MCP binding\".",
+      "confidence": "high",
+      "evidenceType": "observed",
+      "sessionRelevance": "related",
+      "evidence": [
+        "change:b2c804f3-026d-4161-a842-9707cfe40f9f",
+        "expected-vs-actual"
+      ],
+      "relatedFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "autoResolvable": false,
+      "firstSeen": "2026-08-18T16:00:54.808Z",
+      "lastSeen": "2026-08-18T16:01:10.216Z",
+      "occurrences": 2,
+      "sessions": [
+        "56eb4b63-f424-435b-8831-003fe75533a1"
+      ]
+    }
+  ]
+}

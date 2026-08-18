@@ -3,20 +3,45 @@ import path from 'node:path';
 
 export const CMI_PACKAGE_NAME = 'codex-memory-intelligence';
 export const CMI_LOCAL_ENTRYPOINT = `node_modules/${CMI_PACKAGE_NAME}/src/cli-entry.js`;
+export const CMI_LOCAL_MCP_ENTRYPOINT = `node_modules/${CMI_PACKAGE_NAME}/src/mcp-entry.js`;
 
 function slash(value) {
   return String(value).replace(/\\/g, '/');
 }
 
-async function readPackage(target) {
+async function lstatIfPresent(target) {
   try {
-    const value = JSON.parse(await fs.readFile(target, 'utf8'));
-    const bin = typeof value.bin === 'string' ? value.bin : value.bin?.cmi;
-    if (value.name !== CMI_PACKAGE_NAME || bin !== 'src/cli-entry.js') return null;
-    return value;
-  } catch {
-    return null;
+    return await fs.lstat(target);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
   }
+}
+
+async function assertSafeLocalPath(target, kind, label) {
+  const stat = await lstatIfPresent(target);
+  if (!stat) throw new Error(`Local CMI package is malformed: missing ${label}.`);
+  if (stat.isSymbolicLink() || (kind === 'directory' ? !stat.isDirectory() : !stat.isFile())) {
+    throw new Error(`Local CMI package has an unsafe ${label}; activation will not follow or execute it.`);
+  }
+}
+
+async function readPackage(packageRoot) {
+  const packagePath = path.join(packageRoot, 'package.json');
+  await assertSafeLocalPath(packagePath, 'file', 'package.json');
+  let value;
+  try {
+    value = JSON.parse(await fs.readFile(packagePath, 'utf8'));
+  } catch {
+    throw new Error('Local CMI package has a malformed package.json; activation will not fall back to registry CMI.');
+  }
+  if (value.name !== CMI_PACKAGE_NAME
+    || typeof value.bin !== 'object'
+    || value.bin?.cmi !== 'src/cli-entry.js'
+    || value.bin?.['cmi-mcp'] !== 'src/mcp-entry.js') {
+    throw new Error('Local CMI package identity or executable metadata is invalid; activation will not fall back to registry CMI.');
+  }
+  return value;
 }
 
 /**
@@ -24,26 +49,36 @@ async function readPackage(target) {
  * This intentionally does not inspect PATH, npm's cache, or a registry.
  */
 export async function findLocalCliEntrypoint(projectRoot) {
-  let current = path.resolve(projectRoot);
+  const resolvedProjectRoot = path.resolve(projectRoot);
+  let current = resolvedProjectRoot;
   while (true) {
-    const packageRoot = path.join(current, 'node_modules', CMI_PACKAGE_NAME);
-    const packageInfo = await readPackage(path.join(packageRoot, 'package.json'));
-    if (packageInfo) {
-      const entrypoint = path.join(packageRoot, 'src', 'cli-entry.js');
-      try {
-        const stat = await fs.stat(entrypoint);
-        if (stat.isFile()) {
-          return {
-            packageName: packageInfo.name,
-            packageVersion: packageInfo.version || null,
-            packageRoot,
-            entrypoint,
-            relativeEntrypoint: slash(path.relative(path.resolve(projectRoot), entrypoint)),
-          };
-        }
-      } catch {
-        // Continue searching parent node_modules directories.
+    const nodeModulesRoot = path.join(current, 'node_modules');
+    const packageRoot = path.join(nodeModulesRoot, CMI_PACKAGE_NAME);
+    const packageStat = await lstatIfPresent(packageRoot);
+    if (packageStat) {
+      const nodeModulesStat = await lstatIfPresent(nodeModulesRoot);
+      if (!nodeModulesStat || nodeModulesStat.isSymbolicLink() || !nodeModulesStat.isDirectory()) {
+        throw new Error('Local node_modules location is unsafe; activation will not search it or fall back to registry CMI.');
       }
+      if (packageStat.isSymbolicLink() || !packageStat.isDirectory()) {
+        throw new Error('Local CMI package location is unsafe; activation will not follow it or fall back to registry CMI.');
+      }
+      const packageInfo = await readPackage(packageRoot);
+      const sourceRoot = path.join(packageRoot, 'src');
+      const entrypoint = path.join(sourceRoot, 'cli-entry.js');
+      const mcpEntrypoint = path.join(sourceRoot, 'mcp-entry.js');
+      await assertSafeLocalPath(sourceRoot, 'directory', 'src directory');
+      await assertSafeLocalPath(entrypoint, 'file', 'CLI entrypoint');
+      await assertSafeLocalPath(mcpEntrypoint, 'file', 'MCP entrypoint');
+      return {
+        packageName: packageInfo.name,
+        packageVersion: packageInfo.version || null,
+        packageRoot,
+        entrypoint,
+        mcpEntrypoint,
+        relativeEntrypoint: slash(path.relative(resolvedProjectRoot, entrypoint)),
+        relativeMcpEntrypoint: slash(path.relative(resolvedProjectRoot, mcpEntrypoint)),
+      };
     }
     const parent = path.dirname(current);
     if (parent === current) return null;

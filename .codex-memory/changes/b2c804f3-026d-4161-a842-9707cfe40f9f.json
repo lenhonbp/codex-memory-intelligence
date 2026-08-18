@@ -1,0 +1,684 @@
+{
+  "schemaVersion": 1,
+  "id": "b2c804f3-026d-4161-a842-9707cfe40f9f",
+  "revision": 4,
+  "status": "completed",
+  "goal": "portable consumer workflow activation and exact local MCP binding",
+  "workspace": null,
+  "createdAt": "2026-08-18T16:00:05.738Z",
+  "updatedAt": "2026-08-18T16:00:30.253Z",
+  "before": {
+    "baseline": {
+      "available": true,
+      "projectPath": ".",
+      "branch": "feat/consumer-agent-workflow-portability",
+      "head": "8cbe7949002e",
+      "fullHead": "8cbe7949002ed634c73a2d7f1d8761abf2bc1235",
+      "clean": false,
+      "changes": [
+        {
+          "status": " M",
+          "path": "src/activation.js"
+        },
+        {
+          "status": " M",
+          "path": "src/local-cli.js"
+        },
+        {
+          "status": " M",
+          "path": "tests/ambient-activation.test.js"
+        }
+      ],
+      "changesTruncated": false,
+      "rawClean": false,
+      "rawChanges": [
+        {
+          "status": " M",
+          "path": "src/activation.js"
+        },
+        {
+          "status": " M",
+          "path": "src/local-cli.js"
+        },
+        {
+          "status": " M",
+          "path": "tests/ambient-activation.test.js"
+        },
+        {
+          "status": "??",
+          "path": ".codex-memory/"
+        }
+      ],
+      "rawChangesTruncated": false,
+      "cmiInternalChangesOmitted": 0,
+      "upstream": null,
+      "ahead": null,
+      "behind": null,
+      "commit": {
+        "subject": "feat: add CMI provenance mark (#105)",
+        "committedAt": "2026-08-18T22:42:14+07:00"
+      }
+    },
+    "predicted": {
+      "files": [
+        "tests/ambient-interfaces.test.js",
+        "tests/portable-mcp.test.js",
+        "tests/portable-provenance.test.js",
+        "tests/coverage-gate.test.js",
+        "tests/mcp-protocol-branches.test.js",
+        "tests/session-mcp.test.js",
+        "tests/closing-mcp.test.js",
+        "tests/evaluation-mcp.test.js",
+        "tests/release.test.js",
+        "src/portable-evidence.js",
+        "src/search.js",
+        "tests/interfaces.test.js"
+      ],
+      "boundaries": [
+        {
+          "id": "node:.#portable-mcp",
+          "label": "Portable Mcp",
+          "workspace": "node:.",
+          "confidence": "medium"
+        },
+        {
+          "id": "node:.#root",
+          "label": "Root source",
+          "workspace": "node:.",
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#portable-provenance",
+          "label": "Portable Provenance",
+          "workspace": "node:.",
+          "confidence": "high"
+        },
+        {
+          "id": "node:.#closing-mcp",
+          "label": "Closing Mcp",
+          "workspace": "node:.",
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#evaluation-mcp",
+          "label": "Evaluation Mcp",
+          "workspace": "node:.",
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#mcp-protocol-branches",
+          "label": "Mcp Protocol Branches",
+          "workspace": "node:.",
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#session-mcp",
+          "label": "Session Mcp",
+          "workspace": "node:.",
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#ambient-interfaces",
+          "label": "Ambient Interfaces",
+          "workspace": "node:.",
+          "confidence": "medium"
+        }
+      ],
+      "risks": [
+        {
+          "id": "dirty-worktree",
+          "title": "Dirty worktree",
+          "severity": "medium",
+          "confidence": "high"
+        },
+        {
+          "id": "memory-gap",
+          "title": "No relevant durable memory",
+          "severity": "low",
+          "confidence": "high"
+        },
+        {
+          "id": "cross-boundary-change",
+          "title": "Cross-boundary change",
+          "severity": "high",
+          "confidence": "medium"
+        },
+        {
+          "id": "identity-access",
+          "title": "Identity and access control",
+          "severity": "high",
+          "confidence": "medium"
+        },
+        {
+          "id": "deployment-operations",
+          "title": "Deployment and operations",
+          "severity": "medium",
+          "confidence": "medium"
+        }
+      ],
+      "verification": [
+        {
+          "id": "targeted-tests",
+          "title": "Targeted regression tests",
+          "guidance": "Run the smallest test set that directly covers the changed behavior and every modified boundary."
+        },
+        {
+          "id": "boundary-integration",
+          "title": "Boundary integration tests",
+          "guidance": "Verify contracts and state transitions across each affected boundary, not only isolated units."
+        },
+        {
+          "id": "verify-identity-access",
+          "title": "Identity and access control",
+          "guidance": "Test unauthenticated, authenticated, unauthorized, expired, and replayed identity states where applicable."
+        },
+        {
+          "id": "verify-deployment-operations",
+          "title": "Deployment and operations",
+          "guidance": "Verify environment configuration, rollout order, observability, rollback, and smoke checks."
+        }
+      ]
+    },
+    "memoryCoverage": {
+      "relevantDurableEntries": 0,
+      "facts": 0,
+      "decisions": 0,
+      "mistakes": 0,
+      "instructions": 0
+    },
+    "provenance": {
+      "baseline": "local Git metadata",
+      "context": "ranked durable memory and project graph",
+      "boundaries": "workspace, directory, and import-graph inference",
+      "impact": "reverse dependencies from context-selected seed files",
+      "memorySuggestions": "coverage gaps plus task and path heuristics"
+    },
+    "assumptions": [
+      "Inferred boundaries and topic classifications are advisory heuristics, not declared architecture.",
+      "No suggested memory is durable until an explicit reviewed write occurs.",
+      "Impact completeness depends on parser coverage, graph limits, generated code, runtime wiring, reflection, and dependency injection."
+    ],
+    "historicalEvidence": {
+      "matches": [],
+      "calibration": {
+        "samples": 0,
+        "averageChangedPathCoverage": null,
+        "averagePredictedScopeTouched": null,
+        "averagePathRecall": null,
+        "averagePathPrecision": null,
+        "averagePathF1": null,
+        "confidence": "insufficient-evidence"
+      },
+      "fileCoChanges": [],
+      "verificationPatterns": [],
+      "limitations": [
+        "Co-change frequency is historical correlation, not a causal dependency.",
+        "Confidence is calibrated from local sample count and support; it is not semantic certainty.",
+        "Observed changed paths are not the same as every runtime or downstream impact.",
+        "Reported verification is a human/agent claim. observed-command provenance only means command metadata was supplied; CMI still does not execute the command itself.",
+        "A missing historical match means only that CMI has no matching completed record in this local project history."
+      ]
+    },
+    "attribution": "limited-preexisting-worktree"
+  },
+  "observations": [
+    {
+      "observedAt": "2026-08-18T16:00:30.122Z",
+      "baseline": {
+        "available": true,
+        "projectPath": ".",
+        "branch": "feat/consumer-agent-workflow-portability",
+        "head": "8cbe7949002e",
+        "fullHead": "8cbe7949002ed634c73a2d7f1d8761abf2bc1235",
+        "clean": false,
+        "changes": [
+          {
+            "status": " M",
+            "path": "src/activation.js"
+          },
+          {
+            "status": " M",
+            "path": "src/local-cli.js"
+          },
+          {
+            "status": " M",
+            "path": "tests/ambient-activation.test.js"
+          }
+        ],
+        "changesTruncated": false,
+        "rawClean": false,
+        "rawChanges": [
+          {
+            "status": " M",
+            "path": "src/activation.js"
+          },
+          {
+            "status": " M",
+            "path": "src/local-cli.js"
+          },
+          {
+            "status": " M",
+            "path": "tests/ambient-activation.test.js"
+          },
+          {
+            "status": "??",
+            "path": ".codex-memory/"
+          }
+        ],
+        "rawChangesTruncated": false,
+        "cmiInternalChangesOmitted": 0,
+        "upstream": null,
+        "ahead": null,
+        "behind": null,
+        "commit": {
+          "subject": "feat: add CMI provenance mark (#105)",
+          "committedAt": "2026-08-18T22:42:14+07:00"
+        }
+      },
+      "attribution": "limited-preexisting-worktree",
+      "gitContinuity": {
+        "available": true,
+        "state": "same-head",
+        "safeForCommittedAttribution": true,
+        "startHead": "8cbe7949002e",
+        "currentHead": "8cbe7949002e",
+        "mergeBase": "8cbe7949002e"
+      },
+      "observedChangedFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "committedFilesSinceStart": [],
+      "explicitFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "ambiguousPreExistingFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "observedBoundaries": [
+        {
+          "id": "node:.#root",
+          "label": "Root source",
+          "workspace": "node:.",
+          "changedFiles": 2,
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#ambient-activation",
+          "label": "Ambient Activation",
+          "workspace": "node:.",
+          "changedFiles": 1,
+          "confidence": "high"
+        }
+      ],
+      "unmappedFiles": [],
+      "unexpectedBoundaries": [
+        {
+          "id": "node:.#ambient-activation",
+          "label": "Ambient Activation",
+          "workspace": "node:.",
+          "changedFiles": 1,
+          "confidence": "high"
+        }
+      ],
+      "comparison": {
+        "predictedFileCount": 12,
+        "observedChangedFileCount": 3,
+        "overlapCount": 0,
+        "overlap": [],
+        "missedByPrediction": [
+          "src/activation.js",
+          "src/local-cli.js",
+          "tests/ambient-activation.test.js"
+        ],
+        "predictedButUnchanged": [
+          "src/portable-evidence.js",
+          "src/search.js",
+          "tests/ambient-interfaces.test.js",
+          "tests/closing-mcp.test.js",
+          "tests/coverage-gate.test.js",
+          "tests/evaluation-mcp.test.js",
+          "tests/interfaces.test.js",
+          "tests/mcp-protocol-branches.test.js",
+          "tests/portable-mcp.test.js",
+          "tests/portable-provenance.test.js",
+          "tests/release.test.js",
+          "tests/session-mcp.test.js"
+        ],
+        "changedPathCoverage": 0,
+        "predictedScopeTouched": 0,
+        "pathRecall": 0,
+        "pathPrecision": 0,
+        "pathF1": null,
+        "interpretation": "These ratios compare predicted scope with observed changed paths only. They do not prove full impact accuracy, causality, or runtime coverage."
+      }
+    },
+    {
+      "observedAt": "2026-08-18T16:00:30.249Z",
+      "baseline": {
+        "available": true,
+        "projectPath": ".",
+        "branch": "feat/consumer-agent-workflow-portability",
+        "head": "8cbe7949002e",
+        "fullHead": "8cbe7949002ed634c73a2d7f1d8761abf2bc1235",
+        "clean": false,
+        "changes": [
+          {
+            "status": " M",
+            "path": "src/activation.js"
+          },
+          {
+            "status": " M",
+            "path": "src/local-cli.js"
+          },
+          {
+            "status": " M",
+            "path": "tests/ambient-activation.test.js"
+          }
+        ],
+        "changesTruncated": false,
+        "rawClean": false,
+        "rawChanges": [
+          {
+            "status": " M",
+            "path": "src/activation.js"
+          },
+          {
+            "status": " M",
+            "path": "src/local-cli.js"
+          },
+          {
+            "status": " M",
+            "path": "tests/ambient-activation.test.js"
+          },
+          {
+            "status": "??",
+            "path": ".codex-memory/"
+          }
+        ],
+        "rawChangesTruncated": false,
+        "cmiInternalChangesOmitted": 0,
+        "upstream": null,
+        "ahead": null,
+        "behind": null,
+        "commit": {
+          "subject": "feat: add CMI provenance mark (#105)",
+          "committedAt": "2026-08-18T22:42:14+07:00"
+        }
+      },
+      "attribution": "limited-preexisting-worktree",
+      "gitContinuity": {
+        "available": true,
+        "state": "same-head",
+        "safeForCommittedAttribution": true,
+        "startHead": "8cbe7949002e",
+        "currentHead": "8cbe7949002e",
+        "mergeBase": "8cbe7949002e"
+      },
+      "observedChangedFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "committedFilesSinceStart": [],
+      "explicitFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "ambiguousPreExistingFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "observedBoundaries": [
+        {
+          "id": "node:.#root",
+          "label": "Root source",
+          "workspace": "node:.",
+          "changedFiles": 2,
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#ambient-activation",
+          "label": "Ambient Activation",
+          "workspace": "node:.",
+          "changedFiles": 1,
+          "confidence": "high"
+        }
+      ],
+      "unmappedFiles": [],
+      "unexpectedBoundaries": [
+        {
+          "id": "node:.#ambient-activation",
+          "label": "Ambient Activation",
+          "workspace": "node:.",
+          "changedFiles": 1,
+          "confidence": "high"
+        }
+      ],
+      "comparison": {
+        "predictedFileCount": 12,
+        "observedChangedFileCount": 3,
+        "overlapCount": 0,
+        "overlap": [],
+        "missedByPrediction": [
+          "src/activation.js",
+          "src/local-cli.js",
+          "tests/ambient-activation.test.js"
+        ],
+        "predictedButUnchanged": [
+          "src/portable-evidence.js",
+          "src/search.js",
+          "tests/ambient-interfaces.test.js",
+          "tests/closing-mcp.test.js",
+          "tests/coverage-gate.test.js",
+          "tests/evaluation-mcp.test.js",
+          "tests/interfaces.test.js",
+          "tests/mcp-protocol-branches.test.js",
+          "tests/portable-mcp.test.js",
+          "tests/portable-provenance.test.js",
+          "tests/release.test.js",
+          "tests/session-mcp.test.js"
+        ],
+        "changedPathCoverage": 0,
+        "predictedScopeTouched": 0,
+        "pathRecall": 0,
+        "pathPrecision": 0,
+        "pathF1": null,
+        "interpretation": "These ratios compare predicted scope with observed changed paths only. They do not prove full impact accuracy, causality, or runtime coverage."
+      }
+    }
+  ],
+  "completion": {
+    "completedAt": "2026-08-18T16:00:30.253Z",
+    "outcome": "succeeded",
+    "finalObservation": {
+      "observedAt": "2026-08-18T16:00:30.249Z",
+      "baseline": {
+        "available": true,
+        "projectPath": ".",
+        "branch": "feat/consumer-agent-workflow-portability",
+        "head": "8cbe7949002e",
+        "fullHead": "8cbe7949002ed634c73a2d7f1d8761abf2bc1235",
+        "clean": false,
+        "changes": [
+          {
+            "status": " M",
+            "path": "src/activation.js"
+          },
+          {
+            "status": " M",
+            "path": "src/local-cli.js"
+          },
+          {
+            "status": " M",
+            "path": "tests/ambient-activation.test.js"
+          }
+        ],
+        "changesTruncated": false,
+        "rawClean": false,
+        "rawChanges": [
+          {
+            "status": " M",
+            "path": "src/activation.js"
+          },
+          {
+            "status": " M",
+            "path": "src/local-cli.js"
+          },
+          {
+            "status": " M",
+            "path": "tests/ambient-activation.test.js"
+          },
+          {
+            "status": "??",
+            "path": ".codex-memory/"
+          }
+        ],
+        "rawChangesTruncated": false,
+        "cmiInternalChangesOmitted": 0,
+        "upstream": null,
+        "ahead": null,
+        "behind": null,
+        "commit": {
+          "subject": "feat: add CMI provenance mark (#105)",
+          "committedAt": "2026-08-18T22:42:14+07:00"
+        }
+      },
+      "attribution": "limited-preexisting-worktree",
+      "gitContinuity": {
+        "available": true,
+        "state": "same-head",
+        "safeForCommittedAttribution": true,
+        "startHead": "8cbe7949002e",
+        "currentHead": "8cbe7949002e",
+        "mergeBase": "8cbe7949002e"
+      },
+      "observedChangedFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "committedFilesSinceStart": [],
+      "explicitFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "ambiguousPreExistingFiles": [
+        "src/activation.js",
+        "src/local-cli.js",
+        "tests/ambient-activation.test.js"
+      ],
+      "observedBoundaries": [
+        {
+          "id": "node:.#root",
+          "label": "Root source",
+          "workspace": "node:.",
+          "changedFiles": 2,
+          "confidence": "low"
+        },
+        {
+          "id": "node:.#ambient-activation",
+          "label": "Ambient Activation",
+          "workspace": "node:.",
+          "changedFiles": 1,
+          "confidence": "high"
+        }
+      ],
+      "unmappedFiles": [],
+      "unexpectedBoundaries": [
+        {
+          "id": "node:.#ambient-activation",
+          "label": "Ambient Activation",
+          "workspace": "node:.",
+          "changedFiles": 1,
+          "confidence": "high"
+        }
+      ],
+      "comparison": {
+        "predictedFileCount": 12,
+        "observedChangedFileCount": 3,
+        "overlapCount": 0,
+        "overlap": [],
+        "missedByPrediction": [
+          "src/activation.js",
+          "src/local-cli.js",
+          "tests/ambient-activation.test.js"
+        ],
+        "predictedButUnchanged": [
+          "src/portable-evidence.js",
+          "src/search.js",
+          "tests/ambient-interfaces.test.js",
+          "tests/closing-mcp.test.js",
+          "tests/coverage-gate.test.js",
+          "tests/evaluation-mcp.test.js",
+          "tests/interfaces.test.js",
+          "tests/mcp-protocol-branches.test.js",
+          "tests/portable-mcp.test.js",
+          "tests/portable-provenance.test.js",
+          "tests/release.test.js",
+          "tests/session-mcp.test.js"
+        ],
+        "changedPathCoverage": 0,
+        "predictedScopeTouched": 0,
+        "pathRecall": 0,
+        "pathPrecision": 0,
+        "pathF1": null,
+        "interpretation": "These ratios compare predicted scope with observed changed paths only. They do not prove full impact accuracy, causality, or runtime coverage."
+      }
+    },
+    "verifications": [
+      {
+        "name": "node --test tests/ambient-activation.test.js",
+        "status": "passed",
+        "provenance": "reported"
+      },
+      {
+        "name": "npm run verify",
+        "status": "passed",
+        "provenance": "reported"
+      },
+      {
+        "name": "npm run benchmark:smoke",
+        "status": "passed",
+        "provenance": "reported"
+      },
+      {
+        "name": "npm run package:smoke (isolated npm cache)",
+        "status": "passed",
+        "provenance": "reported"
+      },
+      {
+        "name": "git diff --check",
+        "status": "passed",
+        "provenance": "reported"
+      }
+    ],
+    "unexpectedImpact": [],
+    "notes": [
+      "Default npm cache failed before packaging because its log directory was not writable; the permitted isolated-cache retry passed."
+    ],
+    "learningCandidates": [
+      {
+        "type": "prediction-gap",
+        "status": "proposal",
+        "evidence": [
+          "src/activation.js",
+          "src/local-cli.js",
+          "tests/ambient-activation.test.js"
+        ],
+        "proposal": "Review why these changed paths were outside the predicted scope and whether a durable dependency or architecture rule should be recorded."
+      }
+    ],
+    "policy": "Learning candidates require review. Completion never writes project memory automatically."
+  },
+  "policy": "This record stores bounded project-change evidence. CMI-internal paths are excluded from product-change scope, and the record does not automatically create durable facts, architecture decisions, or lessons.",
+  "progress": null
+}
