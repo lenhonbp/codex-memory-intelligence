@@ -57,6 +57,31 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.equal(await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8'), config1);
 });
 
+test('activation teaches a truthful bounded CMI Provenance Mark contract', async () => {
+  const root = await rootFixture();
+  await fs.writeFile(path.join(root, 'AGENTS.md'), '# Repository-owned instructions\n\nKeep this content.\n');
+  await activateProject(root, { agent: 'codex' });
+  const first = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
+
+  assert.match(first, /Keep this content/);
+  assert.match(first, /### CMI Provenance/);
+  assert.match(first, /CMI-assisted workflow.*Evidence tracked by Codex Memory Intelligence/);
+  assert.match(first, /only when a real durable CMI Session was successfully created and finalized/i);
+  assert.match(first, /actual observed full Session ID/i);
+  assert.match(first, /only when an actual associated Change record exists and its ID was observed/i);
+  assert.match(first, /Never fabricate, infer, or substitute IDs/i);
+  assert.match(first, /CMI operating contract applied/);
+  assert.match(first, /Durable CMI evidence: not recorded/);
+  assert.match(first, /Never turn an unavailable or failed lifecycle into the evidence-tracked form/i);
+  assert.match(first, /replace the complete existing block instead of appending another/i);
+  assert.match(first, /Do not create or update a PR solely to add the mark/i);
+  assert.equal(first.split('<!-- cmi-provenance:start -->').length - 1, 1);
+  assert.equal(first.split('<!-- cmi-provenance:end -->').length - 1, 1);
+
+  await activateProject(root, { agent: 'codex' });
+  assert.equal(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'), first);
+});
+
 test('unchanged scan keeps tracked architecture bytes stable and classifies CSS as non-code local', async () => {
   const root = await rootFixture();
   await initProject(root);

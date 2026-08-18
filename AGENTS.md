@@ -33,4 +33,10 @@ Final reporting for substantive work must separate:
 
 Never infer CI, live behavior, or release readiness from a local test result.
 
-See [docs/AGENT_ENGINEERING_PLAYBOOK.md](docs/AGENT_ENGINEERING_PLAYBOOK.md) for the practical workflow, checklist examples, verification ladder, failure recovery, and CMI lifecycle boundaries.
+## CMI provenance
+
+For substantial work, finish with the truthful CMI Provenance Mark defined in [docs/PROVENANCE_MARK.md](docs/PROVENANCE_MARK.md). Use the evidence-backed form only when a real durable CMI Session was successfully finalized, and include only actual observed Session/Change IDs. When the operating contract applied but durable lifecycle evidence is unavailable, use the explicit degraded form instead. Never let the mark imply source authorship, authentication, certification, approval, or verification by CMI.
+
+A PR provenance block is permitted only when creating or updating that PR is already authorized. Replace the existing bounded block instead of duplicating it; product identity never creates authority for an external action.
+
+See [docs/AGENT_ENGINEERING_PLAYBOOK.md](docs/AGENT_ENGINEERING_PLAYBOOK.md) for the practical workflow, checklist examples, verification ladder, failure recovery, and CMI lifecycle boundaries. The playbook and this operating contract defer to [docs/PROVENANCE_MARK.md](docs/PROVENANCE_MARK.md) as the normative provenance definition.
