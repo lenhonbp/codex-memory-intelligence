@@ -1,9 +1,12 @@
 import fs from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { initProject, scanProject } from './core.js';
 import { CMI_LOCAL_ENTRYPOINT, findLocalCliEntrypoint, localCliInvocation } from './local-cli.js';
 
+const exec = promisify(execFile);
 const MAX_INTEGRATION_BYTES = 1_000_000;
 const AGENTS_BEGIN = '<!-- cmi-managed:start -->';
 const AGENTS_END = '<!-- cmi-managed:end -->';
@@ -28,6 +31,7 @@ CMI is activated for this project. The user may give short, natural requests and
 - On a meaningful failure, follow this recovery loop: record the exact failure → identify the false assumption → update the checklist → make the smallest correction → run the narrowest decisive retry → run the broader regression checks.
 - A source edit is not completion. Verification must be proportional to risk, and the final report must distinguish implementation, focused verification, repository verification, CI, external/live verification, and release readiness.
 - \`.agent/todo.md\` is ignored, ephemeral working state. It is not durable CMI memory, project truth, session or handoff authority, architecture documentation, or a release record. Do not commit it.
+- Immediately before creating or updating \`.agent/todo.md\`, verify Git's effective policy with \`git check-ignore --no-index -q -- .agent/todo.md\`. If it is not ignored, do not write the file or describe it as ephemeral; report the policy conflict clearly and repair or re-run activation only when authorized.
 
 For every substantive repository task:
 - Get a CMI ambient task brief early, using the user's request verbatim when practical. Prefer the MCP tool \`get_ambient_task_brief\`; if MCP is unavailable, the local executable fallback for \`cmi ambient\` is the exact project-local CMI package from the project root: \`${localCommand} ambient \"<user request>\" --json\`. Do not begin with bare \`cmi\`: a PATH miss is not evidence that CMI is unavailable. This brief is read-only health/context evidence, not a completed session.
@@ -101,10 +105,30 @@ function normalizedManagedContent(existing, begin, end, block, label) {
   return `${prefix}${prefix ? '\n' : ''}${block}\n`;
 }
 
-function normalizedManagedPrefixContent(existing, begin, end, block, label) {
+function normalizedManagedSuffixContent(existing, begin, end, block, label) {
   const text = existing ?? '';
-  if (text.includes(begin) || text.includes(end)) return normalizedManagedContent(existing, begin, end, block, label);
-  return `${block}\n${text ? `\n${text}` : ''}`;
+  const startCount = occurrences(text, begin);
+  const endCount = occurrences(text, end);
+  if (startCount !== endCount || startCount > 1) throw new Error(`${label} contains partial, duplicated, or malformed CMI managed blocks. Repair them explicitly before activation.`);
+  if (startCount === 0) return normalizedManagedContent(existing, begin, end, block, label);
+
+  const start = text.indexOf(begin);
+  const finish = text.indexOf(end);
+  if (finish < start) throw new Error(`${label} contains a malformed CMI managed block. Repair it explicitly before activation.`);
+  const afterManaged = finish + end.length;
+  if (text.slice(start, afterManaged) === block && text.slice(afterManaged) === '\n') return text;
+
+  const before = text.slice(0, start);
+  const after = text.slice(afterManaged);
+  let unmanaged;
+  if (!before) {
+    unmanaged = after.startsWith('\n\n') ? after.slice(2) : after.replace(/^\n/, '');
+  } else {
+    const beforeWithoutSeparator = before.endsWith('\n') ? before.slice(0, -1) : before;
+    const afterWithoutSeparator = after.startsWith('\n') ? after.slice(1) : after;
+    unmanaged = `${beforeWithoutSeparator}${afterWithoutSeparator}`;
+  }
+  return normalizedManagedContent(unmanaged, begin, end, block, label);
 }
 
 async function assertSafeIntegrationParents(root, relative) {
@@ -172,8 +196,26 @@ async function planCodexConfig(root, localCli) {
 
 async function planTodoIgnore(root) {
   const existing = await readIntegrationFile(root, '.gitignore');
-  const next = normalizedManagedPrefixContent(existing, TODO_IGNORE_BEGIN, TODO_IGNORE_END, TODO_IGNORE_BLOCK, '.gitignore');
+  const next = normalizedManagedSuffixContent(existing, TODO_IGNORE_BEGIN, TODO_IGNORE_END, TODO_IGNORE_BLOCK, '.gitignore');
   return { path: '.gitignore', existing, next, changed: next !== existing, managed: true, ephemeralPath: '.agent/todo.md' };
+}
+
+async function assertEffectiveTodoIgnore(root) {
+  try {
+    await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: root, encoding: 'utf8' });
+  } catch (error) {
+    if (error?.code === 'ENOENT' || /not a git repository/i.test(error?.stderr || '')) return false;
+    throw error;
+  }
+  try {
+    await exec('git', ['check-ignore', '--no-index', '-q', '--', '.agent/todo.md'], { cwd: root, encoding: 'utf8' });
+    return true;
+  } catch (error) {
+    if (error?.code === 1) {
+      throw new Error('.agent/todo.md is not ignored by Git\'s effective policy after CMI updated .gitignore. A later or higher-priority negation rule may re-include it; CMI will not claim ephemeral todo state. Reconcile the user-owned ignore policy explicitly and retry activation.');
+    }
+    throw error;
+  }
 }
 
 async function applyPlan(root, plan) {
@@ -189,7 +231,7 @@ export async function activateProject(root, options = {}) {
 
   const localCli = agent === 'codex' ? await findLocalCliEntrypoint(resolvedRoot) : null;
   const plans = agent === 'codex'
-    ? [await planAgents(resolvedRoot, localCli), await planCodexConfig(resolvedRoot, localCli), await planTodoIgnore(resolvedRoot)]
+    ? [await planTodoIgnore(resolvedRoot), await planAgents(resolvedRoot, localCli), await planCodexConfig(resolvedRoot, localCli)]
     : [];
 
   await initProject(resolvedRoot);
@@ -197,7 +239,9 @@ export async function activateProject(root, options = {}) {
   const integrations = [];
   let integrationChanged = false;
   for (const plan of plans) {
-    integrations.push(await applyPlan(resolvedRoot, plan));
+    const integration = await applyPlan(resolvedRoot, plan);
+    if (plan.ephemeralPath) integration.effectiveGitIgnore = await assertEffectiveTodoIgnore(resolvedRoot) ? 'verified' : 'not-a-git-repository';
+    integrations.push(integration);
     integrationChanged ||= plan.changed;
   }
   if (integrationChanged) scan = await scanProject(resolvedRoot);

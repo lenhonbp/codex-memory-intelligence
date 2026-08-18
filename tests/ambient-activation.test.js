@@ -77,6 +77,8 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.match(agents1, /Verification must be proportional to risk/i);
   assert.match(agents1, /implementation, focused verification, repository verification, CI, external\/live verification, and release readiness/i);
   assert.match(agents1, /ephemeral working state.*not durable CMI memory/i);
+  assert.match(agents1, /git check-ignore --no-index -q -- \.agent\/todo\.md/i);
+  assert.match(agents1, /If it is not ignored, do not write the file or describe it as ephemeral/i);
   await activateProject(root, { agent: 'codex' });
   assert.equal(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'), agents1);
   assert.equal(await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8'), config1);
@@ -90,8 +92,8 @@ test('activation keeps todo state ephemeral while preserving user-owned ignore p
 
   await activateProject(root, { agent: 'codex' });
   const first = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
-  assert.match(first, /^# cmi-managed:todo-ignore-start\n\.agent\/todo\.md\n# cmi-managed:todo-ignore-end\n\n/);
-  assert.equal(first.slice(first.indexOf(userIgnore)), userIgnore);
+  assert.ok(first.startsWith(userIgnore));
+  assert.match(first, /# cmi-managed:todo-ignore-start\n\.agent\/todo\.md\n# cmi-managed:todo-ignore-end\n$/);
   assert.equal(first.split('# cmi-managed:todo-ignore-start').length - 1, 1);
   assert.doesNotMatch(first, /^\.agent\/$/m);
 
@@ -103,6 +105,30 @@ test('activation keeps todo state ephemeral while preserving user-owned ignore p
 
   await activateProject(root, { agent: 'codex' });
   assert.equal(await fs.readFile(path.join(root, '.gitignore'), 'utf8'), first);
+});
+
+test('activation repairs a later todo negation without silently claiming ephemeral state', async () => {
+  const root = await rootFixture();
+  const userIgnore = '# User-owned rules\ndist/\n';
+  await fs.writeFile(path.join(root, '.gitignore'), userIgnore);
+  await git(root, ['init']);
+
+  await activateProject(root, { agent: 'codex' });
+  await fs.appendFile(path.join(root, '.gitignore'), '!.agent/**\n');
+  await fs.mkdir(path.join(root, '.agent'));
+  await fs.writeFile(path.join(root, '.agent', 'todo.md'), '# transient\n');
+  assert.match(await git(root, ['status', '--short', '--', '.agent/todo.md']), /\.agent\/todo\.md/);
+
+  const repaired = await activateProject(root, { agent: 'codex' });
+  const next = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.ok(next.startsWith(`${userIgnore}!.agent/**\n`));
+  assert.match(next, /# cmi-managed:todo-ignore-start\n\.agent\/todo\.md\n# cmi-managed:todo-ignore-end\n$/);
+  assert.equal(next.split('# cmi-managed:todo-ignore-start').length - 1, 1);
+  assert.equal(await git(root, ['status', '--short', '--', '.agent/todo.md']), '');
+  assert.equal(repaired.integrations.find((item) => item.path === '.gitignore')?.effectiveGitIgnore, 'verified');
+
+  await activateProject(root, { agent: 'codex' });
+  assert.equal(await fs.readFile(path.join(root, '.gitignore'), 'utf8'), next);
 });
 
 test('activation binds Codex MCP to the exact project-local CMI package', async () => {
