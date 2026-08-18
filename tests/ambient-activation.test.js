@@ -29,6 +29,19 @@ async function commitBaseline(root) {
   await git(root, ['add', '-A']);
   await git(root, ['commit', '-m', 'baseline']);
 }
+async function installLocalCmi(root, packageJson = {}) {
+  const packageRoot = path.join(root, 'node_modules', 'codex-memory-intelligence');
+  await fs.mkdir(path.join(packageRoot, 'src'), { recursive: true });
+  await fs.writeFile(path.join(packageRoot, 'src', 'cli-entry.js'), '#!/usr/bin/env node\n');
+  await fs.writeFile(path.join(packageRoot, 'src', 'mcp-entry.js'), '#!/usr/bin/env node\n');
+  await fs.writeFile(path.join(packageRoot, 'package.json'), `${JSON.stringify({
+    name: 'codex-memory-intelligence',
+    version: '0.14.0-next.local',
+    bin: { cmi: 'src/cli-entry.js', 'cmi-mcp': 'src/mcp-entry.js' },
+    ...packageJson,
+  }, null, 2)}\n`);
+  return packageRoot;
+}
 
 test('short natural requests get conservative deterministic routing', () => {
   assert.equal(classifyAmbientIntent('Sửa lỗi boss không nhận damage').intent, 'mutate');
@@ -49,12 +62,103 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.match(agents1, /cmi-managed:start/);
   assert.match(config1, /\[mcp_servers\.cmi\]/);
   assert.match(config1, /CMI_WRITE_ENABLED = "1"/);
+  assert.match(config1, /command = "npx"/);
+  assert.match(config1, /--package=codex-memory-intelligence/);
   assert.match(agents1, /If the requested work is complete, complete the Change/i);
   assert.match(agents1, /keep the Change active/i);
   assert.doesNotMatch(agents1, /then complete the change record and finalize the session/i);
+  assert.match(agents1, /short prompt does not imply a trivial task/i);
+  assert.match(agents1, /create or update the live checklist at `.agent\/todo\.md` before substantive implementation/i);
+  assert.match(agents1, /Keep it small and evolving/i);
+  assert.match(agents1, /Work constraint-first/i);
+  assert.match(agents1, /discovery → implementation → focused verification → broader repository verification → diff review/i);
+  assert.match(agents1, /exact failure → identify the false assumption → update the checklist → make the smallest correction → run the narrowest decisive retry → run the broader regression checks/i);
+  assert.match(agents1, /source edit is not completion/i);
+  assert.match(agents1, /Verification must be proportional to risk/i);
+  assert.match(agents1, /implementation, focused verification, repository verification, CI, external\/live verification, and release readiness/i);
+  assert.match(agents1, /ephemeral working state.*not durable CMI memory/i);
+  assert.match(agents1, /git check-ignore --no-index -q -- \.agent\/todo\.md/i);
+  assert.match(agents1, /If it is not ignored, do not write the file or describe it as ephemeral/i);
   await activateProject(root, { agent: 'codex' });
   assert.equal(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'), agents1);
   assert.equal(await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8'), config1);
+});
+
+test('activation keeps todo state ephemeral while preserving user-owned ignore policy byte-for-byte', async () => {
+  const root = await rootFixture();
+  const userIgnore = '# User-owned rules\ndist/\n!.agent/keep.md\n';
+  await fs.writeFile(path.join(root, '.gitignore'), userIgnore);
+  await git(root, ['init']);
+
+  await activateProject(root, { agent: 'codex' });
+  const first = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.ok(first.startsWith(userIgnore));
+  assert.match(first, /# cmi-managed:todo-ignore-start\n\.agent\/todo\.md\n# cmi-managed:todo-ignore-end\n$/);
+  assert.equal(first.split('# cmi-managed:todo-ignore-start').length - 1, 1);
+  assert.doesNotMatch(first, /^\.agent\/$/m);
+
+  await fs.mkdir(path.join(root, '.agent'));
+  await fs.writeFile(path.join(root, '.agent', 'todo.md'), '# transient\n');
+  await fs.writeFile(path.join(root, '.agent', 'keep.md'), '# user-owned\n');
+  assert.equal(await git(root, ['status', '--short', '--', '.agent/todo.md']), '');
+  assert.match(await git(root, ['status', '--short', '--', '.agent/keep.md']), /\.agent\/keep\.md/);
+
+  await activateProject(root, { agent: 'codex' });
+  assert.equal(await fs.readFile(path.join(root, '.gitignore'), 'utf8'), first);
+});
+
+test('activation repairs a later todo negation without silently claiming ephemeral state', async () => {
+  const root = await rootFixture();
+  const userIgnore = '# User-owned rules\ndist/\n';
+  await fs.writeFile(path.join(root, '.gitignore'), userIgnore);
+  await git(root, ['init']);
+
+  await activateProject(root, { agent: 'codex' });
+  await fs.appendFile(path.join(root, '.gitignore'), '!.agent/**\n');
+  await fs.mkdir(path.join(root, '.agent'));
+  await fs.writeFile(path.join(root, '.agent', 'todo.md'), '# transient\n');
+  assert.match(await git(root, ['status', '--short', '--', '.agent/todo.md']), /\.agent\/todo\.md/);
+
+  const repaired = await activateProject(root, { agent: 'codex' });
+  const next = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.ok(next.startsWith(`${userIgnore}!.agent/**\n`));
+  assert.match(next, /# cmi-managed:todo-ignore-start\n\.agent\/todo\.md\n# cmi-managed:todo-ignore-end\n$/);
+  assert.equal(next.split('# cmi-managed:todo-ignore-start').length - 1, 1);
+  assert.equal(await git(root, ['status', '--short', '--', '.agent/todo.md']), '');
+  assert.equal(repaired.integrations.find((item) => item.path === '.gitignore')?.effectiveGitIgnore, 'verified');
+
+  await activateProject(root, { agent: 'codex' });
+  assert.equal(await fs.readFile(path.join(root, '.gitignore'), 'utf8'), next);
+});
+
+test('activation binds Codex MCP to the exact project-local CMI package', async () => {
+  const root = await rootFixture();
+  await installLocalCmi(root);
+
+  await activateProject(root, { agent: 'codex' });
+  const config = await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8');
+  const agents = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
+  assert.match(config, /command = "node"/);
+  assert.match(config, /args = \["\.\/node_modules\/codex-memory-intelligence\/src\/mcp-entry\.js"\]/);
+  assert.doesNotMatch(config, /npx|--package=codex-memory-intelligence/);
+  assert.doesNotMatch(config, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(agents, /node "\.\/node_modules\/codex-memory-intelligence\/src\/cli-entry\.js" ambient/);
+
+  await activateProject(root, { agent: 'codex' });
+  assert.equal(await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8'), config);
+});
+
+test('activation fails safely instead of falling back when a local CMI candidate is malformed', async () => {
+  const root = await rootFixture();
+  await installLocalCmi(root, { bin: { cmi: 'src/cli-entry.js' } });
+
+  await assert.rejects(
+    activateProject(root, { agent: 'codex' }),
+    /local CMI package identity or executable metadata is invalid.*not fall back/i,
+  );
+  await assert.rejects(fs.access(path.join(root, 'AGENTS.md')));
+  await assert.rejects(fs.access(path.join(root, '.codex', 'config.toml')));
+  await assert.rejects(fs.access(path.join(root, '.codex-memory')));
 });
 
 test('activation teaches a truthful bounded CMI Provenance Mark contract', async () => {
