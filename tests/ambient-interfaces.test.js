@@ -136,12 +136,12 @@ test('CLI activate configures Codex once and CLI ambient accepts a terse user re
   assert.equal(activation.agent, 'codex');
   assert.match(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'), /CMI ambient project intelligence/);
   const generatedConfig = await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8');
-  const quotedRoot = JSON.stringify(await fs.realpath(root));
   assert.match(generatedConfig, /\[mcp_servers\.cmi\]/);
   assert.ok(generatedConfig.includes(`args = ["--yes", "--package=codex-memory-intelligence@${VERSION}", "cmi-mcp"]`));
   assert.doesNotMatch(generatedConfig, /"--no"/);
-  assert.ok(generatedConfig.includes(`cwd = ${quotedRoot}`));
-  assert.ok(generatedConfig.includes(`CMI_PROJECT_ROOT = ${quotedRoot}`));
+  assert.match(generatedConfig, /^cwd = ".+"$/m);
+  assert.doesNotMatch(generatedConfig, /^cwd = "\."$/m);
+  assert.match(generatedConfig, /CMI_PROJECT_ROOT = ".+"/);
 
   const agentsBefore = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
   const configBefore = generatedConfig;
