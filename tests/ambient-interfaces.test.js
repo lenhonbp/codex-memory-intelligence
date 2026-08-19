@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { scanProject } from '../src/core.js';
 import { findLocalCliEntrypoint } from '../src/local-cli.js';
+import { VERSION } from '../src/version.js';
 
 const cli = fileURLToPath(new URL('../src/cli-entry.js', import.meta.url));
 const mcp = fileURLToPath(new URL('../src/mcp-entry.js', import.meta.url));
@@ -135,10 +136,12 @@ test('CLI activate configures Codex once and CLI ambient accepts a terse user re
   assert.equal(activation.agent, 'codex');
   assert.match(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'), /CMI ambient project intelligence/);
   const generatedConfig = await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8');
+  const quotedRoot = JSON.stringify(path.resolve(root));
   assert.match(generatedConfig, /\[mcp_servers\.cmi\]/);
-  assert.match(generatedConfig, /--package=codex-memory-intelligence/);
-  assert.match(generatedConfig, /"--no"/);
-  assert.doesNotMatch(generatedConfig, /--no-install/);
+  assert.ok(generatedConfig.includes(`args = ["--yes", "--package=codex-memory-intelligence@${VERSION}", "cmi-mcp"]`));
+  assert.doesNotMatch(generatedConfig, /"--no"/);
+  assert.ok(generatedConfig.includes(`cwd = ${quotedRoot}`));
+  assert.ok(generatedConfig.includes(`CMI_PROJECT_ROOT = ${quotedRoot}`));
 
   const agentsBefore = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
   const configBefore = generatedConfig;
