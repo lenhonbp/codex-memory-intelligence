@@ -2,39 +2,63 @@
 
 Updated: 2026-08-19
 
-## v0.14.0 PUBLIC RELEASE
+## v0.14.1 PUBLIC RELEASE
 
-`v0.14.0` is the current supported public CMI release. It is a pre-v1 feature release for proactive repository-local agent workflow, portable consumer activation, bounded managed-integration ownership, Provenance Mark v1, Portable Evidence compatibility, and cross-platform/security hardening after `v0.13.0`.
+`v0.14.1` is the current supported public CMI release. It is a focused pre-v1 maintenance hotfix over `v0.14.0` for two field-reproduced Codex activation failures: registry bootstrap and project-root binding.
 
 ### Public release summary
 
 | Field | Value |
 |---|---|
-| Public release | `v0.14.0` |
-| npm package | `codex-memory-intelligence@0.14.0` |
+| Public release | `v0.14.1` |
+| npm package | `codex-memory-intelligence@0.14.1` |
 | npm dist-tag | `latest` |
-| Release commit/tag target | `96f3e0f903fa4c9c3d967383ec695c63243b588b` |
-| Temporary `release/v0.14.0` branch | removed after successful guarded publication |
-| GitHub Release | [CMI v0.14.0](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.14.0) |
+| Release commit/tag target | `c08163281df7990a2bcb4d7ecdcd4f5857b09c0b` |
+| Temporary `release/v0.14.1` branch | removed after successful guarded publication |
+| GitHub Release | [CMI v0.14.1](https://github.com/lenhonbp/codex-memory-intelligence/releases/tag/v0.14.1) |
 | Public-source license | PolyForm Perimeter License 1.0.1 |
 
-The guarded publication path requires exact release-target identity, release metadata consistency, full repository verification, benchmark smoke, packed installation, npm publication and registry visibility, GitHub Release creation, and temporary release-branch cleanup.
+The `v0.14.1` tag resolves exactly to the release target above.
 
-Canonical release detail: [CMI v0.14.0 Public Release](V0_14_0_RELEASE.md).
+The guarded publication path validates exact release-target identity, release metadata consistency, full repository verification, benchmark smoke, packed installation, npm publication and registry visibility, GitHub Release creation, and only then removes the temporary release branch. The release branch was observed removed after publication. The current connector session did not expose the publication workflow run id or GitHub Release numeric id, so those identifiers are intentionally not invented here.
 
-The historical preparation checkpoint remains at [CMI v0.14.0 Release Candidate](V0_14_0_RELEASE_CANDIDATE.md).
+Canonical release detail: [CMI v0.14.1 Public Release](V0_14_1_RELEASE.md).
 
-> Evidence note: this post-release sync records only publication identifiers directly observed through the connected repository surfaces. It intentionally does not invent an Actions run id or GitHub Release numeric id when those identifiers are not exposed by the current connector session.
+The historical preparation checkpoint remains at [CMI v0.14.1 Release Candidate](V0_14_1_RELEASE_CANDIDATE.md).
 
-## v0.14.0 scope
+## v0.14.1 hotfix scope
 
-- Proactive repository-local agent workflow guidance is carried into activated consumer repositories, including constraint-first discovery, an ephemeral `.agent/todo.md` checklist, bounded failure recovery, proportional verification, and evidence-separated reporting.
-- CMI Provenance Mark v1 distinguishes actual durable-session-backed workflow evidence from degraded operating-contract-only reporting and explicitly disclaims authorship, authentication, signing, approval, certification, and CMI verification.
-- Consumer activation can bind MCP integration to an exact local CMI package entrypoint when valid local package evidence exists; malformed or unsafe local candidates fail closed.
-- CMI-managed blocks in `AGENTS.md`, `.codex/config.toml`, and `.gitignore` have bounded ownership so unrelated consumer tasks preserve them without making the surrounding files globally immutable.
-- Portable Evidence v2/v3 compatibility is published as an explicit bounded policy; current writers remain on v3 and unsupported future schemas fail closed.
-- The pinned real-repository engineering corpus covers seven repositories across JavaScript/TypeScript, Python, Go, Rust, and PHP source trees.
-- Windows MCP cleanup and package-bin validation were hardened from observed CI/CodeQL findings before release preparation.
+- Registry fallback now uses non-interactive exact-version npm execution instead of the prior non-bootstrapable `--no` form.
+- Generated Codex MCP configuration binds both its working directory and `CMI_PROJECT_ROOT` to the resolved activated repository root.
+- Exact-local CMI package behavior remains preferred when a valid project-local package exists.
+- Activation records the root-bound integration portability limit and must be rerun after moving or cloning a project to another path.
+- Regression coverage preserves fallback arguments, project-root binding, exact-local behavior, write opt-in, and activation idempotence.
+- Public onboarding now uses the actual CLI contract: change into the intended project root first, run `cmi activate`, and use an explicit `--package=codex-memory-intelligence@<version>` spec for one-off npm execution rather than bare `npx cmi`.
+
+## Field evidence boundary
+
+The v0.14.1 defect was reproduced on one real consumer project:
+
+1. package bootstrap failed when the local/cached package was absent;
+2. after bootstrap correction, lifecycle tools became visible;
+3. Session start then failed because the MCP process resolved the project root as `/`;
+4. explicit root binding allowed Ambient brief, Session start, observation, finalization, durable project-local Session evidence, and Closing Intelligence to complete.
+
+This is concrete evidence for the bounded integration defects and fixes. It does **not** establish universal Codex compatibility, complete runtime portability across clients, or productivity improvement.
+
+## Broader v0.14 capability line
+
+The current product line also retains the v0.14.0 feature tranche:
+
+- proactive repository-local agent workflow guidance with constraint-first discovery, ephemeral `.agent/todo.md`, bounded failure recovery, proportional verification, and evidence-separated reporting;
+- CMI Provenance Mark v1 with durable-session-backed and degraded operating-contract-only forms;
+- bounded CMI ownership of managed sections in `AGENTS.md`, `.codex/config.toml`, and `.gitignore`;
+- exact-local consumer runtime binding when valid local package evidence exists;
+- Portable Evidence v2/v3 compatibility with v3 current writers and fail-closed future schemas;
+- seven-repository pinned engineering corpus across JavaScript/TypeScript, Python, Go, Rust, and PHP source trees;
+- Windows MCP cleanup and package-bin validation hardening;
+- Operational Trust through additive `cmi-trust` pre-share checks;
+- eight packaged open-format Agent Skills, without claiming runtime auto-installation or automatic selection.
 
 ## Evidence and trust limits
 
@@ -50,15 +74,15 @@ The historical preparation checkpoint remains at [CMI v0.14.0 Release Candidate]
 
 ## Historical release line
 
-`v0.13.0` is now historical. It remains available for provenance, reproducibility, and exact licensing history but is no longer the supported security line.
+`v0.14.0` is now historical. It remains available for provenance and reproducibility but is no longer the supported security line because `v0.14.1` contains the later Codex activation hotfix.
 
-Canonical historical detail: [CMI v0.13.0 Public Release](V0_13_0_RELEASE.md).
+Canonical historical detail: [CMI v0.14.0 Public Release](V0_14_0_RELEASE.md).
 
 For installation and source downloads, new users should use the latest supported release:
 
 https://github.com/lenhonbp/codex-memory-intelligence/releases/latest
 
-See [Release & Version Policy](RELEASE_POLICY.md), [Security](../SECURITY.md), and [Changelog](../CHANGELOG.md) for current support and version history.
+See [Release & Version Policy](RELEASE_POLICY.md), [Security](../SECURITY.md), [README](../README.md), and [Changelog](../CHANGELOG.md) for current support and setup guidance.
 
 ## Product capability status
 
@@ -72,8 +96,9 @@ The current CMI product line includes:
 - Ambient and Closing Intelligence;
 - Evidence-Anchored Rule Intelligence;
 - all eight planned Agent Skill open-format adapters shipped in the npm package;
-- MCP integration with durable project writes disabled by default;
+- MCP integration with durable project writes disabled by default unless the integration explicitly enables the write lifecycle;
 - exact-local consumer runtime binding when valid local package evidence exists;
+- exact-version registry fallback plus root-bound Codex MCP activation in v0.14.1;
 - bounded activation-managed ownership in AGENTS/config/ignore integration sections;
 - CMI Provenance Mark v1 with durable-evidence-backed and degraded forms;
 - Portable Evidence v3 writer integrity coverage with released v2 compatibility boundaries;
@@ -81,39 +106,26 @@ The current CMI product line includes:
 - maintainer/evaluator-side real-corpus and paired-study evidence tooling;
 - no npm auto-activation, automatic runtime Skill installation, CMI-native Skill loader, or production Evidence Contract negotiation surface.
 
-## Field evidence boundary
-
-Historical agent field acceptance remains separately documented rather than being promoted by the v0.14.0 engineering/release evidence.
-
-The final Grok F0–F7 field protocol remains the historical `v0.11.0` subject and is recorded in [Grok v0.11.0 Final Field Acceptance](field-evidence/GROK_V0.11.0_ACCEPTANCE.md).
-
-The historical Codex S0–S7 matrix was not executed because the available runtime was capacity-blocked before S0. That remains an external runtime limitation, not a CMI PASS or FAIL.
-
-The August 2026 product-value pilot remains descriptive evidence only. Its neutral/unfavorable answer-quality outcomes and favorable continuation timing observation do not establish a causal productivity effect.
-
-The v0.14.0 consumer portability pilot establishes that the proactive workflow can operate in an activated external repository with durable Session/Change evidence, while also preserving the finding that activation-managed sections need explicit ownership boundaries. It is portability/workflow evidence, not a productivity benchmark.
-
 ## Governance / current state
 
 | Item | State |
 |---|---|
-| Current supported public release | **v0.14.0** |
+| Current supported public release | **v0.14.1** |
 | Operational Trust / `cmi-trust` | **PUBLIC** |
 | Proactive consumer workflow | **PUBLIC / ACTIVATION CONTRACT** |
+| Codex bootstrap + root binding hotfix | **PUBLIC / v0.14.1** |
 | Provenance Mark v1 | **PUBLIC / WORKFLOW EVIDENCE PROVENANCE** |
 | Exact-local consumer runtime binding | **PUBLIC / FAIL-CLOSED WHEN LOCAL CANDIDATE IS UNSAFE** |
 | Real-repository engineering validation | **PUBLIC / ENGINEERING EVIDENCE** |
 | Product Value Regression workflow | **PUBLIC / ENGINEERING DIAGNOSTIC** |
 | Product-value eligible pilot pairs | **0 — externally-verified blinded human review not present** |
 | Production Evidence Contract discovery/negotiation | **NO-GO / NOT EXPOSED** |
-| v0.14.0 publish pipeline | **PASS** |
+| v0.14.1 publish pipeline | **PASS** |
 | v1 readiness | **NO-GO — roadmap evidence criteria remain** |
-| Final Grok F0–F7 on public `v0.11.0` subject | **PASS** |
-| Historical final Codex S0–S7 | **NOT EXECUTED — runtime blocked before S0** |
 
 ```text
-CMI_PUBLIC_RELEASE = v0.14.0
-CMI_SUPPORTED_RELEASE = v0.14.0
+CMI_PUBLIC_RELEASE = v0.14.1
+CMI_SUPPORTED_RELEASE = v0.14.1
 CMI_MODE = MAINTENANCE_WITH_BOUNDED_PRODUCT_EVIDENCE
 PLANNED_SKILLS = 8/8
 PRODUCTION_CONTRACT_SURFACE = NO_GO

@@ -31,21 +31,72 @@ CMI intentionally treats **evidence as evidence**: a warning is not automaticall
 
 **Current supported release: `v0.14.1` / `codex-memory-intelligence@0.14.1`.**
 
-For new installations, use the current npm package:
+Requires **Node.js 22 or newer**.
+
+### Recommended setup: global CLI + project activation
+
+Install the exact current release and verify the CLI:
 
 ```bash
-npm install -g codex-memory-intelligence
+npm install -g codex-memory-intelligence@0.14.1
 cmi --version
 ```
 
-Or install it in one project:
+`cmi --version` should print `0.14.1`.
+
+Then change into the **project root you want CMI to manage** and activate it:
 
 ```bash
-npm install --save-dev codex-memory-intelligence
-npx cmi --version
+cd /absolute/path/to/your-project
+cmi activate
+cmi doctor
 ```
 
-Requires **Node.js 22 or newer**.
+`cmi activate` uses the **current working directory** as the project root; it does not take a project-path positional argument. Run it from the intended repository/project root, not from your home directory or another parent directory.
+
+For the Codex adapter, activation:
+
+- initializes CMI when needed and refreshes project intelligence;
+- preserves unrelated repository content while managing bounded CMI sections in root `AGENTS.md`, `.codex/config.toml`, and `.gitignore`;
+- enables the managed Codex MCP lifecycle and binds both its working directory and `CMI_PROJECT_ROOT` to the activated project root;
+- prefers an exact valid project-local `codex-memory-intelligence` package when one exists, otherwise uses the activating CMI version as the registry fallback;
+- does **not** install Skills into an agent runtime and does **not** promote inferred advice into durable project truth.
+
+After the first activation, start a **new Codex run/session** in that project and make sure the client trusts the project. You can then use normal prompts; CMI-specific prompts are not required for the managed workflow.
+
+Because the managed Codex MCP block is root-bound, re-run activation after moving or cloning the project to a different path:
+
+```bash
+cd /new/absolute/path/to/your-project
+cmi activate
+cmi doctor
+```
+
+### Optional: project-local installation
+
+If you want the CMI package pinned in the project itself, install it as an exact development dependency before activation:
+
+```bash
+cd /absolute/path/to/your-project
+npm install --save-dev --save-exact codex-memory-intelligence@0.14.1
+npm exec -- cmi --version
+npm exec -- cmi activate
+npm exec -- cmi doctor
+```
+
+With a valid project-local package, activation binds the Codex MCP integration to that exact local package entrypoint.
+
+### Optional: one-off activation without installing the CLI
+
+Use an explicit package spec so npm knows that the `cmi` binary must come from `codex-memory-intelligence`:
+
+```bash
+cd /absolute/path/to/your-project
+npx --yes --package=codex-memory-intelligence@0.14.1 cmi activate
+npx --yes --package=codex-memory-intelligence@0.14.1 cmi doctor
+```
+
+Do not use bare `npx cmi` as the canonical installation/activation instruction; the package name is `codex-memory-intelligence`, while `cmi` is one of its binary names.
 
 If you prefer a GitHub source archive, use **[Download the latest release](https://github.com/lenhonbp/codex-memory-intelligence/releases/latest)**. New users should use the latest supported release rather than a historical tag.
 
@@ -67,29 +118,31 @@ CMI is actively maintained by **Nhơn Lê ([@lenhonbp](https://github.com/lenhon
 
 Public maintenance evidence is kept reviewable through [Current Release Status](docs/RELEASE_STATUS.md), [Security](SECURITY.md), [Changelog](CHANGELOG.md), and GitHub pull requests/releases. Adoption signals should be interpreted from live public sources such as GitHub and npm rather than frozen claims in this README.
 
-## Quick start
+## Quick start after setup
 
-Initialize and scan a project:
+For a project already activated through the recommended Codex setup, inspect current evidence and ask for bounded project intelligence:
 
 ```bash
-cmi init
-cmi scan
+cmi status
 cmi doctor
+cmi context "change the account migration"
+cmi prepare "change the account migration"
+cmi impact migrate
 ```
 
-Add reviewed durable knowledge explicitly:
+Add reviewed durable knowledge only when it is actually established:
 
 ```bash
 cmi remember fact "Production runs on the documented hosting platform"
 cmi remember decision "Schema changes must use versioned migrations" --source package.json
 ```
 
-Ask for bounded project intelligence:
+If you are using CMI only as a manual CLI/MCP layer without Codex activation, initialize and scan explicitly:
 
 ```bash
-cmi context "change the account migration"
-cmi prepare "change the account migration"
-cmi impact migrate
+cmi init
+cmi scan
+cmi doctor
 ```
 
 A second unchanged `cmi scan` can reuse previously parsed source nodes. Use `cmi scan --full` when you intentionally need a full rebuild after parser or configuration changes.
@@ -98,15 +151,15 @@ A second unchanged `cmi scan` can reuse previously parsed source nodes. Use `cmi
 
 ### Codex
 
-For the supported Codex project integration, activate once:
+If you followed the recommended setup above, the project integration is already configured. Start a **new Codex run/session** after first activation and use normal prompts. CMI manages only its bounded repository integration sections and does not overwrite unrelated user content.
+
+To activate or regenerate the integration explicitly, run from the project root:
 
 ```bash
-npx cmi activate
+cmi activate
 ```
 
-Then start a **new Codex run/session** and use normal prompts. CMI manages a bounded `AGENTS.md` block and project-scoped Codex MCP configuration without overwriting unrelated user content.
-
-Activation binds the managed Codex MCP configuration to the current project root. Re-run `npx cmi activate` after moving or cloning the project to a different path.
+The activation command is root-relative to the current working directory. Re-run it after moving or cloning the project. For one-off npm execution, use the explicit `--package=codex-memory-intelligence@<version>` form shown in [Get CMI](#get-cmi), not bare `npx cmi`.
 
 Activation configures project integration only. It does **not** install Skills into runtime Skill directories.
 
@@ -299,7 +352,7 @@ See [Security](SECURITY.md), [Evidence Integrity](docs/EVIDENCE_INTEGRITY.md), a
 CMI has one recommended public installation path: **the latest supported release**.
 
 - **Latest release:** [GitHub latest release](https://github.com/lenhonbp/codex-memory-intelligence/releases/latest)
-- **npm:** `npm install -g codex-memory-intelligence`
+- **npm:** `npm install -g codex-memory-intelligence@0.14.1`
 - **Security support:** current supported release only unless explicitly documented otherwise.
 - **Historical releases:** retained for provenance/reproducibility; not recommended for new installs and not promised current security fixes.
 

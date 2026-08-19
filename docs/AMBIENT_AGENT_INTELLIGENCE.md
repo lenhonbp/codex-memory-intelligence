@@ -4,13 +4,29 @@ Ambient Agent Intelligence is the integration layer that lets a user activate CM
 
 ## One-time activation
 
+Install CMI using the canonical [README setup](../README.md#get-cmi), then run activation from the exact repository/project root that should own the integration:
+
 ```bash
-npx cmi activate
+cd /absolute/path/to/your-project
+cmi activate
+cmi doctor
 ```
 
-For the Codex adapter, activation safely manages a bounded block in root `AGENTS.md` and a project-scoped `.codex/config.toml` MCP entry. Existing user content is preserved. Unmanaged conflicting CMI MCP configuration is rejected instead of overwritten.
+`cmi activate` uses the current working directory as the activation root and does not accept a project-path positional argument. Running it from the wrong directory binds the managed integration to the wrong project, so change into the intended project root first.
 
-Activation initializes CMI when needed, refreshes project intelligence, and configures the supported agent integration. It does not create facts/decisions/mistakes from inference.
+If you intentionally do not install the CLI, use an explicit npm package spec rather than bare `npx cmi`:
+
+```bash
+cd /absolute/path/to/your-project
+npx --yes --package=codex-memory-intelligence@0.14.1 cmi activate
+npx --yes --package=codex-memory-intelligence@0.14.1 cmi doctor
+```
+
+For the Codex adapter, activation safely manages bounded sections in root `AGENTS.md`, project-scoped `.codex/config.toml`, and `.gitignore`. Existing unrelated user content is preserved. Unmanaged conflicting CMI MCP configuration is rejected instead of overwritten.
+
+Activation initializes CMI when needed, refreshes project intelligence, and configures the supported agent integration. The generated Codex MCP block binds both its working directory and `CMI_PROJECT_ROOT` to the activated root. When a valid project-local CMI package exists, activation prefers that exact local package entrypoint; otherwise the managed registry fallback is pinned to the activating CMI version. Activation does not create facts/decisions/mistakes from inference.
+
+Because the managed Codex MCP configuration is root-bound, re-run activation after moving or cloning the project to a different path.
 
 Codex builds project instructions when a run/session starts, so start a new Codex run/session after first activation. Project-scoped Codex configuration also depends on the client trusting that project.
 
@@ -28,7 +44,7 @@ node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session close <
 node "./node_modules/codex-memory-intelligence/src/cli-entry.js" session closing <id|latest> --json
 ```
 
-The path above is a bounded local resolution: it identifies the installed `codex-memory-intelligence` package and runs its shipped CLI entrypoint with Node. A failed bare `cmi` command must not terminate this sequence. Do not replace it with `npx cmi` for lifecycle work: npm execution can select a cached or registry package rather than the activated project's exact dependency. If the exact local entrypoint is absent or unusable and MCP is unavailable, the lifecycle is unavailable and that limitation must be reported honestly.
+The path above is a bounded local resolution: it identifies the installed `codex-memory-intelligence` package and runs its shipped CLI entrypoint with Node. A failed bare `cmi` command must not terminate this sequence. Do not replace it with bare `npx cmi` for lifecycle work: npm execution would not identify the activated project's exact dependency. If the exact local entrypoint is absent or unusable and MCP is unavailable, the lifecycle is unavailable and that limitation must be reported honestly.
 
 `cmi status`, `cmi doctor`, and the ambient brief remain useful health/context evidence, but they are not substitutes for session start/observe/close. A `### CMI Intelligence` footer may say `CLEAN` only when `cmi session closing` or the equivalent MCP Closing Intelligence surface returned a real closed-session result with no material alerts. If lifecycle writes are unavailable or closing fails, report project/evidence health separately and say that Closing Intelligence was not finalized; do not synthesize a Closing-style footer from healthy status data.
 
