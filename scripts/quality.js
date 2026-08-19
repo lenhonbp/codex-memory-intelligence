@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MEMORY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, FINDINGS_SCHEMA_VERSION, MEMORY_LIFECYCLE_STATES, SESSION_OUTCOMES, FINDING_STATES, FINDING_SEVERITIES, EVIDENCE_TYPES, RECOMMENDATION_PRIORITIES, CONFIDENCE_LEVELS } from '../src/durable-contracts.js';
 import { EVALUATION_SCHEMA_VERSION, EVALUATION_SOURCE_KINDS, EVALUATION_PROTOCOL_KINDS, EVALUATION_REPOSITORY_CLASSES, EVALUATION_TASK_KINDS, EVALUATION_REVIEW_OUTCOMES, EVALUATION_REVIEW_PROVENANCE, EVALUATION_UTILITY_RATINGS, EVALUATION_RECONSTRUCTION_RATINGS, EVALUATION_FOLLOW_UP_OUTCOMES, EVALUATION_VERIFICATION_CHOICE_OUTCOMES, EVALUATION_HISTORY_RATINGS, EVALUATION_BUNDLE_SCHEMA_VERSION, EVALUATION_BUNDLE_KIND, EVALUATION_STRESS_SCENARIOS, EVALUATION_STRESS_OUTCOMES } from '../src/evaluation-contracts.js';
+import { validatePackageBins } from './package-bin-validation.js';
 
 const allowed = new Set(['.js','.md','.json','.yml','.yaml']);
 const ignored = new Set(['.git','node_modules']);
@@ -17,32 +18,6 @@ function walk(directory) {
       text.split(/\r?\n/).forEach((line, index) => { if (/[ \t]+$/.test(line)) errors.push(`${full}:${index + 1}: trailing whitespace`); });
       if (path.extname(entry.name) === '.json') try { JSON.parse(text); } catch (error) { errors.push(`${full}: invalid JSON (${error.message})`); }
     }
-  }
-}
-
-function validatePackageBins() {
-  let manifest;
-  try { manifest = JSON.parse(fs.readFileSync('package.json', 'utf8')); }
-  catch (error) { errors.push(`package.json: cannot validate bin entries (${error.message})`); return; }
-  const bins = manifest.bin && typeof manifest.bin === 'object' ? manifest.bin : {};
-  for (const [command, target] of Object.entries(bins)) {
-    if (typeof target !== 'string' || !target) {
-      errors.push(`package.json: bin[${command}] must be a non-empty relative path`);
-      continue;
-    }
-    const normalized = target.replaceAll('\\', '/');
-    if (normalized.startsWith('./')) errors.push(`package.json: bin[${command}] must not start with ./; npm rewrites it during publish`);
-    if (path.isAbsolute(target) || normalized === '..' || normalized.startsWith('../')) {
-      errors.push(`package.json: bin[${command}] must stay inside the package`);
-      continue;
-    }
-    const executablePath = path.resolve(target);
-    if (!fs.existsSync(executablePath) || !fs.statSync(executablePath).isFile()) {
-      errors.push(`package.json: bin[${command}] target does not exist: ${target}`);
-      continue;
-    }
-    const source = fs.readFileSync(executablePath, 'utf8');
-    if (!source.startsWith('#!/usr/bin/env node')) errors.push(`package.json: bin[${command}] target must start with #!/usr/bin/env node`);
   }
 }
 
@@ -95,7 +70,7 @@ function validateSchemaContracts() {
 }
 
 walk('.');
-validatePackageBins();
+errors.push(...validatePackageBins());
 validateSchemaContracts();
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
 console.log('Repository quality checks passed.');
