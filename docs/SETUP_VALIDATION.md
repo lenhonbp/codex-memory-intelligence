@@ -24,15 +24,29 @@ cmi activate
 cmi doctor
 ```
 
+## Project-local npm execution
+
+The npm package name is `codex-memory-intelligence`, while the executable used for activation is `cmi`. To run the locally installed package unambiguously through `npm exec`, identify the package explicitly and then name the executable after `--`:
+
+```bash
+cd /absolute/path/to/your-project
+npm install --save-dev --save-exact codex-memory-intelligence@0.14.1
+npm exec --package=codex-memory-intelligence@0.14.1 -- cmi --version
+npm exec --package=codex-memory-intelligence@0.14.1 -- cmi activate
+npm exec --package=codex-memory-intelligence@0.14.1 -- cmi doctor
+```
+
+The exact package spec matches the pinned local dependency. The explicit `--package` form avoids asking npm to infer a package from the binary name `cmi`.
+
 ## One-off npm execution
 
-The npm package name is `codex-memory-intelligence`; `cmi` is a binary exposed by that package. For one-off execution, the package is therefore identified explicitly:
+For one-off execution without an installed CLI, identify the package explicitly before the `cmi` command:
 
 ```bash
 npx --yes --package=codex-memory-intelligence@0.14.1 cmi activate
 ```
 
-This matches npm exec/npx semantics for running a command whose binary name differs from the package name and avoids treating bare `cmi` as the package specifier.
+The `--yes` option suppresses npm's install prompt when the exact package is not already available. Do not use bare `npx cmi` as the canonical CMI setup form.
 
 ## Activation side effects and boundaries
 
