@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { initProject, scanProject } from './core.js';
 import { CMI_LOCAL_ENTRYPOINT, findLocalCliEntrypoint, localCliInvocation } from './local-cli.js';
+import { VERSION } from './version.js';
 
 const exec = promisify(execFile);
 const MAX_INTEGRATION_BYTES = 1_000_000;
@@ -71,16 +72,19 @@ function tomlString(value) {
   return JSON.stringify(String(value));
 }
 
-function codexBlock(localCli) {
+function codexBlock(localCli, root) {
+  const resolvedRoot = path.resolve(root);
   const localMcp = localCli?.relativeMcpEntrypoint;
   const command = localMcp ? 'node' : 'npx';
-  const args = localMcp ? [localMcp.startsWith('.') ? localMcp : `./${localMcp}`] : ['--no', '--package=codex-memory-intelligence', 'cmi-mcp'];
+  const args = localMcp
+    ? [localMcp.startsWith('.') ? localMcp : `./${localMcp}`]
+    : ['--yes', `--package=codex-memory-intelligence@${VERSION}`, 'cmi-mcp'];
   return `${CODEX_BEGIN}
 [mcp_servers.cmi]
 command = ${tomlString(command)}
 args = [${args.map(tomlString).join(', ')}]
-cwd = "."
-env = { CMI_WRITE_ENABLED = "1" }
+cwd = ${tomlString(resolvedRoot)}
+env = { CMI_WRITE_ENABLED = "1", CMI_PROJECT_ROOT = ${tomlString(resolvedRoot)} }
 ${CODEX_END}`;
 }
 
@@ -200,7 +204,7 @@ async function planCodexConfig(root, localCli) {
   if (/^\s*\[mcp_servers\.cmi\]\s*$/m.test(text) && !text.includes(CODEX_BEGIN)) {
     throw new Error('.codex/config.toml already contains an unmanaged [mcp_servers.cmi] section. CMI will not overwrite it; reconcile that configuration explicitly first.');
   }
-  const next = normalizedManagedContent(existing, CODEX_BEGIN, CODEX_END, codexBlock(localCli), '.codex/config.toml');
+  const next = normalizedManagedContent(existing, CODEX_BEGIN, CODEX_END, codexBlock(localCli, root), '.codex/config.toml');
   return { path: '.codex/config.toml', existing, next, changed: next !== existing, managed: true, writeEnabled: true };
 }
 
@@ -264,7 +268,7 @@ export async function activateProject(root, options = {}) {
     scan: { files: scan.files, sourceFiles: scan.graph.sourceFiles, symbols: scan.graph.symbols, workspaces: scan.workspaces.count },
     usage: agent === 'codex' ? 'Start a new Codex run/session, then talk to Codex normally. Short prompts are sufficient; CMI workflow instructions are project-managed.' : 'Use CMI CLI/MCP from the external agent integration. Generic activation cannot force an arbitrary client to consume CMI.',
     limitations: agent === 'codex'
-      ? ['Codex builds its project instruction chain at run/session start, so first activation requires a new Codex run/session before the managed AGENTS.md block is guaranteed to apply.', 'Project-scoped .codex/config.toml is consumed only when the project is trusted by the client.', 'CMI cannot force a client that ignores project instructions or MCP to follow the integration contract.']
+      ? ['Codex builds its project instruction chain at run/session start, so first activation requires a new Codex run/session before the managed AGENTS.md block is guaranteed to apply.', 'Project-scoped .codex/config.toml is consumed only when the project is trusted by the client.', 'The managed Codex MCP configuration binds to the activated project root; rerun activation after moving or cloning the project to a different path.', 'CMI cannot force a client that ignores project instructions or MCP to follow the integration contract.']
       : ['Generic activation initializes/scans CMI but cannot configure every external AI client automatically.'],
     policy: 'Activation configures supported integration surfaces and generated intelligence. It does not promote inferred advice or memory candidates into durable project truth.',
   };
