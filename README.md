@@ -29,7 +29,7 @@ CMI intentionally treats **evidence as evidence**: a warning is not automaticall
 
 ## Get CMI
 
-**Current supported release: `v0.14.0` / `codex-memory-intelligence@0.14.0`.**
+**Current supported release: `v0.14.1` / `codex-memory-intelligence@0.14.1`.**
 
 For new installations, use the current npm package:
 
@@ -105,6 +105,8 @@ npx cmi activate
 ```
 
 Then start a **new Codex run/session** and use normal prompts. CMI manages a bounded `AGENTS.md` block and project-scoped Codex MCP configuration without overwriting unrelated user content.
+
+Activation binds the managed Codex MCP configuration to the current project root. Re-run `npx cmi activate` after moving or cloning the project to a different path.
 
 Activation configures project integration only. It does **not** install Skills into runtime Skill directories.
 
