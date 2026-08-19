@@ -79,12 +79,12 @@ If you want the CMI package pinned in the project itself, install it as an exact
 ```bash
 cd /absolute/path/to/your-project
 npm install --save-dev --save-exact codex-memory-intelligence@0.14.1
-npm exec -- cmi --version
-npm exec -- cmi activate
-npm exec -- cmi doctor
+npm exec --package=codex-memory-intelligence@0.14.1 -- cmi --version
+npm exec --package=codex-memory-intelligence@0.14.1 -- cmi activate
+npm exec --package=codex-memory-intelligence@0.14.1 -- cmi doctor
 ```
 
-With a valid project-local package, activation binds the Codex MCP integration to that exact local package entrypoint.
+With a valid project-local package, activation binds the Codex MCP integration to that exact local package entrypoint. The explicit `--package` form is intentional because the npm package is named `codex-memory-intelligence` while the executable is named `cmi`.
 
 ### Optional: one-off activation without installing the CLI
 
