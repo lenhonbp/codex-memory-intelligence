@@ -6,8 +6,8 @@ CMI applies security fixes to the **current supported release** unless a specifi
 
 | Version | Security support | Recommendation |
 |---|---|---|
-| `0.14.0` | Supported | Recommended for current installations |
-| `0.13.0` and earlier | Historical / unsupported | Upgrade to the latest release |
+| `0.14.1` | Supported | Recommended for current installations |
+| `0.14.0` and earlier | Historical / unsupported | Upgrade to the latest release |
 
 Historical releases are retained for provenance, reproducibility, and license-history purposes. Their continued availability does **not** mean they receive current security fixes or contain the latest hardening and compatibility improvements.
 
