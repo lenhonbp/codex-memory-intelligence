@@ -11,6 +11,7 @@ import { initProject, scanProject, status } from '../src/core.js';
 import { loadProjectGraph } from '../src/graph.js';
 import { getRepositoryBaseline } from '../src/advisor.js';
 import { startSession, closeSession } from '../src/session-intelligence.js';
+import { VERSION } from '../src/version.js';
 
 const exec = promisify(execFile);
 async function rootFixture() {
@@ -65,7 +66,7 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.match(config1, /CMI_PROJECT_ROOT = /);
   assert.match(config1, /command = "npx"/);
   assert.match(config1, /"--yes"/);
-  assert.match(config1, /--package=codex-memory-intelligence@0\.14\.0/);
+  assert.ok(config1.includes(`--package=codex-memory-intelligence@${VERSION}`));
   assert.match(agents1, /If the requested work is complete, complete the Change/i);
   assert.match(agents1, /keep the Change active/i);
   assert.doesNotMatch(agents1, /then complete the change record and finalize the session/i);
