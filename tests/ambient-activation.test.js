@@ -62,8 +62,10 @@ test('activation preserves user instructions and is byte-idempotent', async () =
   assert.match(agents1, /cmi-managed:start/);
   assert.match(config1, /\[mcp_servers\.cmi\]/);
   assert.match(config1, /CMI_WRITE_ENABLED = "1"/);
+  assert.match(config1, /CMI_PROJECT_ROOT = /);
   assert.match(config1, /command = "npx"/);
-  assert.match(config1, /--package=codex-memory-intelligence/);
+  assert.match(config1, /"--yes"/);
+  assert.match(config1, /--package=codex-memory-intelligence@0\.14\.0/);
   assert.match(agents1, /If the requested work is complete, complete the Change/i);
   assert.match(agents1, /keep the Change active/i);
   assert.doesNotMatch(agents1, /then complete the change record and finalize the session/i);
@@ -154,10 +156,12 @@ test('activation binds Codex MCP to the exact project-local CMI package', async 
   await activateProject(root, { agent: 'codex' });
   const config = await fs.readFile(path.join(root, '.codex', 'config.toml'), 'utf8');
   const agents = await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8');
+  const quotedRoot = JSON.stringify(path.resolve(root));
   assert.match(config, /command = "node"/);
   assert.match(config, /args = \["\.\/node_modules\/codex-memory-intelligence\/src\/mcp-entry\.js"\]/);
   assert.doesNotMatch(config, /npx|--package=codex-memory-intelligence/);
-  assert.doesNotMatch(config, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.ok(config.includes(`cwd = ${quotedRoot}`));
+  assert.ok(config.includes(`CMI_PROJECT_ROOT = ${quotedRoot}`));
   assert.match(agents, /node "\.\/node_modules\/codex-memory-intelligence\/src\/cli-entry\.js" ambient/);
 
   await activateProject(root, { agent: 'codex' });
