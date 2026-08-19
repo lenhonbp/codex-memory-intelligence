@@ -38,6 +38,10 @@ function startMcp(root, env = {}) {
     env: { ...process.env, CMI_PROJECT_ROOT: root, ...env },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+  const closed = new Promise((resolve) => {
+    child.once('close', () => resolve({ error: null }));
+    child.once('error', (error) => resolve({ error }));
+  });
   const messages = [];
   let buffer = '';
   const waiters = [];
@@ -70,7 +74,7 @@ function startMcp(root, env = {}) {
     waiter.resolve = (value) => { clearTimeout(timer); resolve(value); };
     waiters.push(waiter);
   });
-  return { child, send, waitFor };
+  return { child, closed, send, waitFor };
 }
 
 async function initialize(server) {
@@ -80,28 +84,38 @@ async function initialize(server) {
   return response;
 }
 
+async function waitForMcpClose(server, timeout) {
+  let timer;
+  const outcome = await Promise.race([
+    server.closed.then(({ error }) => ({ closed: true, error })),
+    new Promise((resolve) => { timer = setTimeout(() => resolve({ closed: false, error: null }), timeout); }),
+  ]);
+  clearTimeout(timer);
+  if (outcome.error) throw outcome.error;
+  return outcome.closed;
+}
+
 async function stopMcp(server) {
   const child = server.child;
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.removeListener('close', onClose);
-      child.removeListener('error', onError);
-      if (error) reject(error);
-      else resolve();
-    };
-    const onClose = () => finish();
-    const onError = (error) => finish(error);
-    const timer = setTimeout(() => finish(new Error('Timed out waiting for MCP child process to close.')), 5000);
-    child.once('close', onClose);
-    child.once('error', onError);
-    child.stdin.end();
-    child.kill();
-  });
+  if (child.exitCode === null && child.signalCode === null) child.stdin.end();
+  if (await waitForMcpClose(server, 5000)) return;
+  if (child.exitCode === null && child.signalCode === null) child.kill();
+  if (!await waitForMcpClose(server, 5000)) throw new Error('Timed out waiting for MCP child process to close after termination.');
+}
+
+const WINDOWS_CLEANUP_RETRY_CODES = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY']);
+async function removeTemporaryDirectory(root) {
+  const attempts = process.platform === 'win32' ? 6 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await fs.rm(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const retryable = process.platform === 'win32' && WINDOWS_CLEANUP_RETRY_CODES.has(error?.code) && attempt + 1 < attempts;
+      if (!retryable) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
 }
 
 async function exists(target) {
@@ -133,7 +147,7 @@ test('CLI rejects malformed numeric flags before fallback and preserves one JSON
 test('MCP session adapter fails closed before initialization and on hidden read-only write calls', async (t) => {
   const root = await project('cmi-mcp-fail-closed-');
   await scanProject(root);
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(root));
   const server = startMcp(root);
   try {
     server.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_work_session_report', arguments: {} } });
