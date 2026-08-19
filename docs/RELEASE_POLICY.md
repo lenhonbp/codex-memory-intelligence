@@ -18,12 +18,16 @@ The repository README and security policy should point new users to the latest s
 
 ## Current supported line
 
-As of 2026-08-13, the supported public release is:
+As of 2026-08-19, the supported public release is:
 
-- `v0.13.0`
-- npm: `codex-memory-intelligence@0.13.0`
+- `v0.14.0`
+- npm: `codex-memory-intelligence@0.14.0`
 
 Security fixes and compatibility guidance target the current supported release unless a specific exception is documented.
+
+The current v0.14.0 release includes the proactive repository-local consumer workflow, CMI Provenance Mark v1, exact-local consumer activation binding when valid local package evidence exists, bounded activation-managed ownership, published Portable Evidence v2/v3 compatibility policy, expanded real-repository engineering validation, and the documented Windows/CodeQL hardening.
+
+These release capabilities do not establish productivity improvement, universal agent effectiveness, authenticated provenance, or v1 readiness.
 
 ## Historical releases
 
@@ -70,8 +74,10 @@ Use these files for historical detail rather than expanding the current-product 
 
 - `CHANGELOG.md` — version changes;
 - `docs/RELEASE_STATUS.md` — current publication/evidence status;
-- `docs/V0_13_0_RELEASE.md` — canonical v0.13.0 publication record;
-- `docs/V0_12_1_RELEASE.md` — canonical v0.12.1 publication record;
+- `docs/V0_14_0_RELEASE.md` — canonical v0.14.0 publication record;
+- `docs/V0_14_0_RELEASE_CANDIDATE.md` — historical v0.14.0 pre-publication checkpoint;
+- `docs/V0_13_0_RELEASE.md` — canonical v0.13.0 historical publication record;
+- `docs/V0_12_1_RELEASE.md` — canonical v0.12.1 historical publication record;
 - `docs/EVALUATION.md` and `docs/field-evidence/` — bounded evaluation evidence;
 - `LICENSING.md` — license transition and commercial-license path;
 - `SECURITY.md` — current security-support policy.
