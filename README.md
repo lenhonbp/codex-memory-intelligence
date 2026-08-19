@@ -29,7 +29,7 @@ CMI intentionally treats **evidence as evidence**: a warning is not automaticall
 
 ## Get CMI
 
-**Current supported release: `v0.13.0` / `codex-memory-intelligence@0.13.0`.**
+**Current supported release: `v0.14.0` / `codex-memory-intelligence@0.14.0`.**
 
 For new installations, use the current npm package:
 
