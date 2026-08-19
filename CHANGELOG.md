@@ -4,14 +4,36 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-19
+
+Feature release for proactive repository-local agent workflow, portable consumer activation, bounded integration ownership, published Portable Evidence compatibility, and cross-platform/security hardening after `v0.13.0`.
+
 ### Added
 
 - Expanded the pinned real corpus from 3 to 7 repositories with Python, Go, Rust, and PHP engineering-validation probes.
 - Added the public [Deprecation Policy](docs/DEPRECATION_POLICY.md) for CLI, MCP, durable-state, and shipped Skill contracts.
+- Added the public [Portable Schema Compatibility](docs/PORTABLE_SCHEMA_COMPATIBILITY.md) policy and executable v2/v3 compatibility matrix; unsupported bundle schemas fail closed.
+- Added a proactive repository-local agent workflow contract covering constraint-first discovery, a live ephemeral checklist, autonomous progress through authorized phases, failure recovery, and evidence-separated reporting.
+- Added CMI Provenance Mark v1 for activated consumer workflows, backed by actual durable Session evidence when available and explicitly degraded when it is not.
+
+### Changed
+
+- Portable consumer activation now binds MCP and CLI integration to an exact local CMI package entrypoint when valid local package evidence exists, with bounded project-local fallback behavior instead of relying on a bare global `cmi` command.
+- Activation-managed integration boundaries are explicit: normal consumer tasks preserve the bounded CMI-managed blocks in `AGENTS.md`, `.codex/config.toml`, and `.gitignore`; those sections may change only for an explicitly requested CMI integration or activation change.
+- Portable Evidence compatibility preserves released v2 semantics, uses v3 manifest-provenance integrity coverage for current writers, and does not promote integrity checks into authenticity or authorship claims.
+
+### Fixed
+
+- Hardened the Windows MCP fail-closed portability path so the child process is fully terminated before temporary-directory cleanup, with bounded tolerance only for legitimate transient Windows lock timing.
+- Removed the package-bin validation check-then-use race while preserving package-boundary, existence, regular-file, and expected-node-shebang validation with deterministic errors.
 
 ### Evidence limits
 
-- Corpus inclusion does not establish productivity or product-value evidence, language-complete parser support, or universal polyglot support.
+- The real-repository corpus is engineering validation of CMI on pinned source trees; it does not establish target-application correctness, language-complete parsing, universal agent compatibility, or productivity improvement.
+- The Provenance Mark records CMI workflow participation and evidence provenance; it is not authorship, authentication, signing, certification, approval, or verification by CMI.
+- Portable Evidence digests establish integrity only; they do not authenticate a creator, prove source authorship, or turn a bundle into an authenticated backup.
+- The former high-severity CodeQL file-system-race finding is fixed on the release base, but CodeQL is a supporting scan and not complete security certification.
+- Existing product-value results remain descriptive-only, production Evidence Contract v2 remains simulation-only and unexposed, and this release does not establish v1 readiness.
 
 
 ## [0.13.0] - 2026-08-13
