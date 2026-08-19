@@ -4,6 +4,22 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-08-19
+
+Maintenance hotfix for Codex consumer activation after field reproduction on a real project.
+
+### Fixed
+
+- Codex registry fallback now bootstraps the exact activating CMI version non-interactively instead of using `npx --no`, so a consumer without a local or cached package can start the CMI MCP server.
+- Generated Codex MCP configuration now binds both `cwd` and `CMI_PROJECT_ROOT` to the activated repository root so durable Session and Change writes do not resolve against an unrelated client working directory such as `/`.
+- Activation records the root-bound managed-configuration portability limit and requires re-running activation after moving or cloning the project.
+
+### Evidence limits
+
+- Field reproduction established these two activation failures and the successful bounded workaround on one real Codex project; this hotfix does not establish universal Codex compatibility.
+- Absolute repository-root binding is managed integration state, not portable durable project truth.
+- This hotfix does not establish productivity improvement, complete security certification, or v1 readiness.
+
 ## [0.14.0] - 2026-08-19
 
 Feature release for proactive repository-local agent workflow, portable consumer activation, bounded integration ownership, published Portable Evidence compatibility, and cross-platform/security hardening after `v0.13.0`.
