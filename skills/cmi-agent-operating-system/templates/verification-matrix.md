@@ -19,6 +19,12 @@
 | External/live | Was the actual browser/device/integration/runtime observed? | `verified` / `failed` / `not-required` / `not-observed` |  |  |  |  |
 | Release readiness | Does the exact revision meet policy and approval requirements? | `ready` / `not-ready` / `not-assessed` |  |  |  |  |
 
+## Status semantics
+
+`needs-evidence` is a worklist/task status: use it when more evidence is required before deciding or proceeding. `not-enough-evidence` is a claim/evidence classification: use it when the evidence currently available is insufficient or unsafe for the claim. Neither value is a CMI `evidenceType` or provenance value.
+
+Positive example: a pending browser journey may keep the task at `needs-evidence`, while the claim “mobile verification passed” is `not-enough-evidence` until the device journey is observed. Negative example: do not put `needs-evidence` or `not-enough-evidence` in the provenance column, and do not turn a local `verified` status into CI, live or release status.
+
 ## Decision boundary
 
 - **Implementation:** `complete` / `partial` / `blocked`

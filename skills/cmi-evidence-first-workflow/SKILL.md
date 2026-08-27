@@ -36,11 +36,27 @@ For every important claim, choose one primary label:
 
 An evidence address is one of: file/line, commit/tag, actual Session/Change ID, URL, command output, screenshot/frame, runtime record or artifact hash. A local content hash establishes integrity of those bytes only; it is not a cryptographic signature without a key/signing contract.
 
+### Agent OS → CMI-native representation
+
+Keep the Agent OS classification layer distinct from the CMI-native serialized/provenance layer. Use the following representation only through an existing CMI surface and only when its condition is met:
+
+| Agent OS label | CMI-native representation | Condition |
+|---|---|---|
+| `observation` | `observed` | Directly observed in the relevant source, runtime, command or artifact. |
+| `inference` | `inferred` | Remains a hypothesis; it is not a reviewed fact without review evidence. |
+| `fact` | `reviewed` | Only after authoritative review is evidenced. |
+| `reported-verification` | provenance `reported` | Preserve supplied provenance; never relabel as `observed-command`. |
+| `observed-command` | observed evidence plus command metadata | Retain exact command, exit code, output/artifact address and observed time. |
+| `not-enough-evidence` | No CMI `evidenceType`; claim/evidence state or gap | Do not send it as an evidence type; record the missing evidence and next probe. |
+| `needs-evidence` | Worklist/task status | Use for work awaiting evidence; it is not evidence type or provenance. |
+
+Positive example: a command output directly observed at a known revision can be represented as `observed` with command metadata. Negative example: a user-reported test result remains provenance `reported`, and a claim without an evidence address remains `not-enough-evidence`; neither may be serialized as `observed-command` or a CMI `evidenceType` without the required evidence.
+
 ## 5. Required workflow
 
 ### Establish baseline
 
-Before a substantive edit or conclusion, record the current revision, source of truth, environment, target context, reproduction path/journey and relevant command/runtime state. Never use an after-state screenshot as the baseline.
+Before a substantive edit or conclusion, record the current revision, source of truth, environment, target context, reproduction path/journey and relevant command/runtime state. If the required evidence is absent, keep the work item at `needs-evidence` and classify the unsupported claim as `not-enough-evidence`. Never use an after-state screenshot as the baseline.
 
 ### Build the ledger
 

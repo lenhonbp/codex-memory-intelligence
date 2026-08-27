@@ -27,6 +27,26 @@ The contract does **not** create a native Skill runtime, registry, discovery eng
 
 Every important claim must have an **evidence address**: file/line, commit, Session/Change ID, screenshot/frame, URL, command output or artifact hash. A claim without an address is a hypothesis or an explicit evidence gap, not an established fact.
 
+### 2.1. Agent OS → CMI-native vocabulary mapping
+
+Agent OS classification and CMI-native serialization are two distinct layers. The mapping below describes how an existing CMI surface may represent a reviewed value or provenance; it does not create a serializer, schema, lifecycle engine or new evidence type.
+
+| Agent OS label | CMI-native representation | Condition |
+|---|---|---|
+| `observation` | `observed` | Only when the data was directly observed in the relevant source, runtime, command or artifact. |
+| `inference` | `inferred` | Always remains an inference; it must not be serialized or presented as `fact` without review evidence. |
+| `fact` | `reviewed` | Only after review against an authoritative source is itself evidenced. An unreviewed fact candidate is not `reviewed`. |
+| `reported-verification` | provenance `reported` | Preserve that the result was supplied by a user or another agent; do not call it an observed command. |
+| `observed-command` | observed evidence plus command metadata | Record the exact command, exit code, output/artifact address and observed time. |
+| `not-enough-evidence` | No CMI `evidenceType`; claim/evidence state or evidence gap | It describes insufficiency of current evidence, not a serialized evidence type. Record the missing evidence and next probe. |
+| `needs-evidence` | Worklist/task status | It means the task or decision needs more evidence before proceeding; it is not an evidence type or provenance value. |
+
+Positive example: a command output directly read at a known revision may be classified as Agent OS `observation` and represented on an existing CMI surface as `observed`, with the command metadata retained. A reviewed authoritative document may support Agent OS `fact` and only then be represented as `reviewed`.
+
+Negative example: a user-reported test result must remain `reported-verification` with provenance `reported`; it must not be serialized as `observed-command`. A claim with no evidence address must remain `not-enough-evidence` or an explicitly labeled `inference`; it must not be sent as a CMI `evidenceType`. A work item waiting for a browser run may be `needs-evidence`, but that status must not be recorded as evidence provenance.
+
+The Agent OS layer must not simply replace every Agent OS term with a CMI enum. Use the CMI-native representation only through an existing CMI surface and only when its condition is met. No new CMI serializer or integration is introduced by this contract.
+
 ## 3. Core operating loop
 
 ```text
@@ -44,7 +64,7 @@ Orient
 | Phase | Required behavior | Exit evidence | Failure boundary |
 |---|---|---|---|
 | **Orient** | State goal, actor, scope, non-goals, constraints, source of truth, acceptance criteria and authority. | A brief another agent can use to identify done/not-done. | Ask when a material product/architecture choice, authority or external side effect is unresolved. |
-| **Observe** | Inspect current repository/runtime/UI/build state; establish baseline and reproduction/journey. | Revision, environment, path/journey, command or capture. | Missing or unsafe evidence becomes `needs-evidence`, not an invented baseline. |
+| **Observe** | Inspect current repository/runtime/UI/build state; establish baseline and reproduction/journey. | Revision, environment, path/journey, command or capture. | Missing or unsafe evidence leaves the work item at `needs-evidence`; do not invent a baseline or serialize the gap as a CMI evidence type. |
 | **Capture Evidence** | Separate facts, observations, inferences, recommendations and verification provenance. | Evidence ledger with type, address, confidence and time. | Conflicting evidence remains competing hypotheses. |
 | **Diagnose** | Separate symptom from cause candidates; inspect ownership boundary; choose the smallest decisive check. | Finding with hypothesis, decisive check and confidence. | Unproved root cause stays uncertain and may be deferred. |
 | **Prioritize** | Order by impact, confidence, safety risk, effort, reversibility and dependency. | Selected, deferred, rejected or needs-evidence worklist with rationale. | Severity or historical priority does not authorize work. |

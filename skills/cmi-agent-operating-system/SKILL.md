@@ -56,7 +56,7 @@ Before substantive mutation, gather the following inputs or mark the missing ite
 | Verification plan | Focused, repository, CI, external/live and release checks to run or mark unavailable. |
 | Handoff target | Recipient, active Session/Change state, findings, blockers and next actions. |
 
-If an input is unavailable, use `needs-evidence`, `not-observed`, `not-enough-evidence`, `partial` or `blocked` as appropriate. Do not infer a missing authority, runtime result or acceptance criterion.
+If an input is unavailable, use `needs-evidence` for the task/worklist status and use `not-enough-evidence` for a claim/evidence classification. Use `not-observed`, `partial` or `blocked` for the applicable verification or implementation state. Do not infer a missing authority, runtime result or acceptance criterion.
 
 ## 6. Authority and authorization boundary
 
@@ -90,6 +90,26 @@ Every important claim about implementation, quality, security, performance, veri
 | `not-enough-evidence` | Required evidence is absent or unsafe to infer. | Report the gap and next evidence needed. |
 
 A content hash supports integrity of identified bytes; it is not an agent signature or authenticity claim without a signing/key contract.
+
+### 8.1. Agent OS → CMI-native vocabulary mapping
+
+Agent OS classification and CMI-native serialization are separate layers. The mapping below only describes representation on an existing CMI surface; it does not create a serializer, schema, lifecycle engine or new evidence type.
+
+| Agent OS label | CMI-native representation | Condition |
+|---|---|---|
+| `observation` | `observed` | Only when the data was directly observed in the relevant source, runtime, command or artifact. |
+| `inference` | `inferred` | Always remains a hypothesis/inference; never present it as `fact` without review evidence. |
+| `fact` | `reviewed` | Only after review against an authoritative source is itself evidenced. An unreviewed fact candidate is not `reviewed`. |
+| `reported-verification` | provenance `reported` | Preserve that the result was supplied by a user or another agent; never relabel it as an observed command. |
+| `observed-command` | observed evidence plus command metadata | Record the exact command, exit code, output/artifact address and observed time. |
+| `not-enough-evidence` | No CMI `evidenceType`; claim/evidence state or evidence gap | It describes insufficiency of current evidence. Record the missing evidence and next probe. |
+| `needs-evidence` | Worklist/task status | It means the task or decision needs more evidence before proceeding. It is not an evidence type or provenance value. |
+
+Positive example: a command output directly read at a known revision may be classified as Agent OS `observation` and represented on an existing CMI surface as `observed`, with command metadata retained. A reviewed authoritative document may support Agent OS `fact` and only then be represented as `reviewed`.
+
+Negative example: a user-reported test result remains `reported-verification` with provenance `reported`; it must not be serialized as `observed-command`. A claim without an evidence address remains `not-enough-evidence` or an explicitly labeled `inference`; it must not be sent as a CMI `evidenceType`. A work item waiting for a browser run may be `needs-evidence`, but that task status must not be recorded as evidence provenance.
+
+Do not replace every Agent OS term with a CMI enum. Use a CMI-native representation only through an existing CMI surface and only when its condition is met.
 
 ## 9. Phase-by-phase rules
 

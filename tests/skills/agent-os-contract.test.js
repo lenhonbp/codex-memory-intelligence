@@ -104,3 +104,90 @@ test('supporting templates preserve separate verification and authorization stat
   assert.match(matrix, /External action.*not-run/i);
   assert.match(handoff, /Session closure does not complete a partial Change/i);
 });
+
+// These helpers model the adapter contract only. They are not CMI runtime integration or serializer implementations.
+function mapAgentOsEvidence({ label, address, authoritativeReview = false, command }) {
+  if (label === 'needs-evidence') return { taskStatus: 'needs-evidence' };
+  if (label === 'not-enough-evidence') return { claimState: 'not-enough-evidence' };
+  if (!address) return { claimState: 'not-enough-evidence' };
+  if (label === 'reported-verification') return { provenance: 'reported' };
+  if (label === 'observed-command') return {
+    evidenceType: 'observed',
+    provenance: 'observed-command',
+    command,
+  };
+  if (label === 'fact') return authoritativeReview
+    ? { evidenceType: 'reviewed' }
+    : { claimState: 'not-enough-evidence' };
+  if (label === 'observation') return { evidenceType: 'observed' };
+  if (label === 'inference') return { evidenceType: 'inferred' };
+  return { claimState: 'not-enough-evidence' };
+}
+
+function closeSessionWithoutCompletingChange({ sessionStatus, changeStatus }) {
+  return { sessionStatus: 'closed', changeStatus };
+}
+
+function keepVerificationLevelsIndependent(matrix) {
+  return {
+    focused: matrix.focused ?? 'not-run',
+    repository: matrix.repository ?? 'not-run',
+    CI: matrix.CI ?? 'not-observed',
+    'external/live': matrix['external/live'] ?? 'not-observed',
+    release: matrix.release ?? 'not-assessed',
+  };
+}
+
+function authorizeExternalAction({ explicitAuthorization = false }) {
+  return explicitAuthorization;
+}
+
+test('adapter contract maps Agent OS labels without collapsing layers', () => {
+  assert.deepEqual(mapAgentOsEvidence({ label: 'observation', address: 'file.md:10' }), { evidenceType: 'observed' });
+  assert.deepEqual(mapAgentOsEvidence({ label: 'inference', address: 'finding:F-1' }), { evidenceType: 'inferred' });
+  assert.deepEqual(mapAgentOsEvidence({ label: 'fact', address: 'review.md:4' }), { claimState: 'not-enough-evidence' });
+  assert.deepEqual(mapAgentOsEvidence({ label: 'fact', address: 'review.md:4', authoritativeReview: true }), { evidenceType: 'reviewed' });
+  assert.deepEqual(mapAgentOsEvidence({ label: 'needs-evidence' }), { taskStatus: 'needs-evidence' });
+  assert.deepEqual(mapAgentOsEvidence({ label: 'not-enough-evidence' }), { claimState: 'not-enough-evidence' });
+  assert.equal(mapAgentOsEvidence({ label: 'not-enough-evidence' }).evidenceType, undefined);
+  assert.equal(mapAgentOsEvidence({ label: 'needs-evidence' }).provenance, undefined);
+});
+
+test('reported verification stays reported and observed commands retain metadata', () => {
+  assert.deepEqual(mapAgentOsEvidence({ label: 'reported-verification', address: 'handoff.md:20' }), { provenance: 'reported' });
+  assert.equal(mapAgentOsEvidence({ label: 'reported-verification', address: 'handoff.md:20' }).evidenceType, undefined);
+  const observed = mapAgentOsEvidence({
+    label: 'observed-command',
+    address: 'terminal:run-1',
+    command: { command: 'npm test', exitCode: 0, observedAt: '2026-08-27T00:00:00Z' },
+  });
+  assert.equal(observed.evidenceType, 'observed');
+  assert.equal(observed.provenance, 'observed-command');
+  assert.deepEqual(observed.command, { command: 'npm test', exitCode: 0, observedAt: '2026-08-27T00:00:00Z' });
+});
+
+test('missing evidence address is a gap, not reviewed or observed evidence', () => {
+  const missing = mapAgentOsEvidence({ label: 'observation' });
+  assert.deepEqual(missing, { claimState: 'not-enough-evidence' });
+  assert.equal(missing.evidenceType, undefined);
+  assert.deepEqual(mapAgentOsEvidence({ label: 'fact', address: '' }), { claimState: 'not-enough-evidence' });
+});
+
+test('Session close preserves an active Change and verification levels stay independent', () => {
+  assert.deepEqual(closeSessionWithoutCompletingChange({ sessionStatus: 'open', changeStatus: 'active' }), {
+    sessionStatus: 'closed',
+    changeStatus: 'active',
+  });
+  const levels = keepVerificationLevelsIndependent({ focused: 'verified', repository: 'verified' });
+  assert.equal(levels.focused, 'verified');
+  assert.equal(levels.repository, 'verified');
+  assert.equal(levels.CI, 'not-observed');
+  assert.equal(levels['external/live'], 'not-observed');
+  assert.equal(levels.release, 'not-assessed');
+});
+
+test('recommendation, severity, package and local test do not authorize external action', () => {
+  assert.equal(authorizeExternalAction({}), false);
+  assert.equal(authorizeExternalAction({ explicitAuthorization: false }), false);
+  assert.equal(authorizeExternalAction({ explicitAuthorization: true }), true);
+});
