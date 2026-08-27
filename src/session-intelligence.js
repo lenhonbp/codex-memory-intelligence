@@ -15,6 +15,7 @@ import { looksSensitive } from './sensitive.js';
 import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
 import { safeEnsureMemoryDir } from './storage.js';
 import { SESSION_OUTCOMES, FINDING_STATES, validateSessionRecordContract, validateFindingRegistryContract } from './durable-contracts.js';
+import { assessCompletionEvidence } from './completion-evidence.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -458,11 +459,12 @@ function detectFindings({ record, current, relatedActive, concurrentActive, comp
 
   for (const change of completedDetails) {
     const completion = change.completion || {};
-    const verifications = completion.verifications || [];
-    if (['succeeded', 'partial'].includes(completion.outcome) && verifications.length === 0) findings.push(makeFinding('verification-missing', 'high', 'Related completed change has no verification evidence', `Change "${change.goal}" was associated with this session and completed as ${completion.outcome} without recorded verification evidence.`, { target: change.id, evidence: [`change:${change.id}`], sessionRelevance: 'related' }));
+    const assessment = assessCompletionEvidence(change);
+    const verifications = assessment.verification.records;
+    if (['succeeded', 'partial'].includes(completion.outcome) && assessment.verification.state === 'missing') findings.push(makeFinding('verification-missing', 'high', 'Related completed change has no verification evidence', `Change "${change.goal}" was associated with this session and completed as ${completion.outcome} without recorded verification evidence.`, { target: change.id, evidence: [`change:${change.id}`], sessionRelevance: 'related' }));
     for (const verification of verifications) {
-      if (verification.status === 'failed') findings.push(makeFinding('verification-failed', 'critical', `Verification failed: ${verification.name}`, `Related change "${change.goal}" records a failed verification.`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
-      else if (['skipped', 'unknown'].includes(verification.status)) findings.push(makeFinding('verification-incomplete', 'medium', `Verification incomplete: ${verification.name}`, `Verification is recorded as ${verification.status} for related change "${change.goal}".`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
+      if (verification.status === 'failed' || verification.contradictory) findings.push(makeFinding('verification-failed', 'critical', `Verification failed: ${verification.name}`, `Related change "${change.goal}" records a failed verification.`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
+      else if (verification.incomplete) findings.push(makeFinding('verification-incomplete', 'medium', `Verification incomplete: ${verification.name}`, `Verification is recorded as ${verification.status} for related change "${change.goal}".`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
     }
     const comparison = completion.finalObservation?.comparison;
     if ((comparison?.missedByPrediction || []).length) findings.push(makeFinding('prediction-gap', 'medium', 'Observed related work escaped predicted scope', `${comparison.missedByPrediction.length} changed path(s) were not predicted for related change "${change.goal}".`, { target: change.id, evidence: [`change:${change.id}`, 'expected-vs-actual'], relatedFiles: comparison.missedByPrediction, sessionRelevance: 'related' }));

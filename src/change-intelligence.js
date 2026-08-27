@@ -10,6 +10,7 @@ import { tokenize } from './search.js';
 import { looksSensitive } from './sensitive.js';
 import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
 import { safeEnsureMemoryDir } from './storage.js';
+import { assessCompletionEvidence } from './completion-evidence.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -66,6 +67,7 @@ function recordPath(root, id) { return path.join(changesDirectory(root), `${id}.
 function lockPath(root, id) { return path.join(changesDirectory(root), `${id}.lock`); }
 function summaryOf(record) {
   const evidence = record.completion || record.progress || null;
+  const completionEvidence = assessCompletionEvidence(record);
   const latestObservation = record.observations?.at(-1);
   return {
     id: record.id,
@@ -80,6 +82,7 @@ function summaryOf(record) {
     observedChangedFiles: latestObservation?.observedChangedFiles?.length
       ?? evidence?.finalObservation?.observedChangedFiles?.length
       ?? 0,
+    completionEvidence,
   };
 }
 
@@ -483,8 +486,12 @@ export async function listChangeRecords(root, options = {}) {
   return { records: selected.map(summaryOf), invalidRecords, truncated, policy: 'Change records are durable local evidence. They are not automatically converted into project facts, decisions, or lessons.' };
 }
 
+function withCompletionEvidence(record) {
+  return { ...record, completionEvidence: assessCompletionEvidence(record) };
+}
+
 export async function getChangeRecord(root, selector) {
-  return resolveRecord(root, selector);
+  return withCompletionEvidence(await resolveRecord(root, selector));
 }
 
 export async function buildChangeInsights(root, query = '', options = {}) {
@@ -699,7 +706,7 @@ export async function completeChangeRecord(root, selector, options = {}) {
       policy: 'Partial progress is preserved on the active Change. Complete it only after the requested work is actually finished; progress does not write project memory automatically.',
     };
     await writeRecord(root, record);
-    return record;
+    return withCompletionEvidence(record);
   }
   record.status = 'completed';
   record.progress = null;
@@ -715,10 +722,9 @@ export async function completeChangeRecord(root, selector, options = {}) {
     learningCandidates,
     policy: 'Learning candidates require review. Completion never writes project memory automatically.',
   };
-  await writeRecord(root, record);
-  return record;
+    await writeRecord(root, record);
+  return withCompletionEvidence(record);
 }
-
 export function formatChangeRecord(record) {
   const evidence = record.completion || record.progress || null;
   const latest = record.observations?.at(-1) || evidence?.finalObservation;
@@ -726,7 +732,10 @@ export function formatChangeRecord(record) {
   const missed = latest?.comparison?.missedByPrediction || [];
   const verification = evidence?.verifications || [];
   const outcome = record.status === 'active' && record.progress ? `${evidence.outcome} (paused; Change remains active)` : evidence?.outcome || 'not completed';
-  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${outcome}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
+  const completionEvidence = assessCompletionEvidence(record);
+  const reasons = completionEvidence.reasons.join(' ') || 'None recorded.';
+  const gaps = completionEvidence.gaps.join(' ') || 'None recorded.';
+  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${outcome}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Completion evidence assessment\n- Completion claim: ${completionEvidence.claimState}\n- Implementation evidence: ${completionEvidence.implementation.state}\n- Verification evidence: ${completionEvidence.verification.state}\n- Reasons: ${reasons}\n- Gaps: ${gaps}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
 }
 
 export function formatChangeInsights(result) {

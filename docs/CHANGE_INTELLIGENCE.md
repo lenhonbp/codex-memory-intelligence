@@ -109,6 +109,12 @@ cmi change history "payment retry"
 
 Every command also supports `--json` where applicable.
 
+### Completion-evidence assessment
+
+CMI derives a bounded completion-evidence assessment from the Change record at read/format time. It distinguishes the actor's reported outcome from what the attached evidence supports: observed changed paths are implementation evidence, while verification is classified as missing, reported, observed, failed, or incomplete. A successful Change with only reported verification remains `unverified`; a valid passing `observed-command` with `exitCode=0` can make the bounded Change claim `supported`; and a failed verification contradicts a successful claim. For observed commands, a non-zero exit code conflicts with `status=passed`, while `exitCode=0` conflicts with `status=failed`; either contradiction is classified conservatively as failed evidence and cannot support a successful claim. This derived view does not execute commands, certify browser/device/live/release behavior, or change the durable Change schema.
+
+The structured Change read model exposes this additive view as `completionEvidence`, and human `cmi change show` output renders the claim state, verification state, reasons, and gaps. Existing records, including sparse legacy records, remain readable and are assessed conservatively.
+
 ## MCP workflow
 
 Read-only historical tools are always available:
