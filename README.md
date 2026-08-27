@@ -21,11 +21,12 @@ CMI stores human-reviewable project intelligence under `.codex-memory/` and does
 - **Change Intelligence** — BEFORE → DURING → AFTER records that preserve predicted scope, observed changes, outcomes, and supplied verification evidence.
 - **Session Continuation Intelligence** — durable accomplishments, blockers, findings, next actions, and handoff state across agent sessions.
 - **Ambient + Closing Intelligence** — agent-facing project guidance and bounded end-of-session signals when the runtime follows the integration contract.
-- **Portable Agent Skills** — eight open-format Skill artifacts shipped under `skills/`.
+- **Portable Agent Skills** — eleven open-format Skill artifacts shipped under `skills/`, including the incremental Agent OS, evidence-first and release-readiness adapters.
+- **Agent Operating System contract** — evidence-bounded Orient → Handoff workflow documented in [`docs/AGENT_OS.md`](docs/AGENT_OS.md); it composes existing CMI surfaces and does not add a native Skill loader.
 - **MCP integration** — read-only by default, with explicit opt-in for durable project writes.
 - **Operational Trust** — additive `cmi-trust` pre-share checks for generated-state policy and obvious accidental credentials.
 
-CMI intentionally treats **evidence as evidence**: a warning is not automatically a product blocker, historical correlation is not causality, and inference is never automatically promoted into durable project truth.
+CMI intentionally treats **evidence as evidence**: a warning is not automatically a product blocker, historical correlation is not causality, and inference is never automatically promoted into durable project truth. The Agent OS layer preserves this boundary and does not infer CI, live, mobile or release readiness from local/static evidence.
 
 ## Get CMI
 
@@ -163,7 +164,7 @@ The activation command is root-relative to the current working directory. Re-run
 
 Activation configures project integration only. It does **not** install Skills into runtime Skill directories.
 
-See [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md), [Closing Intelligence](docs/CLOSING_INTELLIGENCE.md), and [Skills](docs/SKILLS.md).
+See [Ambient Agent Intelligence](docs/AMBIENT_AGENT_INTELLIGENCE.md), [Closing Intelligence](docs/CLOSING_INTELLIGENCE.md), [Skills](docs/SKILLS.md), [Agent OS Contract](docs/AGENT_OS.md), and [Agent OS Evaluation](docs/AGENT_OS_EVALUATION.md).
 
 ### Other coding agents
 
@@ -226,7 +227,7 @@ See [Session Continuation Intelligence](docs/SESSION_INTELLIGENCE.md).
 
 ## Agent Skills
 
-The npm package ships all eight planned open-format Skill artifacts:
+The npm package ships the currently supported open-format Skill artifacts under `skills/`, including the Agent OS, evidence-first and release-readiness adapters:
 
 ```text
 skills/<skill-name>/SKILL.md

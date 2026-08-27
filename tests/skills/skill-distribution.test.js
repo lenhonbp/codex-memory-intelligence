@@ -15,13 +15,16 @@ const PLANNED = [
   'cmi-work-session',
   'cmi-change-loop',
   'cmi-activate',
+  'cmi-agent-operating-system',
+  'cmi-evidence-first-workflow',
+  'cmi-release-readiness',
 ];
 
 async function read(rel) {
   return (await fs.readFile(path.join(repositoryRoot, rel), 'utf8')).replace(/\r\n/g, '\n');
 }
 
-test('all eight planned Skill directories exist with SKILL.md', async () => {
+test('all supported Skill directories exist with SKILL.md', async () => {
   for (const name of PLANNED) {
     const skillPath = path.join(repositoryRoot, 'skills', name, 'SKILL.md');
     const stat = await fs.stat(skillPath);
@@ -62,9 +65,11 @@ test('activation skill contract still forbids treating activate as Skill install
   assert.match(skill, /activate --agent codex/);
 });
 
-test('no ninth planned Skill is required in inventory', async () => {
-  assert.equal(PLANNED.length, 8);
+test('Agent OS Skill tranche is explicitly documented without a native loader', async () => {
+  assert.equal(PLANNED.length, 11);
   const doc = await read('docs/SKILLS.md');
-  assert.match(doc, /All \*\*eight\*\*|all eight|8/i);
-  assert.match(doc, /None remaining from the original planned Skill inventory/i);
+  assert.match(doc, /All \*\*eleven\*\*|all eleven|11/i);
+  assert.match(doc, /Agent OS tranche/i);
+  assert.match(doc, /no native Skill loader/i);
+  assert.match(doc, /Additional domain Skills .* remain unimplemented/i);
 });
