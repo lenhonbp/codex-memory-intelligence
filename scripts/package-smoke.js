@@ -42,8 +42,18 @@ const requiredSkillNames = [
   'cmi-work-session',
   'cmi-change-loop',
   'cmi-activate',
+  'cmi-agent-operating-system',
+  'cmi-evidence-first-workflow',
+  'cmi-release-readiness',
 ];
 const requiredSkillFiles = requiredSkillNames.map((name) => `skills/${name}/SKILL.md`);
+const requiredAgentOsTemplateFiles = [
+  'skills/cmi-agent-operating-system/templates/orientation-checklist.md',
+  'skills/cmi-agent-operating-system/templates/evidence-ledger.md',
+  'skills/cmi-agent-operating-system/templates/verification-matrix.md',
+  'skills/cmi-agent-operating-system/templates/truthful-handoff.md',
+];
+const requiredSkillArtifacts = [...requiredSkillFiles, ...requiredAgentOsTemplateFiles];
 const requiredFiles = [
   'package.json',
   'README.md',
@@ -55,7 +65,7 @@ const requiredFiles = [
   'src/portable-evidence.js',
   'src/provenance.js',
   'schemas/config.schema.json',
-  ...requiredSkillFiles,
+  ...requiredSkillArtifacts,
 ];
 const forbiddenPattern = /(^|\/)(?:\.codex-memory|\.empirical-studies|\.git|node_modules)(?:\/|$)|(?:\.tgz$|(?:^|\/)\.env(?:\.|$))/i;
 const packagedFiles = new Set((packed[0].files || []).map((entry) => entry.path));
@@ -67,8 +77,7 @@ const forbiddenFiles = [...packagedFiles].filter((file) => path.isAbsolute(file)
 if (forbiddenFiles.length) throw new Error(`Packed candidate contains forbidden files: ${forbiddenFiles.join(', ')}`);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skillSourceHashes = new Map();
-for (const name of requiredSkillNames) {
-  const rel = `skills/${name}/SKILL.md`;
+for (const rel of requiredSkillArtifacts) {
   const sourcePath = path.join(repositoryRoot, rel);
   if (!fs.existsSync(sourcePath)) throw new Error(`Repository is missing Skill artifact: ${rel}`);
   skillSourceHashes.set(rel, fs.readFileSync(sourcePath));

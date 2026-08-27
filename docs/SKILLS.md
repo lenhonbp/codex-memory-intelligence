@@ -4,7 +4,7 @@
 
 This repository currently has **no native Skill runtime or loader**.
 
-Mission 1 adds a **repository-level reusable Skill contract PoC** with the following open-format Skill artifacts. All **eight** planned Skills are implemented and packaged:
+Mission 1 adds a **repository-level reusable Skill contract PoC** with the following open-format Skill artifacts. The original eight CMI lifecycle Skills remain implemented and packaged; the incremental Agent OS tranche adds three portable adapters:
 
 - `skills/cmi-ambient-brief/SKILL.md`
 - `skills/cmi-continue/SKILL.md`
@@ -14,6 +14,9 @@ Mission 1 adds a **repository-level reusable Skill contract PoC** with the follo
 - `skills/cmi-work-session/SKILL.md`
 - `skills/cmi-change-loop/SKILL.md`
 - `skills/cmi-activate/SKILL.md`
+- `skills/cmi-agent-operating-system/SKILL.md`
+- `skills/cmi-evidence-first-workflow/SKILL.md`
+- `skills/cmi-release-readiness/SKILL.md`
 
 These Skills are structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes them automatically.
 
@@ -29,7 +32,7 @@ CMI activation installs Skills
 CMI owns Skill discovery
 ```
 
-- All **eight** planned Skill artifacts are **implemented** and **npm-distributed** under `package.json` `files` → `skills/`.
+- All **eleven** currently supported Skill artifacts are **implemented** and **npm-distributed** under `package.json` `files` → `skills/`.
 - **npm installation does not activate Skills** and does not install them into agent runtime directories.
 - CMI activation still does **not** automatically discover or apply Skills.
 - **CMI has no native Skill loader**, Skill registry, discovery engine, or Skill execution subsystem.
@@ -61,6 +64,16 @@ A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**
 | **Package distribution** | npm ships portable `skills/` artifacts. Runtime install/discovery remains external; final Codex S0–S7 matrix was runtime-blocked and not accepted as PASS. |
 
 ## Implemented Skills
+
+### Agent OS tranche
+
+The incremental Agent OS tranche adds three portable thin adapters:
+
+- `cmi-agent-operating-system` applies the cross-domain Orient → Handoff contract and preserves CMI lifecycle, provenance, write-mode and authorization boundaries.
+- `cmi-evidence-first-workflow` maintains typed evidence addresses and verification provenance without introducing a parallel evidence or memory system.
+- `cmi-release-readiness` prepares a release assessment for an exact revision while keeping prepare, verify, approve and publish as separate gates.
+
+These three artifacts are not a native loader, do not activate automatically, and do not promote provisional or domain-specific patterns into universal policy. See [`docs/AGENT_OS.md`](AGENT_OS.md) for the normative contract. The core Skill's minimal open-format templates are [`orientation-checklist.md`](../skills/cmi-agent-operating-system/templates/orientation-checklist.md), [`evidence-ledger.md`](../skills/cmi-agent-operating-system/templates/evidence-ledger.md), [`verification-matrix.md`](../skills/cmi-agent-operating-system/templates/verification-matrix.md) and [`truthful-handoff.md`](../skills/cmi-agent-operating-system/templates/truthful-handoff.md). They are working artifacts, not durable CMI state or runtime components.
 
 ### `cmi-ambient-brief`
 
@@ -178,13 +191,15 @@ See `skills/cmi-change-loop/SKILL.md` for the full contract.
 
 See `skills/cmi-activate/SKILL.md` for the full contract.
 
-## Planned Skill inventory implemented
+## Supported Skill inventory
 
-All **eight** original planned Skill artifacts are implemented and **packaged** under npm `files` → `skills/`:
+All **eleven** currently supported Skill artifacts are implemented and packaged under npm `files` → `skills/`:
 
-`cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`.
+`cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`, `cmi-agent-operating-system`, `cmi-evidence-first-workflow`, `cmi-release-readiness`.
 
 They remain open-format thin adapters: **no** native Skill loader, **no** automatic Skill discovery, **no** auto-activation on npm install, and **no** Skill installation by `cmi activate`.
+
+The Agent OS artifacts are policy and domain adapters only. They do not reimplement CMI memory, graph, evidence lifecycle, Session, Change or trust behavior. Additional game, playtest, UX, browser/mobile and performance Skills remain future candidates because the current corpus does not provide enough independent evidence for premature promotion.
 
 ## Non-goals
 
@@ -204,6 +219,6 @@ Explicitly excluded:
 
 ## Future candidates (not implemented)
 
-None remaining from the original planned Skill inventory.
+Additional domain Skills for game prototyping, playtest analysis, UX journey audit, interactive experience audit, visual polish, browser/mobile verification and performance remain unimplemented until independent corpus evidence and promotion review are available.
 
-Any **additional** future Skill beyond the original eight must remain a thin adapter over existing executable surfaces and preserve evidence boundaries (observed ≠ inference ≠ reviewed durable knowledge).
+Any **additional** future Skill must remain a thin adapter over existing executable surfaces and preserve evidence boundaries (observed ≠ inference ≠ reviewed durable knowledge).

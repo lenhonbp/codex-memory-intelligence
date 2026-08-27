@@ -118,7 +118,7 @@ test('Skill does not claim npm/runtime auto-discovery via activation', async () 
   const doc = await read(skillsDocPath);
   assert.match(doc, /cmi-activate/);
   assert.match(doc, /no native Skill runtime or loader/i);
-  assert.match(doc, /Planned Skill inventory implemented|all eight planned/i);
+  assert.match(doc, /Supported Skill inventory|Agent OS tranche|all eight planned/i);
 });
 
 test('package.json files ships skills tree without auto-activation claims', async () => {
