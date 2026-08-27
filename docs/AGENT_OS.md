@@ -45,7 +45,7 @@ Positive example: a command output directly read at a known revision may be clas
 
 Negative example: a user-reported test result must remain `reported-verification` with provenance `reported`; it must not be serialized as `observed-command`. A claim with no evidence address must remain `not-enough-evidence` or an explicitly labeled `inference`; it must not be sent as a CMI `evidenceType`. A work item waiting for a browser run may be `needs-evidence`, but that status must not be recorded as evidence provenance.
 
-The Agent OS layer must not simply replace every Agent OS term with a CMI enum. Use the CMI-native representation only through an existing CMI surface and only when its condition is met. No new CMI serializer or integration is introduced by this contract.
+The Agent OS layer must not simply replace every Agent OS term with a CMI enum. Use the CMI-native representation only through an existing CMI surface and only when its condition is met. The small production normalization seam in `src/agent-os-adapter.js` enforces these mappings without persistence, command execution, ID generation or lifecycle orchestration; it is an adapter, not a new CMI serializer or competing runtime.
 
 ## 3. Core operating loop
 
@@ -146,7 +146,7 @@ A local check does not imply CI, external/live or release readiness. A screensho
 | Work-session history | Session start/observe/close/handoff | Keep Session independent from Change and use real IDs only. |
 | Findings and audit | Findings, evidence anchors, Closing Intelligence | Record typed findings and gaps; do not auto-resolve or re-rank authority. |
 | Durable memory | Reviewed CMI memory interface | Keep learning candidates as proposals; never auto-remember inference. |
-| Runtime execution | External agent/runtime adapter | Run only authorized commands and store actual evidence; CMI does not execute arbitrary verification. |
+| Runtime execution | External agent/runtime adapter | Run only authorized commands and store actual evidence; CMI does not execute arbitrary verification. `src/agent-os-adapter.js` only normalizes supplied evidence and never executes commands. |
 | Skill distribution | Open-format `SKILL.md` under `skills/` | Document portable invocation; do not claim package installation activates or discovers Skills. |
 
 ## 8. Promotion policy
