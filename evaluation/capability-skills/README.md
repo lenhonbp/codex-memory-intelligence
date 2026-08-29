@@ -51,3 +51,18 @@ Use bounded labels such as `observed`, `inferred`, `reported`, `not-observed`, `
 This repository corpus is **descriptive validation infrastructure, not a release gate**. A Capability Skill is field-validated for a named scenario only when an executed evaluation record identifies the exact Skill revision, scenario revision, runtime/agent condition, evidence addresses, observed result, failures, and reviewer provenance where review is used.
 
 Until such an executed record exists, the repository may claim that the evaluation harness is implemented and contract-tested, but must not claim real-world field validation PASS.
+
+## Executed conditions
+
+`executions/2026-08-29-gpt-5.6-sol/manifest.json` records the first bounded executed condition in this corpus. It is a **self-host controlled execution** against subject revision `516c7d1c9afa3e9eaa2f83f9505adeed104255a0` using ChatGPT / GPT-5.6 Sol with the GitHub connector.
+
+All four named scenarios recorded scenario-bounded `PASS` results in that condition. The record is deliberately narrower than a cross-runtime field claim:
+
+- reviewer provenance is self-review and is not independent;
+- runtime Skill discovery was not observed;
+- Codex, Manus, Grok, Claude, and other runtime conditions remain `not-assessed`;
+- the solution-discovery result is bounded to the current local two-field frontmatter helper use case;
+- the external performance Skill was inspected and classified as a candidate for evaluation, but was not installed, activated, copied, or executed;
+- the authoring and output-quality cases use committed replay fixtures so source/output claims can be contract-tested.
+
+Repository CI may verify the integrity of this execution record and its replay artifacts. CI success does not broaden the empirical claim beyond the runtime/scenario condition recorded in the manifest.
