@@ -4,7 +4,7 @@
 
 This repository currently has **no native Skill runtime or loader**.
 
-Mission 1 adds a **repository-level reusable Skill contract PoC** with the following open-format Skill artifacts. The original eight CMI lifecycle Skills remain implemented and packaged; the incremental Agent OS tranche adds three portable adapters:
+Mission 1 adds a **repository-level reusable Skill contract PoC** with open-format Skill artifacts. The original eight CMI lifecycle Skills remain implemented and packaged; the incremental Agent OS tranche adds three portable adapters; the Capability tranche adds four evidence-bounded cross-domain adapters:
 
 - `skills/cmi-ambient-brief/SKILL.md`
 - `skills/cmi-continue/SKILL.md`
@@ -17,6 +17,10 @@ Mission 1 adds a **repository-level reusable Skill contract PoC** with the follo
 - `skills/cmi-agent-operating-system/SKILL.md`
 - `skills/cmi-evidence-first-workflow/SKILL.md`
 - `skills/cmi-release-readiness/SKILL.md`
+- `skills/cmi-solution-discovery/SKILL.md`
+- `skills/cmi-skill-discovery/SKILL.md`
+- `skills/cmi-skill-authoring/SKILL.md`
+- `skills/cmi-output-quality-review/SKILL.md`
 
 These Skills are structured according to the **Agent Skills open format** (`SKILL.md` with required YAML frontmatter `name` and `description`, plus Markdown instructions). That structural alignment does **not** prove Codex, Grok, or any other agent runtime discovers or invokes them automatically.
 
@@ -32,7 +36,7 @@ CMI activation installs Skills
 CMI owns Skill discovery
 ```
 
-- All **eleven** currently supported Skill artifacts are **implemented** and **npm-distributed** under `package.json` `files` → `skills/`.
+- All **fifteen** currently supported Skill artifacts are **implemented** and **npm-distributed** under `package.json` `files` → `skills/`.
 - **npm installation does not activate Skills** and does not install them into agent runtime directories.
 - CMI activation still does **not** automatically discover or apply Skills.
 - **CMI has no native Skill loader**, Skill registry, discovery engine, or Skill execution subsystem.
@@ -43,7 +47,7 @@ CMI owns Skill discovery
 
 ## Architectural rule
 
-Skills are **thin orchestration adapters** over existing CMI executable surfaces.
+Skills are **thin orchestration adapters** over existing CMI executable surfaces or explicitly bounded edge capabilities.
 
 CMI core remains:
 
@@ -52,15 +56,16 @@ CMI core remains:
 - agent-independent
 - evidence-driven
 
-A Skill tells an agent **which existing CMI MCP tool or CLI invocation to call**. It must not reimplement core logic (intent routing, graph, ranking, memory lifecycle, session/change semantics, health computation, Closing alert ranking).
+A Skill may tell an agent **which existing CMI MCP tool or CLI invocation to call**, or how to perform a bounded external capability workflow. It must not reimplement core logic (intent routing, graph, ranking, memory lifecycle, session/change semantics, health computation, Closing alert ranking) or silently create a parallel trust/authorization system.
 
 ## Separation of concerns
 
 | Layer | Role |
 |-------|------|
 | **CMI core executable behavior** | Authoritative implementation in `src/**` (CLI, MCP, Ambient, session, change, closing, memory). |
-| **Skill contract** | Markdown (or similar) workflow artifact that documents triggers, inputs, exact existing invocations, read/write boundaries, and failure rules. Open-format `SKILL.md` frontmatter supports progressive discovery metadata without implying a CMI loader. |
-| **Optional future vendor adapters** | Edge-only mappings to a specific agent’s Skill discovery/install paths; must call the same CMI surfaces. Not present beyond the portable open-format contract. |
+| **Skill contract** | Markdown (or similar) workflow artifact that documents triggers, inputs, exact existing invocations where applicable, read/write boundaries, and failure rules. Open-format `SKILL.md` frontmatter supports progressive discovery metadata without implying a CMI loader. |
+| **Capability Skill** | Portable advisory/authoring/review workflow that remains evidence-bounded and does not become a loader, installer, trust engine, or hidden external-action authority. |
+| **Optional future vendor adapters** | Edge-only mappings to a specific agent’s Skill discovery/install paths; must preserve the same CMI boundaries. Not present beyond the portable open-format contract. |
 | **Package distribution** | npm ships portable `skills/` artifacts. Runtime install/discovery remains external; final Codex S0–S7 matrix was runtime-blocked and not accepted as PASS. |
 
 ## Implemented Skills
@@ -74,6 +79,17 @@ The incremental Agent OS tranche adds three portable thin adapters:
 - `cmi-release-readiness` prepares a release assessment for an exact revision while keeping prepare, verify, approve and publish as separate gates.
 
 These three artifacts are not a native loader, do not activate automatically, and do not promote provisional or domain-specific patterns into universal policy. See [`docs/AGENT_OS.md`](AGENT_OS.md) for the normative contract. The core Skill's minimal open-format templates are [`orientation-checklist.md`](../skills/cmi-agent-operating-system/templates/orientation-checklist.md), [`evidence-ledger.md`](../skills/cmi-agent-operating-system/templates/evidence-ledger.md), [`verification-matrix.md`](../skills/cmi-agent-operating-system/templates/verification-matrix.md) and [`truthful-handoff.md`](../skills/cmi-agent-operating-system/templates/truthful-handoff.md). They are working artifacts, not durable CMI state or runtime components.
+
+### Capability tranche
+
+The Capability tranche adapts four externally supplied workflow patterns into CMI-native portable contracts without importing vendor-specific runtime assumptions:
+
+- `cmi-solution-discovery` investigates credible reusable solutions before custom implementation. Discovery remains advisory; popularity, stars, or downloads are not proof of fitness, and the Skill does not install or execute candidate code.
+- `cmi-skill-discovery` discovers and inspects candidate agent Skills from bounded authorized sources. Discovery is not installation, activation, compatibility proof, or trust. Cached/source metadata must retain provenance and freshness limits.
+- `cmi-skill-authoring` authors or adapts portable Skill contracts using evidence-bounded, agent-independent instructions. Runtime-specific absolute paths, proprietary assumptions, implicit credentials/network access, and automatic activation must be removed or explicitly bounded.
+- `cmi-output-quality-review` reviews prose/output quality without changing the meaning of authoritative evidence. It cannot elevate inferred/reported/partial/blocked/not-observed evidence into stronger claims or alter evidence addresses and provenance.
+
+These four artifacts do **not** add a native Skill loader, registry, discovery runtime, installer, automatic activation path, or new CMI core behavior. See [`docs/CAPABILITY_SKILLS.md`](CAPABILITY_SKILLS.md) for adaptation rationale and architecture boundaries.
 
 ### `cmi-ambient-brief`
 
@@ -193,13 +209,13 @@ See `skills/cmi-activate/SKILL.md` for the full contract.
 
 ## Supported Skill inventory
 
-All **eleven** currently supported Skill artifacts are implemented and packaged under npm `files` → `skills/`:
+All **fifteen** currently supported Skill artifacts are implemented and packaged under npm `files` → `skills/`:
 
-`cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`, `cmi-agent-operating-system`, `cmi-evidence-first-workflow`, `cmi-release-readiness`.
+`cmi-ambient-brief`, `cmi-continue`, `cmi-evidence-health`, `cmi-closing`, `cmi-memory-review`, `cmi-work-session`, `cmi-change-loop`, `cmi-activate`, `cmi-agent-operating-system`, `cmi-evidence-first-workflow`, `cmi-release-readiness`, `cmi-solution-discovery`, `cmi-skill-discovery`, `cmi-skill-authoring`, `cmi-output-quality-review`.
 
-They remain open-format thin adapters: **no** native Skill loader, **no** automatic Skill discovery, **no** auto-activation on npm install, and **no** Skill installation by `cmi activate`.
+They remain open-format thin adapters and bounded capability workflows: **no** native Skill loader, **no** automatic Skill discovery, **no** auto-activation on npm install, and **no** Skill installation by `cmi activate`.
 
-The Agent OS artifacts are policy and domain adapters only. They do not reimplement CMI memory, graph, evidence lifecycle, Session, Change or trust behavior. Additional game, playtest, UX, browser/mobile and performance Skills remain future candidates because the current corpus does not provide enough independent evidence for premature promotion.
+The Agent OS and Capability artifacts do not reimplement CMI memory, graph, evidence lifecycle, Session, Change, trust or authorization behavior. Discovery and authoring workflows do not turn third-party artifacts into trusted or executable dependencies merely because they were found or packaged.
 
 ## Non-goals
 
@@ -213,12 +229,14 @@ Explicitly excluded:
 - New CMI commands, MCP tools, arguments, or schemas for Skill loading
 - Core changes to activation, session, Change, or Closing Intelligence behavior to “install Skills”
 - Agent-specific skill install placement (`.agents/skills`, `.grok/skills`, plugins, symlinks) performed by CMI
+- Automatic installation, activation, or execution of third-party Skill candidates discovered by capability workflows
+- Treating popularity, stars, downloads, curated listings, or cached metadata as proof of compatibility, security, license fitness, or trust
 - Claiming universal Codex or Grok runtime discovery from packaging alone
 - Claiming final-subject Codex S0–S7 field acceptance passed (it was runtime-blocked / not executed; Issue #41 closed not-planned, not PASS)
 - Treating `cmi activate` as Skill installation
 
 ## Future candidates (not implemented)
 
-Additional domain Skills for game prototyping, playtest analysis, UX journey audit, interactive experience audit, visual polish, browser/mobile verification and performance remain unimplemented until independent corpus evidence and promotion review are available.
+Additional domain Skills for game prototyping, playtest analysis, UX journey audit, interactive experience audit, visual polish, browser/mobile verification and performance remain future candidates (not implemented) until independent corpus evidence and promotion review are available.
 
-Any **additional** future Skill must remain a thin adapter over existing executable surfaces and preserve evidence boundaries (observed ≠ inference ≠ reviewed durable knowledge).
+Any **additional** future Skill must remain a thin adapter or bounded capability workflow and preserve evidence boundaries (observed ≠ inference ≠ reviewed durable knowledge).
