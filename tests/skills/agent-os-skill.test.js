@@ -91,7 +91,7 @@ test('Agent OS documentation maps to existing CMI surfaces without adding a load
   assert.match(contract, /does\s+(?:\*\*)?not(?:\*\*)?\s+create a native Skill runtime/i);
   assert.match(evaluation, /Conditions/i);
   assert.match(evaluation, /plain agent|Agent \+ CMI|Agent \+ CMI \+ Agent OS/i);
-  assert.match(skills, /eleven/i);
+  assert.match(skills, /fifteen|15/i);
   assert.match(skills, /no native Skill loader/i);
   assert.match(skills, /not(?:\s+|\*\*\s*)automatically/i);
 });
