@@ -78,7 +78,7 @@ test('skill authoring scenario rejects vendor assumptions and speculative expert
   assert.match(scenario, /CLAUDE_PLUGIN_ROOT/);
   assert.match(scenario, /must not encode speculative workflow knowledge as established expertise/i);
   assert.match(scenario, /no automatic installation\/activation/i);
-  assert.match(scenario, /does not by themselves prove runtime invocation/i);
+  assert.match(scenario, /do not by themselves prove runtime invocation/i);
 });
 
 test('output quality scenario cannot edit uncertainty into stronger technical claims', async () => {
