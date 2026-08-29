@@ -18,6 +18,10 @@ const PLANNED = [
   'cmi-agent-operating-system',
   'cmi-evidence-first-workflow',
   'cmi-release-readiness',
+  'cmi-solution-discovery',
+  'cmi-skill-discovery',
+  'cmi-skill-authoring',
+  'cmi-output-quality-review',
 ];
 
 async function read(rel) {
@@ -65,11 +69,15 @@ test('activation skill contract still forbids treating activate as Skill install
   assert.match(skill, /activate --agent codex/);
 });
 
-test('Agent OS Skill tranche is explicitly documented without a native loader', async () => {
-  assert.equal(PLANNED.length, 11);
+test('supported Skill inventory includes capability tranche without a native loader', async () => {
+  assert.equal(PLANNED.length, 15);
   const doc = await read('docs/SKILLS.md');
-  assert.match(doc, /All \*\*eleven\*\*|all eleven|11/i);
+  assert.match(doc, /All \*\*fifteen\*\*|all fifteen|15/i);
   assert.match(doc, /Agent OS tranche/i);
+  assert.match(doc, /Capability tranche/i);
   assert.match(doc, /no native Skill loader/i);
-  assert.match(doc, /Additional domain Skills .* remain unimplemented/i);
+  for (const name of ['cmi-solution-discovery', 'cmi-skill-discovery', 'cmi-skill-authoring', 'cmi-output-quality-review']) {
+    assert.match(doc, new RegExp(name));
+  }
+  assert.match(doc, /Additional domain Skills .* remain future candidates/i);
 });
