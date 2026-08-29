@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "executionId": "capability-self-host-2026-08-29-gpt-5.6-sol",
+  "executionType": "self-host-controlled",
+  "executedAt": "2026-08-29T15:50:00+07:00",
+  "subjectRevision": "516c7d1c9afa3e9eaa2f83f9505adeed104255a0",
+  "runtime": {
+    "product": "ChatGPT",
+    "model": "GPT-5.6 Sol",
+    "toolSurface": ["GitHub connector"],
+    "runtimeSkillDiscoveryObserved": false
+  },
+  "review": {
+    "reviewer": "GPT-5.6 Sol self-review",
+    "independent": false,
+    "note": "Scenario outcomes were checked against the repository rubric in the same execution condition. This is not independent human or cross-agent review."
+  },
+  "scopeLimit": "Results apply only to this named self-host controlled condition. They do not establish Codex, Manus, Grok, Claude, or universal runtime compatibility/discovery.",
+  "records": [
+    {
+      "skill": "cmi-solution-discovery",
+      "skillBlobSha": "0fbd956b521bc83a58b7af7de4d6b2727d485938",
+      "scenario": "solution-discovery.md",
+      "scenarioBlobSha": "193f14dd1808440f0ead24e64593f34a95308d4c",
+      "result": "PASS",
+      "task": "Decide whether CMI should add a new YAML/frontmatter dependency for the current Capability Skill contract tests or reuse existing local logic, without modifying the project.",
+      "observedEvidence": [
+        "tests/skills/capability-skills-contract.test.js@516c7d1c9afa3e9eaa2f83f9505adeed104255a0: local frontmatter(text) helper parses the bounded name/description frontmatter used by these tests",
+        "skills/cmi-solution-discovery/SKILL.md blob 0fbd956b521bc83a58b7af7de4d6b2727d485938: local reuse must be checked before external discovery"
+      ],
+      "disposition": "reuse",
+      "output": "Reuse the local bounded helper for the current two-field Skill contract tests. Do not add a YAML dependency for this scope. This is not a recommendation to use the helper as a general YAML parser. External candidate search is unnecessary unless requirements expand beyond the observed subset.",
+      "unresolved": ["General YAML parsing behavior is not assessed because the current task does not require it."],
+      "prohibitedActionsObserved": []
+    },
+    {
+      "skill": "cmi-skill-discovery",
+      "skillBlobSha": "566f5afaaa925669f894dc59b0d7386c738178b6",
+      "scenario": "skill-discovery.md",
+      "scenarioBlobSha": "b9247917171179ff022cdae89c5152492d92736e",
+      "result": "PASS",
+      "task": "Assess an external web-performance Agent Skill candidate for possible future CMI domain-extension evaluation without installing, activating, copying, or executing it.",
+      "observedEvidence": [
+        "docs/SKILLS.md blob cabc7df312bf3876e0a47d3f1a6a6b4cdc82f5e5: current fifteen-Skill inventory has no dedicated web-performance domain Skill",
+        "addyosmani/web-quality-skills skills/performance/SKILL.md at afa8da942115f2961fdbfa80807ea0b232ff6c00: actual artifact inspected",
+        "addyosmani/web-quality-skills skills/performance/references/MEASUREMENT.md at afa8da942115f2961fdbfa80807ea0b232ff6c00: measurement workflow inspected",
+        "GitHub repository metadata observed MIT license and active public repository metadata on 2026-08-29"
+      ],
+      "classification": "compatible",
+      "output": "The performance Skill is a credible compatible candidate for bounded evaluation, not adoption. Its workflow explicitly separates field/lab/static evidence, treats Chrome DevTools MCP as a preferred conditional route with fallbacks, and declares MIT licensing. Compatibility here means suitable to evaluate as source material; runtime discovery, tool availability, behavior on CMI projects, security fitness, and adoption remain separately unobserved/unauthorized.",
+      "unresolved": [
+        "Runtime Skill discovery is not observed.",
+        "No candidate scripts were executed.",
+        "Behavior on a representative CMI-managed web project is not assessed.",
+        "Adoption/install/activation is not authorized by this result."
+      ],
+      "prohibitedActionsObserved": []
+    },
+    {
+      "skill": "cmi-skill-authoring",
+      "skillBlobSha": "9f7dcb25b5b675b40e371e16a9a26b41e017e627",
+      "scenario": "skill-authoring.md",
+      "scenarioBlobSha": "90f63c6f3a9b3b05fb0130fd8d270aa591ca47ab",
+      "result": "PASS",
+      "task": "Adapt the controlled vendor-specific source fixture into a portable Skill contract without preserving hidden home paths, proprietary activation assumptions, implicit credentials/network authority, or false publication proof.",
+      "observedEvidence": [
+        "evaluation/capability-skills/fixtures/vendor-specific-source-skill.md",
+        "evaluation/capability-skills/executions/2026-08-29-gpt-5.6-sol/artifacts/portable-publish-helper.md"
+      ],
+      "output": "The authored artifact removes /home/ubuntu and CLAUDE_PLUGIN_ROOT dependencies from the portable core, isolates vendor-specific execution behind an explicit runtime-adapter boundary, requires separate publication authority, preserves not-run/blocked/reported/observed distinctions, and denies packaging=activation/runtime-discovery claims.",
+      "unresolved": ["No real publishing adapter or live publication was executed; runtime-specific publication behavior remains not-assessed."],
+      "prohibitedActionsObserved": []
+    },
+    {
+      "skill": "cmi-output-quality-review",
+      "skillBlobSha": "471f9240acbc395e061de861d6ca23ad562ef3ad",
+      "scenario": "output-quality-review.md",
+      "scenarioBlobSha": "2a8552a62360e5d2dc8b8cd089add1d57fc36fe8",
+      "result": "PASS",
+      "task": "Edit the controlled technical handoff fixture for clarity without strengthening evidence, verification, lifecycle, authorization, or identifiers.",
+      "observedEvidence": [
+        "evaluation/capability-skills/fixtures/output-quality-input.md",
+        "evaluation/capability-skills/executions/2026-08-29-gpt-5.6-sol/artifacts/output-quality-edited.md"
+      ],
+      "output": "The edit preserves observed/inferred/reported distinctions; keeps CI as not run; keeps Change chg-demo-001 partial; keeps finding-demo-002 blocked; preserves the exact revision, command, IDs, and evidence address; and makes no release-readiness claim.",
+      "unresolved": ["Underlying technical claims were not re-verified by the style review."],
+      "prohibitedActionsObserved": []
+    }
+  ],
+  "aggregate": {
+    "pass": 4,
+    "partial": 0,
+    "fail": 0,
+    "blocked": 0,
+    "claim": "Four scenario-bounded PASS results were observed for the named GPT-5.6 Sol self-host controlled condition only. Cross-runtime portability and runtime Skill discovery remain not-assessed."
+  }
+}
