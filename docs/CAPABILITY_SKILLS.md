@@ -53,6 +53,19 @@ External search, runtime Skill placement, installation, execution, source edits,
 
 The domain Skills from the same supplied collection (GSAP, Babylon.js, HyperFrames, Excel and Chrome performance) remain domain candidates rather than core CMI capability policy. The memsearch adapter is also not imported because its implementation is tied to a specific CLI/transcript environment; only generic evidence-bounded retrieval ideas should be considered against CMI's existing memory architecture.
 
+## Field-validation harness
+
+`evaluation/capability-skills/` now defines a dedicated evaluation corpus for the four Capability Skills. It includes one adversarial scenario per Skill plus a shared rubric covering evidence integrity, scope fidelity, trust/authorization, portability, failure behavior and truthful handoff.
+
+The scenarios deliberately test the most important promotion hazards:
+
+- popularity or recommendation becoming proof/authorization;
+- Skill discovery becoming trust, installation, activation or execution;
+- authoring preserving vendor-specific absolute paths or inventing expertise;
+- prose editing turning inferred/reported/partial/blocked/not-assessed evidence into stronger claims.
+
+This is **validation infrastructure**, not proof that a runtime automatically discovers these Skills and not proof of real-world field PASS. A field-validation PASS requires an executed evaluation record tied to the exact Skill revision, scenario revision, runtime/agent condition, evidence addresses and observed result. Until such a record exists, only the existence and repository contract verification of the harness may be claimed.
+
 ## Verification expectations
 
-`tests/skills/capability-skills-contract.test.js` enforces the portable metadata and key negative boundaries. Repository verification must still run the normal CMI gates (`npm run check`, `npm run quality`, `npm test` or `npm run verify`). CI, external runtime discovery and release readiness remain separate evidence layers and must not be inferred from repository-local checks.
+`tests/skills/capability-skills-contract.test.js` enforces portable metadata and core negative boundaries. `tests/skills/capability-skills-field-validation.test.js` enforces the evaluation inventory, rubric and adversarial promotion guards. Repository verification must still run the normal CMI gates (`npm run check`, `npm run quality`, `npm test` or `npm run verify`). CI, external runtime discovery, executed field validation and release readiness remain separate evidence layers and must not be inferred from repository-local checks.
