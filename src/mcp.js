@@ -189,6 +189,7 @@ const verificationSchema = {
   properties: {
     name: { type: 'string', maxLength: 500 },
     status: { type: 'string', enum: ['passed', 'failed', 'skipped', 'unknown'] },
+    kind: { type: 'string', enum: ['implementation', 'behavior', 'environment-specific', 'external/live', 'release'] },
     provenance: { type: 'string', enum: ['reported', 'observed-command'] },
     evidence: { type: 'string', maxLength: 500 },
     command: { type: 'string', maxLength: 500 },

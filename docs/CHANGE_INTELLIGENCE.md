@@ -37,6 +37,7 @@ A change record never contains source diffs by default. It stores bounded metada
 - the change goal and optional workspace;
 - the bounded pre-change Git baseline;
 - predicted files, inferred boundaries, risks, and verification guidance;
+- the inferred Task Contract and required-evidence requirements known before editing;
 - relevant historical change summaries available before editing;
 - observed changed project-relative paths;
 - prediction gaps;
@@ -113,7 +114,21 @@ Every command also supports `--json` where applicable.
 
 CMI derives a bounded completion-evidence assessment from the Change record at read/format time. It distinguishes the actor's reported outcome from what the attached evidence supports: observed changed paths are implementation evidence, while verification is classified as missing, reported, observed, failed, or incomplete. A successful Change with only reported verification remains `unverified`; a valid passing `observed-command` with `exitCode=0` can make the bounded Change claim `supported`; and a failed verification contradicts a successful claim. For observed commands, a non-zero exit code conflicts with `status=passed`, while `exitCode=0` conflicts with `status=failed`; either contradiction is classified conservatively as failed evidence and cannot support a successful claim. This derived view does not execute commands, certify browser/device/live/release behavior, or change the durable Change schema.
 
-The structured Change read model exposes this additive view as `completionEvidence`, and human `cmi change show` output renders the claim state, verification state, reasons, and gaps. Existing records, including sparse legacy records, remain readable and are assessed conservatively.
+The structured Change read model exposes this additive view as `completionEvidence`, and human `cmi change show` output renders the claim state, verification state, required-evidence state, reasons, and gaps. Existing records, including sparse legacy records, remain readable and are assessed conservatively.
+
+### Task Contract and evidence kinds
+
+`prepareChangeBrief()` also returns a deterministic, advisory `taskContract`. It adapts depth and required evidence to the request and already available topic/boundary signals without making another model call. `startChangeRecord()` snapshots that contract under `before.taskContract` so the later assessment does not recompute historical requirements after heuristics change.
+
+The bounded evidence kinds are:
+
+- `implementation` — the changed implementation or work product was checked;
+- `behavior` — the requested behavior or contract was exercised;
+- `environment-specific` — the target device, browser, OS, viewport, or runtime context was checked;
+- `external/live` — the real deployed, external, or third-party target was observed;
+- `release` — the exact release target was assessed against its release gates.
+
+Completion evidence matches these kinds explicitly. A legacy verification without a kind can satisfy only the generic `implementation` requirement when it has valid observed-command metadata. It cannot satisfy behavior, environment-specific, external/live, or release requirements by implication. Required evidence that is missing, reported-only, skipped, unknown, failed, or contradictory keeps a successful actor claim unverified or contradicted according to the existing fail-closed assessment rules.
 
 ## MCP workflow
 

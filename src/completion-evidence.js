@@ -3,6 +3,7 @@ const MAX_REASONS = 6;
 const MAX_GAPS = 6;
 const VALID_STATUSES = new Set(['passed', 'failed', 'skipped', 'unknown']);
 const CLAIM_STATES = new Set(['supported', 'unverified', 'contradicted']);
+const VALID_EVIDENCE_KINDS = new Set(['implementation', 'behavior', 'environment-specific', 'external/live', 'release']);
 
 function text(value, fallback = '') {
   const clean = typeof value === 'string' ? value.trim() : '';
@@ -41,6 +42,7 @@ function normalizeVerification(item, index) {
   const rawStatus = text(source.status, 'unknown').toLowerCase();
   const status = VALID_STATUSES.has(rawStatus) ? rawStatus : 'unknown';
   const declaredObserved = source.provenance === 'observed-command';
+  const kind = VALID_EVIDENCE_KINDS.has(source.kind) ? source.kind : null;
   const observedCommand = declaredObserved
     && typeof source.command === 'string' && source.command.trim().length > 0
     && Number.isInteger(source.exitCode) && iso(source.observedAt);
@@ -49,11 +51,48 @@ function normalizeVerification(item, index) {
   return {
     name,
     status,
+    ...(kind ? { kind } : {}),
     provenance: observedCommand ? 'observed-command' : 'reported',
     observedCommand,
     contradictory,
     ...(contradictory ? { conflict: 'status-exitCode' } : {}),
     incomplete,
+  };
+}
+
+function requiredEvidenceAssessment(contract, verification) {
+  if (!contract || !Array.isArray(contract.requiredEvidence)) return { state: 'not-assessed', requirements: [], requiredCount: 0, satisfiedCount: 0 };
+  const requirements = contract.requiredEvidence.filter((item) => item && item.required === true && VALID_EVIDENCE_KINDS.has(item.kind)).slice(0, MAX_VERIFICATIONS);
+  if (!requirements.length) return { state: 'not-required', requirements: [], requiredCount: 0, satisfiedCount: 0 };
+  const assessed = requirements.map((requirement) => {
+    const matches = verification.records.filter((item) => item.kind === requirement.kind || (!item.kind && requirement.kind === 'implementation'));
+    const failed = matches.filter((item) => item.status === 'failed' || item.contradictory);
+    const observed = matches.filter((item) => item.status === 'passed' && item.observedCommand);
+    const reported = matches.filter((item) => item.status === 'passed' && !item.observedCommand);
+    const incomplete = matches.filter((item) => item.status === 'skipped' || item.status === 'unknown' || (item.status === 'passed' && !item.observedCommand));
+    let state = 'missing';
+    if (failed.length) state = 'failed';
+    else if (observed.length) state = 'observed';
+    else if (reported.length) state = 'reported';
+    else if (incomplete.length) state = 'incomplete';
+    return {
+      id: requirement.id,
+      kind: requirement.kind,
+      title: requirement.title,
+      required: true,
+      state,
+      matchedVerifications: bounded(matches.map((item) => item.name), 6),
+      evidence: state === 'observed' ? bounded(observed.map((item) => item.name), 6) : [],
+    };
+  });
+  const failed = assessed.filter((item) => item.state === 'failed');
+  const unresolved = assessed.filter((item) => item.state !== 'observed');
+  const state = failed.length ? 'failed' : unresolved.length ? 'incomplete' : 'satisfied';
+  return {
+    state,
+    requirements: assessed,
+    requiredCount: assessed.length,
+    satisfiedCount: assessed.filter((item) => item.state === 'observed').length,
   };
 }
 
@@ -77,14 +116,16 @@ function verificationAssessment(rawVerifications) {
   };
 }
 
-function claimState(outcome, verification) {
+function claimState(outcome, verification, requiredEvidence) {
   if (outcome !== 'succeeded') return 'unverified';
   if (verification.state === 'failed') return 'contradicted';
+  if (requiredEvidence.state === 'failed') return 'contradicted';
+  if (requiredEvidence.requiredCount > 0 && requiredEvidence.state !== 'satisfied') return 'unverified';
   if (verification.state === 'observed') return 'supported';
   return 'unverified';
 }
 
-function explain({ outcome, implementation, verification, lifecycle }) {
+function explain({ outcome, implementation, verification, requiredEvidence, lifecycle }) {
   const reasons = [];
   const gaps = [];
   if (implementation.state === 'observed') reasons.push(`Observed changed paths: ${implementation.changedPaths.length} project path(s).`);
@@ -107,6 +148,14 @@ function explain({ outcome, implementation, verification, lifecycle }) {
     gaps.push('Successful completion claim lacks complete verification evidence.');
   }
 
+  if (requiredEvidence.state === 'incomplete') {
+    const missing = requiredEvidence.requirements.filter((item) => item.state !== 'observed').map((item) => `${item.kind}: ${item.title}`);
+    gaps.push(`Required task evidence is incomplete: ${missing.join(', ')}.`);
+  } else if (requiredEvidence.state === 'failed') {
+    const failed = requiredEvidence.requirements.filter((item) => item.state === 'failed').map((item) => `${item.kind}: ${item.title}`);
+    gaps.push(`Required task evidence failed: ${failed.join(', ')}.`);
+  }
+
   if (lifecycle.status === 'active') gaps.push('Change remains active; this assessment does not terminalize its lifecycle.');
   if (outcome !== 'succeeded') gaps.push('Assessment concerns Change completion evidence only and does not convert a non-succeeded outcome into success.');
   return { reasons: bounded(reasons, MAX_REASONS), gaps: bounded(gaps, MAX_GAPS) };
@@ -125,19 +174,21 @@ export function assessCompletionEvidence(record = {}) {
   };
   const evidence = outcomeFor(record).source;
   const verification = verificationAssessment(Array.isArray(evidence?.verifications) ? evidence.verifications : []);
+  const requiredEvidence = requiredEvidenceAssessment(record?.before?.taskContract, verification);
   const lifecycle = {
     status: record?.status || 'unknown',
     outcome,
     terminal: record?.status === 'completed',
   };
-  const claim = claimState(outcome, verification);
-  const explanation = explain({ outcome, implementation, verification, lifecycle });
+  const claim = claimState(outcome, verification, requiredEvidence);
+  const explanation = explain({ outcome, implementation, verification, requiredEvidence, lifecycle });
   return {
     claimState: CLAIM_STATES.has(claim) ? claim : 'unverified',
     claim: { outcome, scope: 'Change completion evidence' },
     implementation,
     verification,
     lifecycle,
+    requiredEvidence,
     reasons: explanation.reasons,
     gaps: explanation.gaps,
   };

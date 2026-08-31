@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { loadProjectGraph, impactAnalysis, inspectProjectGraphHealth } from './graph.js';
 import { buildContextPack, searchMemory, tokenize } from './search.js';
+import { buildTaskContract } from './task-contract.js';
 
 const execFileAsync = promisify(execFile);
 const DURABLE_MEMORY_SOURCES = new Set(['memory.md', 'decisions.md', 'mistakes.md', 'agent-instructions.md']);
@@ -76,6 +77,14 @@ const TOPIC_RULES = [
     memory: 'Record trust boundaries, sensitive-data handling, validation rules, and prohibited disclosures.',
     risk: 'Untrusted input or sensitive data may cross a security or privacy boundary.',
     verification: 'Test validation, authorization, redaction, path handling, and failure responses without exposing sensitive data.',
+  },
+  {
+    id: 'financial-integrity',
+    pattern: /(?:^|[\W_])(payment|billing|charge|refund|invoice|checkout|money|financial)(?:$|[\W_])/i,
+    title: 'Financial integrity',
+    memory: 'Record payment state transitions, idempotency, authorization, reconciliation, and rollback invariants.',
+    risk: 'A financial state or transaction boundary may be changed without preserving money movement invariants.',
+    verification: 'Test authorization, duplicate/retry behavior, failure recovery, reconciliation, and non-production payment safety where applicable.',
   },
 ];
 
@@ -414,7 +423,7 @@ function buildRisks({ baseline, graph, memory, boundaries, topics }) {
   if ((graph.summary?.unresolvedImports || 0) > 0) risks.push({ id: 'unresolved-imports', title: 'Unresolved local imports', severity: 'medium', reason: `${graph.summary.unresolvedImports} local imports could not be resolved, so impact analysis may be incomplete.`, evidence: [], confidence: 'high' });
   if (memory.relatedFiles.length > 0 && memory.coverage.relevantDurableEntries === 0) risks.push({ id: 'memory-gap', title: 'No relevant durable memory', severity: 'low', reason: 'The change lacks reviewed project-specific facts, decisions, or lessons in the retrieved context.', evidence: memory.relatedFiles, confidence: 'high' });
   if (boundaries.length > 1) risks.push({ id: 'cross-boundary-change', title: 'Cross-boundary change', severity: boundaries.length >= 4 ? 'high' : 'medium', reason: `The retrieved context spans ${boundaries.length} inferred boundaries.`, evidence: boundaries.map((item) => item.label), confidence: 'medium' });
-  for (const topic of topics) risks.push({ id: topic.id, title: topic.title, severity: ['identity-access', 'persistence-schema', 'security-privacy'].includes(topic.id) ? 'high' : 'medium', reason: topic.risk, evidence: memory.relatedFiles.filter((file) => topic.pattern.test(file)).slice(0, 8), confidence: memory.relatedFiles.some((file) => topic.pattern.test(file)) ? 'medium' : 'low' });
+  for (const topic of topics) risks.push({ id: topic.id, title: topic.title, severity: ['identity-access', 'persistence-schema', 'security-privacy', 'financial-integrity'].includes(topic.id) ? 'high' : 'medium', reason: topic.risk, evidence: memory.relatedFiles.filter((file) => topic.pattern.test(file)).slice(0, 8), confidence: memory.relatedFiles.some((file) => topic.pattern.test(file)) ? 'medium' : 'low' });
   return risks.slice(0, 10);
 }
 
@@ -450,6 +459,12 @@ export async function prepareChangeBrief(root, query, options = {}) {
   const topics = matchedTopics(normalizedQuery, memory.relatedFiles);
   const risks = buildRisks({ baseline, graph, memory, boundaries, topics });
   const verification = buildVerification({ boundaries, topics, memory });
+  const taskContract = buildTaskContract({
+    goal: normalizedQuery,
+    topics,
+    boundaries,
+    files: unique([...(context.recommendedFiles || []), ...(impact.seedFiles || []), ...(impact.matchedFiles || [])]),
+  });
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -475,6 +490,7 @@ export async function prepareChangeBrief(root, query, options = {}) {
     memory,
     risks,
     verification,
+    taskContract,
     assumptions: [
       'Inferred boundaries and topic classifications are advisory heuristics, not declared architecture.',
       'No suggested memory is durable until an explicit reviewed write occurs.',
@@ -517,8 +533,10 @@ export function formatChangeBrief(result) {
   const risks = result.risks.map((item) => `- [${item.severity}] ${item.title}: ${item.reason} · confidence ${item.confidence}`).join('\n') || '- No additional risks inferred';
   const verification = result.verification.map((item) => `- ${item.title}: ${item.guidance}`).join('\n');
   const memory = result.memory.suggestions.map((item) => `- [${item.type}] ${item.title}: ${item.proposal}`).join('\n') || '- Retrieved durable memory covers the main categories';
+  const contract = result.taskContract;
+  const requiredEvidence = contract.requiredEvidence.map((item) => `- [${item.kind}] ${item.title}: ${item.guidance}`).join('\n') || '- No typed required evidence inferred';
   const impact = result.impact.found
     ? `Mode: ${result.impact.inferred ? 'inferred from context files' : 'exact match'}\n- Direct dependents: ${result.impact.directDependents?.length || 0}\n- Affected files: ${result.impact.affectedFiles?.length || 0}\n- Affected workspaces: ${(result.impact.affectedWorkspaces || []).join(', ') || 'none'}`
     : `Unavailable: ${result.impact.reason}`;
-  return `# Pre-change brief: ${result.query}\n\n${formatRepositoryBaseline(result.baseline)}\n\n## Recommended files\n${files}\n\n## Relevant inferred boundaries\n${boundaryText}\n\n## Impact\n${impact}\n\n## Memory gaps to review\n${memory}\n\n## Risks\n${risks}\n\n## Verification plan\n${verification}\n\n## Guardrails\n${result.assumptions.map((item) => `- ${item}`).join('\n')}`;
+  return `# Pre-change brief: ${result.query}\n\n${formatRepositoryBaseline(result.baseline)}\n\n## Recommended files\n${files}\n\n## Relevant inferred boundaries\n${boundaryText}\n\n## Impact\n${impact}\n\n## Memory gaps to review\n${memory}\n\n## Risks\n${risks}\n\n## Verification plan\n${verification}\n\n## Task Contract\n- Task kind: ${contract.taskKind}\n- Depth: ${contract.depth}\n- Risk: ${contract.risk.level}\n- Required evidence:\n${requiredEvidence}\n- Unknowns: ${contract.unknowns.join(' ') || 'None recorded'}\n\n## Guardrails\n${result.assumptions.map((item) => `- ${item}`).join('\n')}`;
 }

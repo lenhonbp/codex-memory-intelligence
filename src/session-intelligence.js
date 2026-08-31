@@ -462,6 +462,10 @@ function detectFindings({ record, current, relatedActive, concurrentActive, comp
     const assessment = assessCompletionEvidence(change);
     const verifications = assessment.verification.records;
     if (['succeeded', 'partial'].includes(completion.outcome) && assessment.verification.state === 'missing') findings.push(makeFinding('verification-missing', 'high', 'Related completed change has no verification evidence', `Change "${change.goal}" was associated with this session and completed as ${completion.outcome} without recorded verification evidence.`, { target: change.id, evidence: [`change:${change.id}`], sessionRelevance: 'related' }));
+    if (completion.outcome === 'succeeded' && assessment.requiredEvidence.state === 'incomplete') {
+      const missing = assessment.requiredEvidence.requirements.filter((item) => item.state !== 'observed').map((item) => `${item.kind}: ${item.title}`);
+      findings.push(makeFinding('verification-incomplete', 'high', 'Related change is missing required task evidence', `Change "${change.goal}" has incomplete required evidence: ${missing.join(', ')}.`, { target: `required:${change.id}`, evidence: [`change:${change.id}`, 'task-contract-required-evidence'], sessionRelevance: 'related' }));
+    }
     for (const verification of verifications) {
       if (verification.status === 'failed' || verification.contradictory) findings.push(makeFinding('verification-failed', 'critical', `Verification failed: ${verification.name}`, `Related change "${change.goal}" records a failed verification.`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));
       else if (verification.incomplete) findings.push(makeFinding('verification-incomplete', 'medium', `Verification incomplete: ${verification.name}`, `Verification is recorded as ${verification.status} for related change "${change.goal}".`, { target: `${change.id}:${verification.name}`, evidence: [`change:${change.id}`, `verification:${verification.name}`], sessionRelevance: 'related' }));

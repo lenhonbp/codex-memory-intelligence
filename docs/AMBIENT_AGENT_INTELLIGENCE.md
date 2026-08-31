@@ -32,7 +32,7 @@ Codex builds project instructions when a run/session starts, so start a new Code
 
 ## Natural task routing
 
-`cmi ambient "<user request>"` and the MCP tool `get_ambient_task_brief` provide a read-only task brief containing current evidence health, raw/product Git state, relevant project context when available, optional pre-change preparation for mutation requests, continuation handoff, and conservative workflow hints. The brief is not a session and cannot support a Closing Intelligence footer by itself.
+`cmi ambient "<user request>"` and the MCP tool `get_ambient_task_brief` provide a read-only task brief containing current evidence health, raw/product Git state, relevant project context when available, optional pre-change preparation for mutation requests, continuation handoff, and conservative workflow hints. Mutation preparation includes the advisor's inferred Task Contract when the project graph is current. The contract is advisory and does not authorize edits, commands, deployment, release, or memory writes. The brief is not a session and cannot support a Closing Intelligence footer by itself.
 
 For every substantive task, the supported Codex integration starts or resumes a durable work session, including for read-only investigation, review, and verification. When MCP is unavailable, invoke the exact project-local package entrypoint from the project root; do not depend on `node_modules/.bin` being on `PATH`:
 

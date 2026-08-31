@@ -56,6 +56,7 @@ CLI and MCP expose the same core operations, with durable MCP writes requiring e
 - `src/search.js` — accent-insensitive ranked retrieval and workspace-scoped context packs.
 - `src/stale.js` — metadata parsing, source fingerprints, health classification, and reviewed refresh.
 - `src/advisor.js` — bounded Git baseline, deterministic boundary inference, memory-gap proposals, risk/verification heuristics, and pre-change briefs.
+- `src/task-contract.js` — pure, bounded task-shape/risk adaptation and required-evidence semantics used by the advisor and completion assessment.
 - `src/change-intelligence.js` — durable change records, Git-based observation, prediction comparison, historical co-change evidence, verification patterns, and review-only learning candidates.
 - `src/cli.js` — human-facing command-line interface.
 - `src/mcp.js` — MCP JSON-RPC stdio server exposing tools, resources, and prompts.
@@ -83,6 +84,8 @@ Change records are intentionally commit-friendly. CMI excludes all `.codex-memor
 `project-index.json` and `project-graph.json` are generated caches and may be deleted and rebuilt with `cmi scan --full`.
 
 Git baseline data, inferred boundaries, risks, verification suggestions, memory-gap proposals, historical ranking, and co-change summaries are derived or transient intelligence. They are not durable truth by themselves.
+
+A Task Contract is also derived intelligence. A ready pre-change brief exposes it transiently; when a Change starts, a bounded copy is stored under that Change's `before` evidence so later completion assessment uses the requirements known before editing. It is not a separate store, lifecycle, task database, or authorization record.
 
 ## Incremental model
 
@@ -137,6 +140,7 @@ The change-intelligence layer adds project history without adding a remote AI mo
 - project-relative predicted files;
 - inferred relevant boundaries;
 - advisory risks and verification guidance;
+- the inferred Task Contract and its required-evidence requirements;
 - bounded Git baseline;
 - relevant completed change records available at that moment;
 - historical co-change and verification patterns available at that moment.
@@ -162,6 +166,14 @@ Attribution is labeled:
 ### AFTER
 
 Completion stores an outcome plus verification evidence supplied by the human or agent. CMI does not execute the verification command and does not independently certify the reported result.
+
+### Task Contract and required evidence
+
+`prepareChangeBrief()` derives a bounded Task Contract from the request, retrieved paths, inferred topics, boundaries, and explicit environment/release signals. It records task kind, adaptive depth, inferred risk, advisory success criteria, required evidence kinds, unknowns, assumptions, and provenance. The contract is an inference, not user acceptance truth or authorization.
+
+Required evidence kinds are deliberately small: `implementation`, `behavior`, `environment-specific`, `external/live`, and `release`. A Change may be completed by the actor while CMI assesses its claim as `unverified` when an observed implementation check exists but a required behavior, device, live, or release check is absent. Reported verification remains reported; an untyped legacy verification can match only the generic implementation requirement and cannot satisfy a more specific requirement.
+
+`assessCompletionEvidence()` is the single evaluator. It reads the optional `before.taskContract` snapshot, produces a bounded required-evidence projection, and preserves the existing fail-closed handling for failed or contradictory observed commands. Session Intelligence consumes this same projection; it does not implement a second contract evaluator. Legacy Change records without a snapshot retain the prior generic assessment semantics.
 
 Prediction comparison records:
 

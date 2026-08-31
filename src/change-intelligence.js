@@ -11,6 +11,7 @@ import { looksSensitive } from './sensitive.js';
 import { acquireLeaseLock, releaseLeaseLock } from './lease-lock.js';
 import { safeEnsureMemoryDir } from './storage.js';
 import { assessCompletionEvidence } from './completion-evidence.js';
+import { EVIDENCE_KINDS, validateTaskContract } from './task-contract.js';
 
 const execFileAsync = promisify(execFile);
 const MEMORY_DIR = '.codex-memory';
@@ -96,6 +97,7 @@ function validateVerificationRecord(item) {
   if (!VALID_VERIFICATION.has(item.status)) return false;
   const provenance = item.provenance || 'reported';
   if (!VALID_VERIFICATION_PROVENANCE.has(provenance)) return false;
+  if (item.kind !== undefined && !EVIDENCE_KINDS.includes(item.kind)) return false;
   if (provenance === 'observed-command') {
     if (typeof item.command !== 'string' || !item.command.trim()) return false;
     if (!Number.isInteger(item.exitCode)) return false;
@@ -113,6 +115,7 @@ export function validateChangeRecord(record) {
   if (typeof record.goal !== 'string' || !record.goal.trim()) errors.push('goal is required.');
   if (!validIsoDate(record.createdAt) || !validIsoDate(record.updatedAt)) errors.push('createdAt and updatedAt must be ISO date-time strings.');
   if (!record.before || typeof record.before !== 'object' || Array.isArray(record.before)) errors.push('before evidence is required.');
+  if (record.before?.taskContract !== undefined && !validateTaskContract(record.before.taskContract).valid) errors.push('before.taskContract is invalid.');
   if (!Array.isArray(record.observations)) errors.push('observations must be an array.');
   if (record.status === 'active' && record.completion !== null) errors.push('active records must not contain completion.');
   if (record.progress !== undefined && record.progress !== null) {
@@ -367,12 +370,15 @@ function normalizeVerification(item) {
   const evidence = cleanOptionalText(item.evidence, 'Verification evidence');
   const command = cleanOptionalText(item.command, 'Verification command');
   const outputDigest = cleanOptionalText(item.outputDigest, 'Verification output digest');
+  const kind = item.kind === undefined ? null : cleanText(item.kind, 'Verification kind');
+  if (kind && !EVIDENCE_KINDS.includes(kind)) throw new Error(`Verification kind must be one of: ${EVIDENCE_KINDS.join(', ')}.`);
   const hasObservedCommand = command && Number.isInteger(item.exitCode) && validIsoDate(item.observedAt);
   const provenance = hasObservedCommand ? 'observed-command' : 'reported';
   return {
     name,
     status,
     provenance,
+    ...(kind ? { kind } : {}),
     ...(evidence ? { evidence } : {}),
     ...(hasObservedCommand ? { command, exitCode: item.exitCode, observedAt: item.observedAt, ...(outputDigest ? { outputDigest } : {}) } : {}),
   };
@@ -569,6 +575,7 @@ export async function startChangeRecord(root, goal, options = {}) {
       memoryCoverage: brief.memory?.coverage || null,
       provenance: brief.provenance,
       assumptions: brief.assumptions,
+      taskContract: brief.taskContract,
       historicalEvidence: {
         matches: history.matches.slice(0, 5),
         calibration: history.calibration,
@@ -735,7 +742,11 @@ export function formatChangeRecord(record) {
   const completionEvidence = assessCompletionEvidence(record);
   const reasons = completionEvidence.reasons.join(' ') || 'None recorded.';
   const gaps = completionEvidence.gaps.join(' ') || 'None recorded.';
-  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${outcome}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Completion evidence assessment\n- Completion claim: ${completionEvidence.claimState}\n- Implementation evidence: ${completionEvidence.implementation.state}\n- Verification evidence: ${completionEvidence.verification.state}\n- Reasons: ${reasons}\n- Gaps: ${gaps}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}] ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
+  const requiredEvidence = completionEvidence.requiredEvidence;
+  const requiredEvidenceRows = requiredEvidence.requirements
+    .map((item) => `- [${item.state}] ${item.kind}: ${item.title}${item.matchedVerifications.length ? ` · ${item.matchedVerifications.join(', ')}` : ''}`)
+    .join('\n') || `- ${requiredEvidence.state === 'not-assessed' ? 'Not assessed (legacy Change has no Task Contract)' : 'None required'}`;
+  return `# Change record ${record.id.slice(0, 12)}\n\n- Status: ${record.status}\n- Goal: ${record.goal}\n- Workspace: ${record.workspace || 'project'}\n- Created: ${record.createdAt}\n- Outcome: ${outcome}\n- Attribution: ${latest?.attribution || record.before?.attribution || 'unknown'}\n- Git continuity: ${latest?.gitContinuity?.state || 'unknown'}\n- Revision: ${record.revision || 1}\n\n## Completion evidence assessment\n- Completion claim: ${completionEvidence.claimState}\n- Implementation evidence: ${completionEvidence.implementation.state}\n- Verification evidence: ${completionEvidence.verification.state}\n- Required task evidence: ${requiredEvidence.state}\n- Reasons: ${reasons}\n- Gaps: ${gaps}\n\n## Predicted scope\n- Files: ${record.before?.predicted?.files?.length || 0}\n- Boundaries: ${(record.before?.predicted?.boundaries || []).map((item) => item.label).join(', ') || 'none'}\n\n## Observed changed paths\n${changed.map((file) => `- \`${file}\``).join('\n') || '- None observed yet'}\n\n## Prediction gaps\n${missed.map((file) => `- \`${file}\``).join('\n') || '- None observed'}\n\n## Required task evidence\n${requiredEvidenceRows}\n\n## Verification evidence\n${verification.map((item) => `- [${item.status}]${item.kind ? ` [${item.kind}]` : ''} ${item.name} · ${item.provenance || 'reported'}`).join('\n') || '- Not completed yet'}\n\n${record.policy}`;
 }
 
 export function formatChangeInsights(result) {
