@@ -32,6 +32,7 @@
         "memoryCoverage": { "type": ["object", "null"] },
         "provenance": { "type": "object" },
         "assumptions": { "type": "array", "items": { "type": "string" } },
+        "taskContract": { "$ref": "#/$defs/taskContract" },
         "historicalEvidence": { "type": "object" },
         "attribution": { "enum": ["strong", "limited-preexisting-worktree", "explicit-files-only"] }
       },
@@ -93,6 +94,7 @@
               "name": { "type": "string", "minLength": 1, "maxLength": 500 },
               "status": { "enum": ["passed", "failed", "skipped", "unknown"] },
               "provenance": { "enum": ["reported", "observed-command"] },
+              "kind": { "enum": ["implementation", "behavior", "environment-specific", "external/live", "release"] },
               "evidence": { "type": "string", "maxLength": 500 },
               "command": { "type": "string", "minLength": 1, "maxLength": 500 },
               "exitCode": { "type": "integer" },
@@ -132,6 +134,43 @@
       "additionalProperties": false
     },
     "policy": { "type": "string" }
+  },
+  "$defs": {
+    "taskContract": {
+      "type": "object",
+      "required": ["version", "goal", "taskKind", "depth", "risk", "successCriteria", "requiredEvidence", "unknowns", "assumptions", "provenance", "policy"],
+      "properties": {
+        "version": { "const": 1 },
+        "goal": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "taskKind": { "enum": ["change", "documentation", "investigation", "unknown"] },
+        "depth": { "enum": ["light", "standard", "deep"] },
+        "risk": { "type": "object" },
+        "successCriteria": { "type": "array", "maxItems": 8, "items": { "type": "object" } },
+        "requiredEvidence": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "title", "guidance", "required", "source", "confidence"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "enum": ["implementation", "behavior", "environment-specific", "external/live", "release"] },
+              "title": { "type": "string" },
+              "guidance": { "type": "string" },
+              "required": { "const": true },
+              "source": { "type": "string" },
+              "confidence": { "enum": ["low", "medium", "high"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "unknowns": { "type": "array", "maxItems": 8, "items": { "type": "string" } },
+        "assumptions": { "type": "array", "maxItems": 8, "items": { "type": "string" } },
+        "provenance": { "type": "object" },
+        "policy": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }
